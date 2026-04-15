@@ -2,6 +2,9 @@ import os
 import urllib.request
 import json
 from flask import Flask, render_template, jsonify
+from dotenv import load_dotenv
+
+load_dotenv()
 from models import db, Tour, Match, Score
 from datetime import datetime, date
 
