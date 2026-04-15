@@ -1,5 +1,7 @@
 import os
-from flask import Flask, render_template
+import urllib.request
+import json
+from flask import Flask, render_template, jsonify
 from models import db, Tour, Match, Score
 from datetime import datetime, date
 
@@ -84,6 +86,42 @@ def index():
 
 with app.app_context():
     seed_data()
+
+
+@app.route("/champions-league")
+def champions_league():
+    return render_template("cl.html")
+
+
+@app.route("/api/cl-matches")
+def cl_matches():
+    api_key = os.environ.get("FOOTBALL_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "FOOTBALL_API_KEY not set"}), 500
+
+    url = "https://api.football-data.org/v4/competitions/CL/matches?status=FINISHED&limit=10"
+    req = urllib.request.Request(url, headers={"X-Auth-Token": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    matches = []
+    for m in data.get("matches", [])[-10:]:
+        matches.append({
+            "home": m["homeTeam"]["name"],
+            "away": m["awayTeam"]["name"],
+            "home_score": m["score"]["fullTime"]["home"],
+            "away_score": m["score"]["fullTime"]["away"],
+            "date": m["utcDate"][:10],
+            "stage": m.get("stage", ""),
+            "matchday": m.get("matchday"),
+        })
+
+    matches.reverse()
+    return jsonify(matches)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
