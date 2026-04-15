@@ -13,6 +13,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 
+# Create tables on startup (runs when gunicorn imports this module)
+with app.app_context():
+    db.create_all()
+
 
 def seed_data():
     """Fill DB with sample data if empty."""
@@ -78,8 +82,8 @@ def index():
     return render_template("index.html", tours=tours)
 
 
+with app.app_context():
+    seed_data()
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        seed_data()
     app.run(debug=True)
