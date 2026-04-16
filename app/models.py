@@ -58,3 +58,26 @@ class Score(db.Model):
     home_score = db.Column(db.Integer, nullable=False, default=0)
     away_score = db.Column(db.Integer, nullable=False, default=0)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class User(db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    predictions = db.relationship("Prediction", backref="user", lazy=True)
+
+
+class Prediction(db.Model):
+    __tablename__ = "predictions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False)
+    home_score = db.Column(db.Integer, nullable=False)
+    away_score = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint("user_id", "match_id"),)

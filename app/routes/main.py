@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template
-from ..models import Match, Tour
+from ..models import Match, Tour, User, Prediction
 
 main_bp = Blueprint("main", __name__)
 
@@ -14,9 +14,16 @@ def index():
         .limit(30)
         .all()
     )
-    return render_template("index.html", matches=matches)
+
+    user = User.query.filter_by(username="test").first()
+    predictions = {}
+    if user:
+        for p in Prediction.query.filter_by(user_id=user.id).all():
+            predictions[p.match_id] = p
+
+    return render_template("index.html", matches=matches, predictions=predictions)
 
 
-@main_bp.route("/champions-league")
-def champions_league():
-    return render_template("cl.html")
+@main_bp.route("/admin")
+def admin():
+    return render_template("admin.html")

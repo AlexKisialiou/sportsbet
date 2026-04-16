@@ -1,8 +1,29 @@
 {% extends "base.html" %}
 {% block title %}SportsBet — Матчи{% endblock %}
 
+{% block extra_styles %}
+<style>
+    .btn-bets { background: #1a2e1a; color: #5db85d; border: 1px solid #2a4a2a; border-radius: 6px; padding: 5px 14px; font-size: .85rem; cursor: pointer; }
+    .btn-bets:hover { background: #223a22; color: #7de07d; }
+    .prediction-row { display: none; margin-top: 8px; align-items: center; gap: 6px; }
+    .prediction-row.visible { display: flex; }
+    .pred-input { width: 46px; text-align: center; background: #111e2b; border: 1px solid #2a3a4a; color: #fff; border-radius: 6px; padding: 4px 6px; font-size: .9rem; }
+    .pred-input:focus { outline: none; border-color: #5db85d; }
+    .pred-sep { color: #4a6a8a; font-weight: 700; }
+    .pred-saved { font-size: .65rem; color: #5db85d; margin-top: 2px; opacity: 0; transition: opacity .4s; }
+    .pred-saved.show { opacity: 1; }
+    .pred-input.readonly { opacity: .5; cursor: not-allowed; border-color: #1e3048; }
+    .pred-locked { font-size: .65rem; color: #4a6a8a; margin-left: 4px; }
+</style>
+{% endblock %}
+
 {% block content %}
 {% if matches %}
+    <div class="d-flex align-items-center mb-3">
+        <span class="text-secondary" style="font-size:.85rem;">Последние 30 матчей ЛЧ</span>
+        <button class="btn-bets ms-auto" id="toggleBets" onclick="toggleBets()">Показать ставки</button>
+    </div>
+
     {% set ns = namespace(current_stage='') %}
     {% for match in matches %}
         {% set stage = match.tour.name %}
@@ -11,30 +32,87 @@
             <div class="stage-header">{{ stage }} · Сезон {{ match.tour.season }}</div>
         {% endif %}
 
-        <div class="match-card">
-            <div class="team team-home">{{ match.home_team.display_name }}</div>
+        {% set pred = predictions.get(match.id) %}
 
-            <div class="score-block">
-                {% if match.status == 'finished' and match.score %}
-                    <div class="score">{{ match.score.home_score }} : {{ match.score.away_score }}</div>
-                    <div class="mt-1"><span class="status-badge badge-finished">FT</span></div>
-                {% elif match.status == 'live' %}
-                    <div class="score">— : —</div>
-                    <div class="mt-1"><span class="status-badge badge-live">LIVE</span></div>
-                {% else %}
-                    <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
-                    <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
-                {% endif %}
-                <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+        <div class="match-card" style="flex-direction: column; align-items: stretch; padding: 10px 20px;">
+            <div style="display:flex; align-items:center;">
+                <div class="team team-home">{{ match.home_team.display_name }}</div>
+
+                <div class="score-block">
+                    {% if match.status == 'finished' and match.score %}
+                        <div class="score">{{ match.score.home_score }} : {{ match.score.away_score }}</div>
+                        <div class="mt-1"><span class="status-badge badge-finished">FT</span></div>
+                    {% elif match.status == 'live' %}
+                        <div class="score">— : —</div>
+                        <div class="mt-1"><span class="status-badge badge-live">LIVE</span></div>
+                    {% else %}
+                        <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
+                        <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
+                    {% endif %}
+                    <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                </div>
+
+                <div class="team team-away">{{ match.away_team.display_name }}</div>
             </div>
 
-            <div class="team team-away">{{ match.away_team.display_name }}</div>
+            {% if match.status == 'scheduled' %}
+            <div class="prediction-row" id="pred-{{ match.id }}">
+                <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
+                <input class="pred-input" type="number" min="0" max="20" id="ph-{{ match.id }}"
+                       value="{{ pred.home_score if pred is not none else '' }}"
+                       placeholder="—" onchange="savePrediction({{ match.id }})">
+                <span class="pred-sep">:</span>
+                <input class="pred-input" type="number" min="0" max="20" id="pa-{{ match.id }}"
+                       value="{{ pred.away_score if pred is not none else '' }}"
+                       placeholder="—" onchange="savePrediction({{ match.id }})">
+                <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
+            </div>
+            {% elif pred %}
+            <div class="prediction-row" id="pred-{{ match.id }}">
+                <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
+                <input class="pred-input readonly" type="number"
+                       value="{{ pred.home_score }}" disabled>
+                <span class="pred-sep">:</span>
+                <input class="pred-input readonly" type="number"
+                       value="{{ pred.away_score }}" disabled>
+                <span class="pred-locked">🔒</span>
+            </div>
+            {% endif %}
         </div>
     {% endfor %}
+
 {% else %}
     <div class="text-center mt-5">
         <p class="text-secondary mb-3">Матчи не загружены.</p>
-        <a href="/champions-league" style="color:#9a9ae0;">Загрузить матчи ЛЧ →</a>
+        <a href="/admin" style="color:#9a9ae0;">Загрузить матчи ЛЧ →</a>
     </div>
 {% endif %}
+
+<script>
+let betsVisible = false;
+
+function toggleBets() {
+    betsVisible = !betsVisible;
+    document.querySelectorAll('.prediction-row').forEach(el => {
+        el.classList.toggle('visible', betsVisible);
+    });
+    document.getElementById('toggleBets').textContent = betsVisible ? 'Скрыть ставки' : 'Показать ставки';
+}
+
+async function savePrediction(matchId) {
+    const home = document.getElementById(`ph-${matchId}`).value;
+    const away = document.getElementById(`pa-${matchId}`).value;
+    if (home === '' || away === '') return;
+
+    await fetch('/api/prediction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, home_score: parseInt(home), away_score: parseInt(away) })
+    });
+
+    const saved = document.getElementById(`ps-${matchId}`);
+    saved.classList.add('show');
+    setTimeout(() => saved.classList.remove('show'), 1500);
+}
+</script>
 {% endblock %}

@@ -48,10 +48,47 @@ wsgi.py                  # gunicorn entry point
 - Do NOT set `RESET_DB` on Render
 
 ## Data Model
-- **Tour** — a round or stage (league="local" or "UCL")
-- **Match** — a single game with kickoff_time, status (scheduled/live/finished), external_id from API
-- **Score** — home_score / away_score, linked 1:1 to Match
+- **Team** — club with `external_id` (from API), `name` (EN), `name_ru` (RU), `short_name`, `crest` (logo URL)
+- **Tour** — a round or stage (`league="local"` or `"UCL"`)
+- **Match** — a game linking two Teams via `home_team_id`/`away_team_id`, has `external_id`, `kickoff_time`, `status`
+- **Score** — `home_score`/`away_score`, linked 1:1 to Match
+
+`Team.display_name` property returns `name_ru` if set, otherwise `name`.
+
+## Russian Team Names
+`app/data/teams_ru.py` — dictionary `TEAMS_RU = { "English name": "Русское название" }`.
+Applied automatically when saving teams from the API. If `name_ru` is already set manually in DB it is not overwritten.
+To add a new team: add a line to `TEAMS_RU` and reload matches.
+
+## football-data.org API
+- **Docs:** https://docs.football-data.org/general/v4/index.html
+- **Free tier limits:** 10 requests/minute, access to major competitions
+- **Auth:** HTTP header `X-Auth-Token: <key>`
+- **Base URL:** `https://api.football-data.org/v4/`
+
+### Endpoints used
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/competitions/CL/matches` | All CL matches current season |
+
+### Match status values from API
+| API value | Saved as |
+|-----------|----------|
+| `FINISHED` | `finished` |
+| `IN_PLAY` | `live` |
+| `PAUSED` | `live` |
+| `SCHEDULED` | `scheduled` |
+| `TIMED` | `scheduled` |
+
+### Stage → Tour mapping (`STAGE_MAP` in `football_api.py`)
+| API stage | Tour name | round_number |
+|-----------|-----------|--------------|
+| `GROUP_STAGE` | ЛЧ Групповой этап - Тур N | N (1–8) |
+| `LAST_16` | ЛЧ 1/8 финала | 100 |
+| `QUARTER_FINALS` | ЛЧ 1/4 финала | 200 |
+| `SEMI_FINALS` | ЛЧ 1/2 финала | 300 |
+| `FINAL` | ЛЧ Финал | 400 |
 
 ## Main Page Logic
-Shows last 30 UCL matches ordered by date descending, grouped by stage (1/4 final, etc.).
-Matches are loaded via the Champions League page button which calls `POST /api/cl-matches`.
+Shows last 30 UCL matches ordered by date descending, grouped by stage.
+Matches are loaded via `/champions-league` page button → `POST /api/cl-matches`.
