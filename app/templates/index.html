@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}SportsBet — Матчи{% endblock %}
+
+{% block content %}
+{% if matches %}
+    {% set ns = namespace(current_stage='') %}
+    {% for match in matches %}
+        {% set stage = match.tour.name %}
+        {% if stage != ns.current_stage %}
+            {% set ns.current_stage = stage %}
+            <div class="stage-header">{{ stage }} · Сезон {{ match.tour.season }}</div>
+        {% endif %}
+
+        <div class="match-card">
+            <div class="team team-home">{{ match.home_team.display_name }}</div>
+
+            <div class="score-block">
+                {% if match.status == 'finished' and match.score %}
+                    <div class="score">{{ match.score.home_score }} : {{ match.score.away_score }}</div>
+                    <div class="mt-1"><span class="status-badge badge-finished">FT</span></div>
+                {% elif match.status == 'live' %}
+                    <div class="score">— : —</div>
+                    <div class="mt-1"><span class="status-badge badge-live">LIVE</span></div>
+                {% else %}
+                    <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
+                    <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
+                {% endif %}
+                <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+            </div>
+
+            <div class="team team-away">{{ match.away_team.display_name }}</div>
+        </div>
+    {% endfor %}
+{% else %}
+    <div class="text-center mt-5">
+        <p class="text-secondary mb-3">Матчи не загружены.</p>
+        <a href="/champions-league" style="color:#9a9ae0;">Загрузить матчи ЛЧ →</a>
+    </div>
+{% endif %}
+{% endblock %}

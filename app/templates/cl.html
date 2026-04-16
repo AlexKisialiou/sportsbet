@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}SportsBet — Лига Чемпионов{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .btn-fetch { background: #1e1e3a; color: #9a9ae0; border: 1px solid #2a2a6a; padding: 12px 32px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+    .btn-fetch:hover { background: #2a2a5a; color: #fff; }
+    .btn-fetch:disabled { opacity: .5; cursor: default; }
+    .spinner { display: none; width: 22px; height: 22px; border: 2px solid #7a9ab5; border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; margin: 12px auto 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .result-msg { font-size: .9rem; margin-top: 1rem; }
+    .error-msg { color: #e05555; }
+    .success-msg { color: #5db85d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="text-center mt-4">
+    <p class="text-secondary mb-4" style="font-size:.9rem;">
+        Нажми кнопку чтобы загрузить актуальные матчи ЛЧ.<br>
+        Они появятся на главной странице.
+    </p>
+    <button class="btn-fetch" id="fetchBtn" onclick="loadMatches()">
+        Загрузить матчи ЛЧ
+    </button>
+    <div class="spinner" id="spinner"></div>
+    <div class="result-msg" id="resultMsg"></div>
+</div>
+
+<script>
+async function loadMatches() {
+    const btn = document.getElementById("fetchBtn");
+    btn.disabled = true;
+    document.getElementById("spinner").style.display = "block";
+    document.getElementById("resultMsg").innerHTML = "";
+
+    try {
+        const resp = await fetch("/api/cl-matches", { method: "POST" });
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById("resultMsg").innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+            return;
+        }
+        document.getElementById("resultMsg").innerHTML =
+            `<span class="success-msg">Добавлено: ${data.added} &nbsp;|&nbsp; Обновлено: ${data.updated}</span>
+             <br><a href="/" style="color:#9a9ae0;font-size:.85rem;display:inline-block;margin-top:.5rem;">Перейти на главную →</a>`;
+    } catch {
+        document.getElementById("resultMsg").innerHTML = `<span class="error-msg">Не удалось загрузить данные.</span>`;
+    } finally {
+        document.getElementById("spinner").style.display = "none";
+        btn.disabled = false;
+    }
+}
+</script>
+{% endblock %}
