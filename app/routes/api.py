@@ -1,4 +1,3 @@
-import random
 from flask import Blueprint, jsonify, request
 from ..models import db, Prediction, User, Match, Score
 from ..services.football_api import fetch_and_save_cl_matches
@@ -53,8 +52,8 @@ def simulate_results():
         return jsonify({"updated": 0, "message": "Нет матчей со статусом scheduled"})
 
     for match in scheduled:
-        hs = random.randint(0, 4)
-        as_ = random.randint(0, 4)
+        hs = 1
+        as_ = 0
         match.status = "finished"
         if match.score:
             match.score.home_score = hs
@@ -62,6 +61,7 @@ def simulate_results():
         else:
             db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
         db.session.flush()
+        db.session.refresh(match)  # reload score relationship after flush
         update_points_for_match(match, commit=False)
 
     db.session.commit()
