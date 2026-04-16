@@ -3,10 +3,7 @@
 
 {% block extra_styles %}
 <style>
-    .btn-bets { background: #1a2e1a; color: #5db85d; border: 1px solid #2a4a2a; border-radius: 6px; padding: 5px 14px; font-size: .85rem; cursor: pointer; }
-    .btn-bets:hover { background: #223a22; color: #7de07d; }
-    .prediction-row { display: none; margin-top: 8px; align-items: center; gap: 6px; }
-    .prediction-row.visible { display: flex; }
+    .prediction-row { display: flex; margin-top: 8px; align-items: center; gap: 6px; }
     .pred-input { width: 46px; text-align: center; background: #111e2b; border: 1px solid #2a3a4a; color: #fff; border-radius: 6px; padding: 4px 6px; font-size: .9rem; }
     .pred-input:focus { outline: none; border-color: #5db85d; }
     .pred-sep { color: #4a6a8a; font-weight: 700; }
@@ -51,9 +48,8 @@
 {% endif %}
 
 {% if matches %}
-    <div class="d-flex align-items-center mb-3">
+    <div class="mb-3">
         <span class="text-secondary" style="font-size:.85rem;">Последние 30 матчей ЛЧ</span>
-        <button class="btn-bets ms-auto" id="toggleBets" onclick="toggleBets()">Показать ставки</button>
     </div>
 
     {% set ns = namespace(current_stage='') %}
@@ -88,7 +84,7 @@
             </div>
 
             {% if match.status == 'scheduled' %}
-            <div class="prediction-row" id="pred-{{ match.id }}">
+            <div class="prediction-row">
                 <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
                 <input class="pred-input" type="number" min="0" max="20" id="ph-{{ match.id }}"
                        value="{{ pred.home_score if pred is not none else '' }}"
@@ -100,7 +96,7 @@
                 <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
             </div>
             {% elif pred %}
-            <div class="prediction-row" id="pred-{{ match.id }}">
+            <div class="prediction-row">
                 <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
                 <input class="pred-input readonly" type="number"
                        value="{{ pred.home_score }}" disabled>
@@ -121,16 +117,6 @@
 {% endif %}
 
 <script>
-let betsVisible = false;
-
-function toggleBets() {
-    betsVisible = !betsVisible;
-    document.querySelectorAll('.prediction-row').forEach(el => {
-        el.classList.toggle('visible', betsVisible);
-    });
-    document.getElementById('toggleBets').textContent = betsVisible ? 'Скрыть ставки' : 'Показать ставки';
-}
-
 async function savePrediction(matchId) {
     const home = document.getElementById(`ph-${matchId}`).value;
     const away = document.getElementById(`pa-${matchId}`).value;
