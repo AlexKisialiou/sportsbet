@@ -46,10 +46,10 @@ def update_points_for_match(match, commit=True):
     return count
 
 
-def get_leaderboard(last_tour_id=None):
+def get_leaderboard(last_days=None):
     """
-    Returns list of dicts:
-    { user, total_points, last_tour_points, exact_count, winner_count }
+    Returns list of dicts: { user, total, last_day }
+    last_days: list of date objects — points for matches on any of those dates.
     """
     from ..models import User
 
@@ -67,28 +67,24 @@ def get_leaderboard(last_tour_id=None):
 
     result = []
     for user, total in rows:
-        last_pts = 0
-        if last_tour_id:
-            last_pts = (
+        day_pts = []
+        for day in (last_days or []):
+            pts = (
                 db.session.query(func.coalesce(func.sum(PredictionPoints.points), 0))
                 .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
                 .join(Match, Prediction.match_id == Match.id)
-                .filter(Match.tour_id == last_tour_id, Prediction.user_id == user.id)
+                .filter(
+                    func.date(Match.kickoff_time) == day,
+                    Prediction.user_id == user.id,
+                )
                 .scalar()
             ) or 0
-
-        exact = (
-            db.session.query(func.count(PredictionPoints.id))
-            .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
-            .filter(Prediction.user_id == user.id, PredictionPoints.reason == "exact")
-            .scalar()
-        ) or 0
+            day_pts.append(int(pts))
 
         result.append({
             "user": user,
             "total": int(total),
-            "last_tour": int(last_pts),
-            "exact": exact,
+            "days": day_pts,
         })
 
     return result

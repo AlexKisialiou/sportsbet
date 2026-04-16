@@ -40,15 +40,21 @@
 </head>
 <body>
 <nav class="navbar-custom">
-    <div class="container" style="max-width:700px">
-        <div class="d-flex align-items-center">
+    <div class="container-fluid" style="max-width:1400px;padding:0 24px;">
+        <div class="d-flex align-items-center gap-3">
             <a href="/" class="navbar-brand">SportsBet</a>
-            <a href="/admin" class="nav-link-admin ms-auto">Админ</a>
+            {% if current_user and current_user.is_admin %}
+            <a href="/admin" class="nav-link-admin">Админ</a>
+            {% endif %}
+            {% if current_user %}
+            <span style="color:#4a6a8a;font-size:.85rem;margin-left:auto;">{{ current_user.username }}</span>
+            <a href="/logout" style="color:#4a6a8a;font-size:.82rem;border:1px solid #2a3a4a;border-radius:6px;padding:4px 10px;">Выйти</a>
+            {% endif %}
         </div>
     </div>
 </nav>
 
-<div class="container" style="max-width:700px">
+<div class="container-fluid" style="max-width:1400px;padding:0 24px;">
     {% block content %}{% endblock %}
 </div>
 </body>
