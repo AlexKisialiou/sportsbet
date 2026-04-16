@@ -1,6 +1,8 @@
+import random
 from flask import Blueprint, jsonify, request
-from ..models import db, Prediction, User
+from ..models import db, Prediction, User, Match, Score
 from ..services.football_api import fetch_and_save_cl_matches
+from ..services.points import update_points_for_match
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -41,3 +43,26 @@ def save_prediction():
 
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@api_bp.route("/simulate-results", methods=["POST"])
+def simulate_results():
+    """DEV ONLY: generate random scores for all scheduled matches and mark as finished."""
+    scheduled = Match.query.filter_by(status="scheduled").all()
+    if not scheduled:
+        return jsonify({"updated": 0, "message": "Нет матчей со статусом scheduled"})
+
+    for match in scheduled:
+        hs = random.randint(0, 4)
+        as_ = random.randint(0, 4)
+        match.status = "finished"
+        if match.score:
+            match.score.home_score = hs
+            match.score.away_score = as_
+        else:
+            db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+        db.session.flush()
+        update_points_for_match(match, commit=False)
+
+    db.session.commit()
+    return jsonify({"updated": len(scheduled)})
