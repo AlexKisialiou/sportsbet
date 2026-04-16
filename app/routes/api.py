@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request
-from ..models import db, Prediction, User, Match, Score
+from ..models import db, Prediction, Match, Score
 from ..services.football_api import fetch_and_save_cl_matches
 from ..services.points import update_points_for_match
+from ..auth import get_current_user, login_required
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -18,6 +19,7 @@ def cl_matches():
 
 
 @api_bp.route("/prediction", methods=["POST"])
+@login_required
 def save_prediction():
     data = request.get_json()
     match_id = data.get("match_id")
@@ -27,9 +29,9 @@ def save_prediction():
     if match_id is None or home_score is None or away_score is None:
         return jsonify({"error": "match_id, home_score, away_score required"}), 400
 
-    user = User.query.filter_by(username="test").first()
+    user = get_current_user()
     if not user:
-        return jsonify({"error": "user not found"}), 500
+        return jsonify({"error": "not authenticated"}), 401
 
     prediction = Prediction.query.filter_by(user_id=user.id, match_id=match_id).first()
     if prediction:

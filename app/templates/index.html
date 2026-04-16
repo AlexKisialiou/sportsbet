@@ -11,112 +11,247 @@
     .pred-saved.show { opacity: 1; }
     .pred-input.readonly { opacity: .5; cursor: not-allowed; border-color: #1e3048; }
     .pred-locked { font-size: .65rem; color: #4a6a8a; margin-left: 4px; }
+    .match-unfilled { border-left: 3px solid #e0a040 !important; }
 
     /* Leaderboard */
-    .leaderboard { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 10px; margin-bottom: 1.5rem; overflow: hidden; }
-    .leaderboard-header { background: #1e3048; padding: 10px 16px; font-size: .75rem; color: #7a9ab5; text-transform: uppercase; letter-spacing: .07em; }
-    .lb-row { display: flex; align-items: center; padding: 9px 16px; border-bottom: 1px solid #1e2d3d; font-size: .88rem; }
+    .leaderboard { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+    .leaderboard-header { background: #1e3048; padding: 10px 14px; font-size: .75rem; color: #7a9ab5; text-transform: uppercase; letter-spacing: .07em; }
+    .lb-row { display: flex; align-items: center; padding: 9px 14px; border-bottom: 1px solid #1e2d3d; font-size: .85rem; }
     .lb-row:last-child { border-bottom: none; }
-    .lb-rank { width: 24px; color: #4a6a8a; font-size: .8rem; }
+    .lb-rank { width: 20px; color: #4a6a8a; font-size: .78rem; }
     .lb-name { flex: 1; font-weight: 500; }
-    .lb-pts { width: 52px; text-align: right; font-weight: 700; color: #fff; }
-    .lb-tour { width: 62px; text-align: right; color: #7a9ab5; font-size: .8rem; }
-    .lb-exact { width: 52px; text-align: right; color: #5db85d; font-size: .8rem; }
-    .lb-col-label { color: #4a6a8a; font-size: .7rem; }
+    .lb-pts { width: 48px; text-align: right; font-weight: 700; color: #fff; }
+    .lb-day { width: 46px; text-align: right; font-size: .82rem; font-weight: 600; }
+    .lb-col-label { color: #4a6a8a; font-size: .68rem; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid #1e3048; padding-bottom: 0; }
+    .tab-btn { background: none; border: none; color: #4a6a8a; font-size: .9rem; padding: 8px 18px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .2s; }
+    .tab-btn:hover { color: #a0b8d0; }
+    .tab-btn.active { color: #fff; border-bottom-color: #5db85d; font-weight: 600; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Predictions table container */
+    .pred-table-wrap { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 10px; overflow: hidden; }
+    .pred-table-header { background: #1e3048; padding: 10px 14px; font-size: .75rem; color: #7a9ab5; text-transform: uppercase; letter-spacing: .07em; }
 </style>
 {% endblock %}
 
 {% block content %}
-{% if leaderboard %}
-<div class="leaderboard">
-    <div class="leaderboard-header d-flex">
-        <span style="flex:1;">Участник</span>
-        <span class="lb-pts lb-col-label">Всего</span>
-        <span class="lb-tour lb-col-label">{{ last_tour.name if last_tour else 'Тур' }}</span>
-        <span class="lb-exact lb-col-label">Точных</span>
-    </div>
-    {% for row in leaderboard %}
-    <div class="lb-row">
-        <span class="lb-rank">{{ loop.index }}</span>
-        <span class="lb-name">{{ row.user.username }}</span>
-        <span class="lb-pts">{{ row.total }}</span>
-        <span class="lb-tour">{{ row.last_tour }}</span>
-        <span class="lb-exact">{{ row.exact }}</span>
-    </div>
+
+<!-- Per-day status (moved into active tab by JS on load) -->
+{% if status_days %}
+<div id="status-wrap" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px;">
+    {% for day in status_days %}
+    {% set done = day.filled == day.total %}
+    <span id="status-day-{{ day.date.strftime('%Y-%m-%d') }}"
+          data-total="{{ day.total }}"
+          style="display:inline-flex;align-items:center;gap:7px;
+                 background:{% if done %}#1a2f1a{% else %}#2f2010{% endif %};
+                 border:1px solid {% if done %}#2d6a2d{% else %}#6a4a1a{% endif %};
+                 border-radius:8px;padding:5px 12px;font-size:.8rem;
+                 color:{% if done %}#5db85d{% else %}#e0a040{% endif %};font-weight:600;">
+        <span style="color:inherit;opacity:.7;font-weight:400;">{{ day.date.strftime('%d.%m') }}</span>
+        <span class="day-count">{% if done %}✓{% else %}{{ day.filled }}/{{ day.total }}{% endif %}</span>
+    </span>
     {% endfor %}
 </div>
 {% endif %}
 
-{% if matches %}
-    <div class="mb-3">
-        <span class="text-secondary" style="font-size:.85rem;">Последние 30 матчей ЛЧ</span>
+<!-- Tabs -->
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-scores', this)">Очки</button>
+    <button class="tab-btn" onclick="switchTab('tab-matches', this)">Матчи</button>
+</div>
+
+<!-- Tab 1: Очки + Предикты -->
+<div id="tab-scores" class="tab-pane active">
+
+    {% if leaderboard %}
+    <div class="leaderboard">
+        <div class="leaderboard-header d-flex">
+            <span style="flex:1;">Участник</span>
+            <span class="lb-pts lb-col-label">Всего</span>
+            {% for day in last_days %}
+            <span class="lb-day lb-col-label">{{ day.strftime('%d.%m') }}</span>
+            {% endfor %}
+        </div>
+        {% for row in leaderboard %}
+        <div class="lb-row">
+            <span class="lb-rank">{{ loop.index }}</span>
+            <span class="lb-name">{{ row.user.username }}</span>
+            <span class="lb-pts">{{ row.total }}</span>
+            {% for pts in row.days %}
+            <span class="lb-day" style="color:{% if pts > 0 %}#5db85d{% else %}#4a6a8a{% endif %};">
+                {% if pts > 0 %}+{{ pts }}{% else %}—{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+        {% endfor %}
     </div>
+    {% endif %}
 
-    {% set ns = namespace(current_stage='') %}
-    {% for match in matches %}
-        {% set stage = match.tour.name %}
-        {% if stage != ns.current_stage %}
-            {% set ns.current_stage = stage %}
-            <div class="stage-header">{{ stage }} · Сезон {{ match.tour.season }}</div>
-        {% endif %}
+    {% if user_fill_status and status_days %}
+    <div class="leaderboard" style="margin-bottom:1.5rem;">
+        <div class="leaderboard-header d-flex">
+            <span style="flex:1;">Участник</span>
+            {% for sd in status_days %}
+            <span class="lb-day lb-col-label">{{ sd.date.strftime('%d.%m') }}</span>
+            {% endfor %}
+        </div>
+        {% for row in user_fill_status %}
+        <div class="lb-row">
+            <span class="lb-rank">{{ loop.index }}</span>
+            <span class="lb-name">{{ row.user.username }}</span>
+            {% for d in row.days %}
+            {% set done = d.filled == d.total %}
+            <span class="lb-day" style="color:{% if done %}#5db85d{% else %}#e0a040{% endif %};">
+                {% if done %}✓{% else %}{{ d.filled }}/{{ d.total }}{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
-        {% set pred = predictions.get(match.id) %}
-
-        <div class="match-card" style="flex-direction: column; align-items: stretch; padding: 10px 20px;">
-            <div style="display:flex; align-items:center;">
-                <div class="team team-home">{{ match.home_team.display_name }}</div>
-
-                <div class="score-block">
-                    {% if match.status == 'finished' and match.score %}
-                        <div class="score">{{ match.score.home_score }} : {{ match.score.away_score }}</div>
-                        <div class="mt-1"><span class="status-badge badge-finished">FT</span></div>
-                    {% elif match.status == 'live' %}
-                        <div class="score">— : —</div>
-                        <div class="mt-1"><span class="status-badge badge-live">LIVE</span></div>
-                    {% else %}
-                        <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
-                        <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
+    {% if finished_recent %}
+    <div class="pred-table-wrap">
+        <div class="pred-table-header">Предикты</div>
+        <div style="overflow-x:auto;padding:4px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+            <thead>
+                <tr style="border-bottom:1px solid #1e3048;">
+                    <th style="text-align:left;padding:5px 14px;color:#4a6a8a;font-weight:normal;">Матч</th>
+                    <th style="padding:5px 10px;color:#4a6a8a;font-weight:normal;text-align:center;white-space:nowrap;">Счёт</th>
+                    {% for u in all_users %}
+                    <th style="padding:5px 10px;color:#4a6a8a;font-weight:normal;text-align:center;white-space:nowrap;">{{ u.username }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns2 = namespace(cur_date='') %}
+                {% for match in finished_recent %}
+                    {% set mdate = match.kickoff_time.strftime('%d.%m') %}
+                    {% if mdate != ns2.cur_date %}
+                        {% set ns2.cur_date = mdate %}
+                        <tr><td colspan="{{ 2 + all_users|length }}" style="padding:10px 14px 3px;color:#5a7a9a;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;">{{ match.kickoff_time.strftime('%d.%m.%Y') }}</td></tr>
                     {% endif %}
-                    <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                    <tr style="border-bottom:1px solid #151f2a;">
+                        <td style="padding:7px 14px;color:#c0c8d0;white-space:nowrap;">
+                            {{ match.home_team.short_name or match.home_team.display_name }} — {{ match.away_team.short_name or match.away_team.display_name }}
+                        </td>
+                        <td style="padding:7px 10px;text-align:center;font-weight:700;color:#fff;white-space:nowrap;">
+                            {{ match.score.home_score }}:{{ match.score.away_score }}
+                        </td>
+                        {% for u in all_users %}
+                        {% set pred = pred_map.get((match.id, u.id)) %}
+                        <td style="padding:7px 10px;text-align:center;white-space:nowrap;">
+                            {% if pred %}
+                                {% if pred.result %}
+                                    {% if pred.result.reason == 'exact' %}
+                                    <span style="color:#5db85d;font-weight:600;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                                    {% elif pred.result.reason == 'winner' %}
+                                    <span style="color:#e0a040;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                                    {% else %}
+                                    <span style="color:#3a5a7a;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                                    {% endif %}
+                                {% else %}
+                                <span style="color:#7a9ab5;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                                {% endif %}
+                            {% else %}
+                            <span style="color:#2a3a4a;">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Tab 2: Матчи -->
+<div id="tab-matches" class="tab-pane">
+
+    {% if matches %}
+        {% set ns = namespace(current_stage='') %}
+        {% for match in matches %}
+            {% set stage = match.tour.name %}
+            {% if stage != ns.current_stage %}
+                {% set ns.current_stage = stage %}
+                <div class="stage-header">{{ stage }} · Сезон {{ match.tour.season }}</div>
+            {% endif %}
+
+            {% set pred = predictions.get(match.id) %}
+
+            <div class="match-card" data-date="{{ match.kickoff_time.strftime('%Y-%m-%d') if match.kickoff_time else '' }}" style="flex-direction:column;align-items:stretch;padding:10px 16px;">
+                <div style="display:flex;align-items:center;">
+                    <div class="team team-home">{{ match.home_team.display_name }}</div>
+                    <div class="score-block">
+                        {% if match.status == 'finished' and match.score %}
+                            <div class="score">{{ match.score.home_score }} : {{ match.score.away_score }}</div>
+                            <div class="mt-1"><span class="status-badge badge-finished">FT</span></div>
+                        {% elif match.status == 'live' %}
+                            <div class="score">— : —</div>
+                            <div class="mt-1"><span class="status-badge badge-live">LIVE</span></div>
+                        {% else %}
+                            <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
+                            <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
+                        {% endif %}
+                        <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                    </div>
+                    <div class="team team-away">{{ match.away_team.display_name }}</div>
                 </div>
 
-                <div class="team team-away">{{ match.away_team.display_name }}</div>
+                {% if match.status == 'scheduled' %}
+                <div class="prediction-row">
+                    <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
+                    <input class="pred-input" type="number" min="0" max="20" id="ph-{{ match.id }}"
+                           value="{{ pred.home_score if pred is not none else '' }}"
+                           placeholder="—" onchange="savePrediction({{ match.id }})">
+                    <span class="pred-sep">:</span>
+                    <input class="pred-input" type="number" min="0" max="20" id="pa-{{ match.id }}"
+                           value="{{ pred.away_score if pred is not none else '' }}"
+                           placeholder="—" onchange="savePrediction({{ match.id }})">
+                    <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
+                </div>
+                {% elif pred %}
+                <div class="prediction-row">
+                    <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
+                    <input class="pred-input readonly" type="number" value="{{ pred.home_score }}" disabled>
+                    <span class="pred-sep">:</span>
+                    <input class="pred-input readonly" type="number" value="{{ pred.away_score }}" disabled>
+                    <span class="pred-locked">🔒</span>
+                </div>
+                {% endif %}
             </div>
-
-            {% if match.status == 'scheduled' %}
-            <div class="prediction-row">
-                <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
-                <input class="pred-input" type="number" min="0" max="20" id="ph-{{ match.id }}"
-                       value="{{ pred.home_score if pred is not none else '' }}"
-                       placeholder="—" onchange="savePrediction({{ match.id }})">
-                <span class="pred-sep">:</span>
-                <input class="pred-input" type="number" min="0" max="20" id="pa-{{ match.id }}"
-                       value="{{ pred.away_score if pred is not none else '' }}"
-                       placeholder="—" onchange="savePrediction({{ match.id }})">
-                <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
-            </div>
-            {% elif pred %}
-            <div class="prediction-row">
-                <span style="font-size:.7rem;color:#4a6a8a;margin-right:4px;">Ставка:</span>
-                <input class="pred-input readonly" type="number"
-                       value="{{ pred.home_score }}" disabled>
-                <span class="pred-sep">:</span>
-                <input class="pred-input readonly" type="number"
-                       value="{{ pred.away_score }}" disabled>
-                <span class="pred-locked">🔒</span>
-            </div>
+        {% endfor %}
+    {% else %}
+        <div class="text-center mt-5">
+            <p class="text-secondary mb-3">Матчи не загружены.</p>
+            {% if current_user and current_user.is_admin %}
+            <a href="/admin" style="color:#9a9ae0;">Загрузить матчи ЛЧ →</a>
             {% endif %}
         </div>
-    {% endfor %}
+    {% endif %}
 
-{% else %}
-    <div class="text-center mt-5">
-        <p class="text-secondary mb-3">Матчи не загружены.</p>
-        <a href="/admin" style="color:#9a9ae0;">Загрузить матчи ЛЧ →</a>
-    </div>
-{% endif %}
+</div>
 
 <script>
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+    // move status badge into active tab
+    const wrap = document.getElementById('status-wrap');
+    if (wrap) document.getElementById(tabId).prepend(wrap);
+}
+
 async function savePrediction(matchId) {
     const home = document.getElementById(`ph-${matchId}`).value;
     const away = document.getElementById(`pa-${matchId}`).value;
@@ -131,6 +266,43 @@ async function savePrediction(matchId) {
     const saved = document.getElementById(`ps-${matchId}`);
     saved.classList.add('show');
     setTimeout(() => saved.classList.remove('show'), 1500);
+    updatePredStatus();
 }
+
+function updatePredStatus() {
+    const homeInputs = document.querySelectorAll('.pred-input:not(.readonly)[id^="ph-"]');
+
+    // Group by date
+    const byDate = {};
+    homeInputs.forEach(inp => {
+        const card = inp.closest('.match-card');
+        const date = card ? card.dataset.date : null;
+        if (!date) return;
+        if (!byDate[date]) byDate[date] = { total: 0, filled: 0 };
+        byDate[date].total++;
+        const away = document.getElementById(`pa-${inp.id.replace('ph-', '')}`);
+        const ok = inp.value !== '' && away && away.value !== '';
+        if (ok) byDate[date].filled++;
+        if (card) card.classList.toggle('match-unfilled', !ok);
+    });
+
+    // Update per-day badges
+    for (const [date, s] of Object.entries(byDate)) {
+        const badge = document.getElementById(`status-day-${date}`);
+        if (!badge) continue;
+        const done = s.filled === s.total;
+        badge.style.background    = done ? '#1a2f1a' : '#2f2010';
+        badge.style.borderColor   = done ? '#2d6a2d' : '#6a4a1a';
+        badge.style.color         = done ? '#5db85d' : '#e0a040';
+        badge.querySelector('.day-count').textContent = done ? '✓' : `${s.filled}/${s.total}`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    updatePredStatus();
+    // status badge starts above tabs — move it into first active tab
+    const wrap = document.getElementById('status-wrap');
+    if (wrap) document.getElementById('tab-scores').prepend(wrap);
+});
 </script>
 {% endblock %}
