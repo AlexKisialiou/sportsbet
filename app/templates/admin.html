@@ -1,26 +1,31 @@
 {% extends "base.html" %}
-{% block title %}SportsBet — Лига Чемпионов{% endblock %}
+{% block title %}SportsBet — Админ панель{% endblock %}
 
 {% block extra_styles %}
 <style>
-    .btn-fetch { background: #1e1e3a; color: #9a9ae0; border: 1px solid #2a2a6a; padding: 12px 32px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
-    .btn-fetch:hover { background: #2a2a5a; color: #fff; }
-    .btn-fetch:disabled { opacity: .5; cursor: default; }
-    .spinner { display: none; width: 22px; height: 22px; border: 2px solid #7a9ab5; border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; margin: 12px auto 0; }
+    .admin-card { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+    .admin-card h6 { color: #7a9ab5; font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 12px; }
+    .btn-action { background: #1e1e3a; color: #9a9ae0; border: 1px solid #2a2a6a; padding: 10px 28px; border-radius: 8px; font-size: .95rem; cursor: pointer; }
+    .btn-action:hover { background: #2a2a5a; color: #fff; }
+    .btn-action:disabled { opacity: .5; cursor: default; }
+    .spinner { display: none; width: 20px; height: 20px; border: 2px solid #7a9ab5; border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; margin: 10px auto 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .result-msg { font-size: .9rem; margin-top: 1rem; }
+    .result-msg { font-size: .85rem; margin-top: 10px; }
     .error-msg { color: #e05555; }
     .success-msg { color: #5db85d; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="text-center mt-4">
-    <p class="text-secondary mb-4" style="font-size:.9rem;">
-        Нажми кнопку чтобы загрузить актуальные матчи ЛЧ.<br>
-        Они появятся на главной странице.
+<h5 class="fw-bold text-white mb-4">Админ панель</h5>
+
+<div class="admin-card">
+    <h6>Лига Чемпионов</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Загрузить актуальные матчи из football-data.org API.<br>
+        Новые матчи добавятся, существующие обновятся.
     </p>
-    <button class="btn-fetch" id="fetchBtn" onclick="loadMatches()">
+    <button class="btn-action" id="fetchBtn" onclick="loadMatches()">
         Загрузить матчи ЛЧ
     </button>
     <div class="spinner" id="spinner"></div>

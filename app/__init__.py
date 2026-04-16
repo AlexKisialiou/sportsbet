@@ -19,6 +19,8 @@ def create_app():
         if os.environ.get("RESET_DB"):
             db.drop_all()
         db.create_all()
+        from .seed import run as seed
+        seed()
 
     from .routes.main import main_bp
     from .routes.api import api_bp
