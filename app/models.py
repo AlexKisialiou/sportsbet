@@ -81,3 +81,15 @@ class Prediction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint("user_id", "match_id"),)
+
+    result = db.relationship("PredictionPoints", backref="prediction", uselist=False, lazy=True)
+
+
+class PredictionPoints(db.Model):
+    __tablename__ = "prediction_points"
+
+    id = db.Column(db.Integer, primary_key=True)
+    prediction_id = db.Column(db.Integer, db.ForeignKey("predictions.id"), nullable=False, unique=True)
+    points = db.Column(db.Integer, nullable=False, default=0)  # 0, 1, or 3
+    reason = db.Column(db.String(10), nullable=False)          # "exact", "winner", "none"
+    calculated_at = db.Column(db.DateTime, default=datetime.utcnow)

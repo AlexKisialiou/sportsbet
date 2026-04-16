@@ -6,6 +6,7 @@ from datetime import datetime
 
 from ..models import db, Tour, Match, Score, Team
 from ..data.teams_ru import TEAMS_RU
+from .points import update_points_for_match
 
 STAGE_MAP = {
     "GROUP_STAGE":    ("ЛЧ Групповой этап", 0),
@@ -115,6 +116,9 @@ def _save_matches(raw_matches, season):
                         existing.score.updated_at = datetime.utcnow()
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                db.session.flush()
+                if status == "finished":
+                    update_points_for_match(existing)
                 updated += 1
             else:
                 match = Match(

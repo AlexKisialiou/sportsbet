@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from .models import db, Team, Tour, Match, Score, User, Prediction
+from .services.points import update_points_for_match
 
 # Test teams with negative external_ids to avoid collision with real API data
 TEST_TEAMS = [
@@ -85,3 +86,8 @@ def run():
         ))
 
     db.session.commit()
+
+    # Calculate points for finished test matches
+    for m in matches:
+        if m.status == "finished":
+            update_points_for_match(m)

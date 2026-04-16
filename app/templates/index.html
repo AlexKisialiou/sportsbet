@@ -14,10 +14,42 @@
     .pred-saved.show { opacity: 1; }
     .pred-input.readonly { opacity: .5; cursor: not-allowed; border-color: #1e3048; }
     .pred-locked { font-size: .65rem; color: #4a6a8a; margin-left: 4px; }
+
+    /* Leaderboard */
+    .leaderboard { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 10px; margin-bottom: 1.5rem; overflow: hidden; }
+    .leaderboard-header { background: #1e3048; padding: 10px 16px; font-size: .75rem; color: #7a9ab5; text-transform: uppercase; letter-spacing: .07em; }
+    .lb-row { display: flex; align-items: center; padding: 9px 16px; border-bottom: 1px solid #1e2d3d; font-size: .88rem; }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-rank { width: 24px; color: #4a6a8a; font-size: .8rem; }
+    .lb-name { flex: 1; font-weight: 500; }
+    .lb-pts { width: 52px; text-align: right; font-weight: 700; color: #fff; }
+    .lb-tour { width: 62px; text-align: right; color: #7a9ab5; font-size: .8rem; }
+    .lb-exact { width: 52px; text-align: right; color: #5db85d; font-size: .8rem; }
+    .lb-col-label { color: #4a6a8a; font-size: .7rem; }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if leaderboard %}
+<div class="leaderboard">
+    <div class="leaderboard-header d-flex">
+        <span style="flex:1;">Участник</span>
+        <span class="lb-pts lb-col-label">Всего</span>
+        <span class="lb-tour lb-col-label">{{ last_tour.name if last_tour else 'Тур' }}</span>
+        <span class="lb-exact lb-col-label">Точных</span>
+    </div>
+    {% for row in leaderboard %}
+    <div class="lb-row">
+        <span class="lb-rank">{{ loop.index }}</span>
+        <span class="lb-name">{{ row.user.username }}</span>
+        <span class="lb-pts">{{ row.total }}</span>
+        <span class="lb-tour">{{ row.last_tour }}</span>
+        <span class="lb-exact">{{ row.exact }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if matches %}
     <div class="d-flex align-items-center mb-3">
         <span class="text-secondary" style="font-size:.85rem;">Последние 30 матчей ЛЧ</span>

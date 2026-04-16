@@ -32,7 +32,41 @@
     <div class="result-msg" id="resultMsg"></div>
 </div>
 
+<div class="admin-card" style="border-color:#3a2a1a;">
+    <h6 style="color:#b87a4a;">🧪 Тест</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Сгенерировать случайный счёт для всех <strong>scheduled</strong> матчей и перевести их в <strong>finished</strong>.<br>
+        Очки за предикты пересчитаются автоматически.
+    </p>
+    <button class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
+            id="simBtn" onclick="simulateResults()">
+        Симулировать результаты
+    </button>
+    <div class="spinner" id="simSpinner"></div>
+    <div class="result-msg" id="simMsg"></div>
+</div>
+
 <script>
+async function simulateResults() {
+    const btn = document.getElementById("simBtn");
+    btn.disabled = true;
+    document.getElementById("simSpinner").style.display = "block";
+    document.getElementById("simMsg").innerHTML = "";
+
+    try {
+        const resp = await fetch("/api/simulate-results", { method: "POST" });
+        const data = await resp.json();
+        document.getElementById("simMsg").innerHTML =
+            `<span class="success-msg">Обновлено матчей: ${data.updated}${data.message ? ' — ' + data.message : ''}</span>
+             <br><a href="/" style="color:#9a9ae0;font-size:.85rem;display:inline-block;margin-top:.5rem;">Посмотреть на главной →</a>`;
+    } catch {
+        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Ошибка симуляции.</span>`;
+    } finally {
+        document.getElementById("simSpinner").style.display = "none";
+        btn.disabled = false;
+    }
+}
+
 async function loadMatches() {
     const btn = document.getElementById("fetchBtn");
     btn.disabled = true;
