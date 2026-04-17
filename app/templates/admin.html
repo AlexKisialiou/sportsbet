@@ -32,33 +32,125 @@
     <div class="result-msg" id="resultMsg"></div>
 </div>
 
-<div class="admin-card" style="border-color:#3a2a1a;">
-    <h6 style="color:#b87a4a;">🧪 Тест</h6>
+<div class="admin-card">
+    <h6>Матчи для ставок</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Сгенерировать случайный счёт для всех <strong>scheduled</strong> матчей и перевести их в <strong>finished</strong>.<br>
-        Очки за предикты пересчитаются автоматически.
+        Отметь матчи, которые должны показываться пользователям для предикта.
     </p>
-    <button class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
-            id="simBtn" onclick="simulateResults()">
-        Симулировать результаты
-    </button>
-    <div class="spinner" id="simSpinner"></div>
-    <div class="result-msg" id="simMsg"></div>
+    {% if all_scheduled %}
+    <form id="featuredForm">
+        {% set ns = namespace(cur_date='') %}
+        {% for m in all_scheduled %}
+            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+            {% if mdate != ns.cur_date %}
+                {% set ns.cur_date = mdate %}
+                <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                <input type="checkbox" name="featured" value="{{ m.id }}"
+                       {% if m.featured %}checked{% endif %}
+                       style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
+                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                </span>
+                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                </span>
+            </label>
+        {% endfor %}
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+            <button type="button" class="btn-action" onclick="saveFeatured()">Сохранить выбор</button>
+            <span id="featuredMsg" style="font-size:.85rem;"></span>
+        </div>
+    </form>
+    {% else %}
+    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+    {% endif %}
+</div>
+
+<div class="admin-card" style="border-color:#3a2a1a;">
+    <h6 style="color:#b87a4a;">🧪 Симуляция результатов</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Выбери матчи, которые перевести в <strong>finished</strong> со счётом 1:0. Очки пересчитаются автоматически.
+    </p>
+    {% if all_scheduled %}
+    <form id="simForm">
+        {% set ns2 = namespace(cur_date='') %}
+        {% for m in all_scheduled %}
+            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+            {% if mdate != ns2.cur_date %}
+                {% set ns2.cur_date = mdate %}
+                <div style="font-size:.7rem;color:#7a4a2a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #2a1e14;cursor:pointer;">
+                <input type="checkbox" name="sim_match" value="{{ m.id }}"
+                       style="width:16px;height:16px;accent-color:#e09a5a;cursor:pointer;">
+                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                </span>
+                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                </span>
+            </label>
+        {% endfor %}
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+            <button type="button" class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
+                    id="simBtn" onclick="simulateResults()">
+                Симулировать выбранные
+            </button>
+            <div class="spinner" id="simSpinner"></div>
+            <span id="simMsg" class="result-msg"></span>
+        </div>
+    </form>
+    {% else %}
+    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+    {% endif %}
 </div>
 
 <script>
+async function saveFeatured() {
+    const checked = [...document.querySelectorAll('input[name="featured"]:checked')]
+        .map(el => parseInt(el.value));
+    const msg = document.getElementById('featuredMsg');
+    try {
+        const resp = await fetch('/api/featured-matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ match_ids: checked })
+        });
+        const data = await resp.json();
+        msg.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей</span>`;
+    } catch {
+        msg.innerHTML = `<span class="error-msg">Ошибка сохранения.</span>`;
+    }
+}
+
 async function simulateResults() {
+    const checked = [...document.querySelectorAll('input[name="sim_match"]:checked')]
+        .map(el => parseInt(el.value));
+    if (!checked.length) {
+        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Выбери хотя бы один матч.</span>`;
+        return;
+    }
     const btn = document.getElementById("simBtn");
     btn.disabled = true;
     document.getElementById("simSpinner").style.display = "block";
     document.getElementById("simMsg").innerHTML = "";
 
     try {
-        const resp = await fetch("/api/simulate-results", { method: "POST" });
+        const resp = await fetch("/api/simulate-results", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ match_ids: checked })
+        });
         const data = await resp.json();
         document.getElementById("simMsg").innerHTML =
-            `<span class="success-msg">Обновлено матчей: ${data.updated}${data.message ? ' — ' + data.message : ''}</span>
-             <br><a href="/" style="color:#9a9ae0;font-size:.85rem;display:inline-block;margin-top:.5rem;">Посмотреть на главной →</a>`;
+            `<span class="success-msg">Обновлено матчей: ${data.updated}</span>`;
+        // uncheck simulated matches
+        checked.forEach(id => {
+            const cb = document.querySelector(`input[name="sim_match"][value="${id}"]`);
+            if (cb) cb.closest('label').style.opacity = '.4';
+        });
     } catch {
         document.getElementById("simMsg").innerHTML = `<span class="error-msg">Ошибка симуляции.</span>`;
     } finally {

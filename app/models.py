@@ -44,6 +44,7 @@ class Match(db.Model):
     away_team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False)
     kickoff_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default="scheduled")  # scheduled / live / finished
+    featured = db.Column(db.Boolean, default=False, nullable=False)
 
     home_team = db.relationship("Team", foreign_keys=[home_team_id])
     away_team = db.relationship("Team", foreign_keys=[away_team_id])
@@ -67,9 +68,15 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False, default="")
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    nickname = db.Column(db.String(100), nullable=True)
+    is_bot = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     predictions = db.relationship("Prediction", backref="user", lazy=True)
+
+    @property
+    def display_name(self):
+        return self.nickname or self.username
 
 
 class Prediction(db.Model):
@@ -85,6 +92,15 @@ class Prediction(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "match_id"),)
 
     result = db.relationship("PredictionPoints", backref="prediction", uselist=False, lazy=True)
+
+
+class Commentary(db.Model):
+    __tablename__ = "commentary"
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_label = db.Column(db.String(200), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class PredictionPoints(db.Model):

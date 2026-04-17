@@ -20,6 +20,31 @@ def create_app():
         if os.environ.get("RESET_DB"):
             db.drop_all()
         db.create_all()
+
+        # Migration: add featured column if missing
+        from sqlalchemy import text, inspect as sa_inspect
+        try:
+            cols = [c["name"] for c in sa_inspect(db.engine).get_columns("matches")]
+            if "featured" not in cols:
+                db.session.execute(text(
+                    "ALTER TABLE matches ADD COLUMN featured BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                db.session.commit()
+                print("[migration] added matches.featured column")
+
+            user_cols = [c["name"] for c in sa_inspect(db.engine).get_columns("users")]
+            if "nickname" not in user_cols:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(100)"))
+                db.session.commit()
+                print("[migration] added users.nickname column")
+            if "is_bot" not in user_cols:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN is_bot BOOLEAN NOT NULL DEFAULT FALSE"))
+                db.session.commit()
+                print("[migration] added users.is_bot column")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] skipped: {e}")
+
         from .seed import run as seed
         seed()
         from .services.football_api import fetch_and_save_cl_matches

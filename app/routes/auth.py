@@ -12,7 +12,7 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password):
+        if user and not user.is_bot and check_password_hash(user.password_hash, password):
             session["user_id"] = user.id
             return redirect(url_for("main.index"))
         error = "Неверный логин или пароль"
