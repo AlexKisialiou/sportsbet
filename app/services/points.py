@@ -79,7 +79,19 @@ def get_leaderboard(last_days=None):
                 )
                 .scalar()
             ) or 0
-            day_pts.append(int(pts))
+
+            has_pred = (
+                db.session.query(func.count(Prediction.id))
+                .join(Match, Prediction.match_id == Match.id)
+                .filter(
+                    func.date(Match.kickoff_time) == day,
+                    Prediction.user_id == user.id,
+                    Match.status == "finished",
+                )
+                .scalar()
+            ) > 0
+
+            day_pts.append({"pts": int(pts), "has_pred": has_pred})
 
         result.append({
             "user": user,
