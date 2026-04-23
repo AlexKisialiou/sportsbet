@@ -27,15 +27,16 @@ def run():
              "password": os.environ["USER1_PASSWORD"],
              "nickname": os.environ.get("USER1_NICKNAME"),
              "is_admin": False},
-            {"username": os.environ["USER2_USERNAME"],
-             "password": os.environ["USER2_PASSWORD"],
+            {"username": os.environ.get("USER2_USERNAME", ""),
+             "password": os.environ.get("USER2_PASSWORD", ""),
              "nickname": os.environ.get("USER2_NICKNAME"),
              "is_admin": False},
-            {"username": os.environ["USER3_USERNAME"],
-             "password": os.environ["USER3_PASSWORD"],
+            {"username": os.environ.get("USER3_USERNAME", ""),
+             "password": os.environ.get("USER3_PASSWORD", ""),
              "nickname": os.environ.get("USER3_NICKNAME"),
              "is_admin": False},
         ]
+        users = [u for u in users if u["username"]]
         for u in users:
             db.session.add(User(
                 username=u["username"],

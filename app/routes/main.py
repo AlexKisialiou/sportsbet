@@ -111,7 +111,9 @@ def index():
     commentaries = Commentary.query.filter(Commentary.match_label != STANDINGS_LABEL).order_by(Commentary.created_at.asc()).all()
     standings_commentary = Commentary.query.filter_by(match_label=STANDINGS_LABEL).first()
 
-    return render_template("index.html", matches=matches, predictions=predictions,
+    return render_template("index.html",
+                           scheduled_matches=scheduled_matches,
+                           predictions=predictions,
                            commentaries=commentaries,
                            standings_commentary=standings_commentary,
                            leaderboard=leaderboard, last_days=pred_days,

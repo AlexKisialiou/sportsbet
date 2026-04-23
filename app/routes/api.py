@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from ..models import db, Prediction, Match, Score, Tour, Commentary, User
+from ..models import db, Prediction, Match, Score, Tour, Commentary, User, Setting
 from ..services.football_api import fetch_and_save_cl_matches
 from ..services.points import update_points_for_match
 from ..auth import get_current_user, login_required, admin_required
@@ -170,3 +170,5 @@ def simulate_results():
         print(f"[groq] standings comment skipped: {e}")
 
     return jsonify({"updated": len(scheduled)})
+
+

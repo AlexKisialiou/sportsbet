@@ -14,17 +14,18 @@ def generate_bender_pick(home_team, away_team):
         return None
 
     prompt = (
-        f"Матч Лиги Чемпионов: {home_team} против {away_team}.\n"
-        "Ты — Бендер Родригез из «Футурамы». Напиши на русском языке строго в таком формате "
-        "(две строки, ничего лишнего):\n"
-        "ТЕКСТ: <2-3 смешных предложения про матч в характере Бендера — "
-        "абсурдный анализ команд, уверенный прогноз победителя, почему именно так>\n"
+        f"Матч Лиги Чемпионов УЕФА: {home_team} (хозяева) — {away_team} (гости).\n\n"
+        "Ты — профессиональный футбольный аналитик. Напиши на русском языке краткий аналитический прогноз "
+        "(3–4 предложения): оцени текущую форму команд, ключевые преимущества и слабые стороны каждой, "
+        "тактические особенности матча, обоснуй наиболее вероятный исход и счёт.\n\n"
+        "Строго выдай только две строки:\n"
+        "АНАЛИЗ: <3-4 предложения аналитики>\n"
         "СЧЁТ: X:Y"
     )
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
     )
     raw = resp.choices[0].message.content.strip()
 
@@ -32,7 +33,7 @@ def generate_bender_pick(home_team, away_team):
     home_score, away_score = 1, 0
     for line in raw.splitlines():
         line = line.strip()
-        if line.upper().startswith("ТЕКСТ:"):
+        if line.upper().startswith("АНАЛИЗ:"):
             text = line.split(":", 1)[1].strip()
         elif line.upper().startswith("СЧЁТ:"):
             parts = line.split(":", 1)[1].strip().split(":")

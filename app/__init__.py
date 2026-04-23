@@ -41,6 +41,14 @@ def create_app():
                 db.session.execute(text("ALTER TABLE users ADD COLUMN is_bot BOOLEAN NOT NULL DEFAULT FALSE"))
                 db.session.commit()
                 print("[migration] added users.is_bot column")
+            if "avatar_emoji" not in user_cols:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN avatar_emoji VARCHAR(10)"))
+                db.session.commit()
+                print("[migration] added users.avatar_emoji column")
+            if "avatar_color" not in user_cols:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN avatar_color VARCHAR(10)"))
+                db.session.commit()
+                print("[migration] added users.avatar_color column")
         except Exception as e:
             db.session.rollback()
             print(f"[migration] skipped: {e}")
@@ -62,9 +70,14 @@ def create_app():
     app.register_blueprint(auth_bp)
 
     from .auth import get_current_user
+    from . import config as app_config
 
     @app.context_processor
-    def inject_user():
-        return dict(current_user=get_current_user())
+    def inject_globals():
+        return dict(
+            current_user=get_current_user(),
+            APP_NAME=app_config.APP_NAME,
+            APP_VERSION=app_config.APP_VERSION,
+        )
 
     return app

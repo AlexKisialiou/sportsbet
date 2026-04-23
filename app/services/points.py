@@ -1,20 +1,20 @@
 from datetime import datetime
 from ..models import db, Prediction, PredictionPoints, Match, Tour
+from ..config import POINTS_EXACT, POINTS_WINNER, POINTS_NONE
 from sqlalchemy import func
 
 
 def calc_points(pred_home, pred_away, real_home, real_away):
-    """Return (points, reason) for a prediction vs real score."""
     if pred_home == real_home and pred_away == real_away:
-        return 3, "exact"
+        return POINTS_EXACT, "exact"
 
     def winner(h, a):
         return "home" if h > a else ("away" if a > h else "draw")
 
     if winner(pred_home, pred_away) == winner(real_home, real_away):
-        return 1, "winner"
+        return POINTS_WINNER, "winner"
 
-    return 0, "none"
+    return POINTS_NONE, "none"
 
 
 def update_points_for_match(match, commit=True):

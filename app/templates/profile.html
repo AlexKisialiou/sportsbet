@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Профиль — {{ APP_NAME }}{% endblock %}
+
+{% block content %}
+<div style="max-width:480px;margin:40px auto;">
+
+    <div style="font-size:.67rem;color:#d4af37;text-transform:uppercase;letter-spacing:.14em;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+        <span style="width:14px;height:1px;background:#d4af37;display:inline-block;flex-shrink:0;"></span>
+        Профиль
+    </div>
+
+    <div style="background:linear-gradient(150deg,#0c0c28,#101040);border:1px solid #1a1a48;border-radius:14px;overflow:hidden;">
+
+        <!-- Header с аватаром -->
+        <div style="background:#0a0a22;border-bottom:1px solid #1a1a48;padding:16px 20px;display:flex;align-items:center;gap:14px;">
+            <div id="avatar-preview" style="width:52px;height:52px;border-radius:50%;background:{{ user.avatar_color or '#1a1a48' }};border:2px solid #2a2a5a;display:flex;align-items:center;justify-content:center;font-size:{{ '1.6rem' if user.avatar_emoji else '1.2rem' }};font-weight:800;color:#fff;flex-shrink:0;transition:background .2s;">
+                {{ user.avatar_emoji or (user.display_name[0].upper()) }}
+            </div>
+            <div>
+                <div style="font-weight:700;color:#fff;font-size:1rem;">{{ user.display_name }}</div>
+                <div style="font-size:.72rem;color:#2e3a5a;margin-top:2px;">@{{ user.username }}{% if user.is_admin %} · администратор{% endif %}</div>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <form method="POST" style="padding:20px;" id="profile-form">
+
+            <!-- Никнейм -->
+            <div style="margin-bottom:22px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Никнейм</label>
+                <input type="text" name="nickname"
+                    value="{{ user.nickname or '' }}"
+                    placeholder="{{ user.username }}"
+                    maxlength="50"
+                    style="width:100%;background:#0a0a22;border:1px solid #202050;color:#fff;border-radius:8px;padding:10px 14px;font-size:.9rem;outline:none;transition:border-color .2s;"
+                    onfocus="this.style.borderColor='#d4af37'"
+                    onblur="this.style.borderColor='#202050'">
+                <div style="font-size:.68rem;color:#2e3a5a;margin-top:6px;">Если пусто — используется логин.</div>
+            </div>
+
+            <!-- Эмодзи -->
+            <div style="margin-bottom:22px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Эмодзи аватара</label>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <!-- Пустой вариант (инициал) -->
+                    <button type="button"
+                        class="emoji-btn {% if not user.avatar_emoji %}emoji-btn-active{% endif %}"
+                        onclick="selectEmoji('')"
+                        style="width:38px;height:38px;border-radius:8px;background:#0a0a22;border:1px solid {% if not user.avatar_emoji %}#d4af37{% else %}#202050{% endif %};font-size:.7rem;color:{% if not user.avatar_emoji %}#d4af37{% else %}#3a4a6a{% endif %};cursor:pointer;"
+                        title="Без эмодзи">Аа</button>
+                    {% for e in avatar_emojis %}
+                    <button type="button"
+                        class="emoji-btn {% if user.avatar_emoji == e %}emoji-btn-active{% endif %}"
+                        onclick="selectEmoji('{{ e }}')"
+                        style="width:38px;height:38px;border-radius:8px;background:#0a0a22;border:1px solid {% if user.avatar_emoji == e %}#d4af37{% else %}#202050{% endif %};font-size:1.3rem;cursor:pointer;transition:border-color .15s,transform .1s;">{{ e }}</button>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="avatar_emoji" id="avatar_emoji" value="{{ user.avatar_emoji or '' }}">
+            </div>
+
+            <!-- Цвет -->
+            <div style="margin-bottom:24px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Цвет аватара</label>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    {% for c in avatar_colors %}
+                    <button type="button"
+                        onclick="selectColor('{{ c }}')"
+                        style="width:32px;height:32px;border-radius:50%;background:{{ c }};border:2px solid {% if user.avatar_color == c %}#fff{% else %}transparent{% endif %};cursor:pointer;transition:border-color .15s,transform .1s;"
+                        title="{{ c }}"
+                        id="color-{{ loop.index }}"></button>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="avatar_color" id="avatar_color" value="{{ user.avatar_color or '' }}">
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button type="submit"
+                    style="background:#1a1500;border:1px solid #4a3a00;color:#d4af37;border-radius:8px;padding:9px 20px;font-size:.85rem;font-weight:700;cursor:pointer;letter-spacing:.04em;transition:background .15s;"
+                    onmouseover="this.style.background='#2a2000'"
+                    onmouseout="this.style.background='#1a1500'">
+                    Сохранить
+                </button>
+                {% if saved %}
+                <span style="font-size:.78rem;color:#00c87a;font-weight:600;">✓ Сохранено</span>
+                {% endif %}
+            </div>
+
+        </form>
+    </div>
+
+    <div style="margin-top:12px;text-align:center;">
+        <a href="/" style="font-size:.78rem;color:#2e3a5a;transition:color .15s;"
+           onmouseover="this.style.color='#6a80a8'"
+           onmouseout="this.style.color='#2e3a5a'">← На главную</a>
+    </div>
+</div>
+
+<script>
+const preview = document.getElementById('avatar-preview');
+
+function selectEmoji(emoji) {
+    document.getElementById('avatar_emoji').value = emoji;
+    document.querySelectorAll('.emoji-btn').forEach(b => {
+        b.style.borderColor = '#202050';
+        b.style.color = '#3a4a6a';
+    });
+    // highlight selected
+    const all = document.querySelectorAll('.emoji-btn');
+    const idx = emoji === '' ? 0 : [...all].findIndex(b => b.textContent.trim() === emoji);
+    if (idx >= 0) {
+        all[idx].style.borderColor = '#d4af37';
+        all[idx].style.color = '#d4af37';
+    }
+    // update preview
+    const color = document.getElementById('avatar_color').value || '#1a1a48';
+    preview.textContent = emoji || '{{ user.display_name[0].upper() }}';
+    preview.style.fontSize = emoji ? '1.6rem' : '1.2rem';
+}
+
+function selectColor(color) {
+    document.getElementById('avatar_color').value = color;
+    // reset all color buttons
+    document.querySelectorAll('[id^="color-"]').forEach(b => b.style.borderColor = 'transparent');
+    // find clicked one by matching bg
+    document.querySelectorAll('[id^="color-"]').forEach(b => {
+        if (b.style.background === hexToRgb(color) || b.title === color) {
+            b.style.borderColor = '#fff';
+        }
+    });
+    preview.style.background = color;
+}
+
+// helper: browsers return rgb() for background, compare by title attribute
+function hexToRgb(hex) { return hex; }
+</script>
+{% endblock %}

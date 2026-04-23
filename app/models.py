@@ -70,6 +70,8 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     nickname = db.Column(db.String(100), nullable=True)
     is_bot = db.Column(db.Boolean, default=False, nullable=False)
+    avatar_emoji = db.Column(db.String(10), nullable=True)
+    avatar_color = db.Column(db.String(10), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     predictions = db.relationship("Prediction", backref="user", lazy=True)
@@ -111,3 +113,21 @@ class PredictionPoints(db.Model):
     points = db.Column(db.Integer, nullable=False, default=0)  # 0, 1, or 3
     reason = db.Column(db.String(10), nullable=False)          # "exact", "winner", "none"
     calculated_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ChatMessage(db.Model):
+    __tablename__ = "chat_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    text = db.Column(db.String(300), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", backref="chat_messages")
+
+
+class Setting(db.Model):
+    __tablename__ = "settings"
+
+    key = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.String(255), nullable=False, default="")
