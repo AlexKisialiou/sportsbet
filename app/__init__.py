@@ -8,17 +8,16 @@ load_dotenv()
 
 def create_app():
     app = Flask(__name__, template_folder="templates")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-        "DATABASE_URL", "sqlite:///sportsbet.db"
-    )
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url or "sqlite:///sportsbet.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key")
 
     db.init_app(app)
 
     with app.app_context():
-        if os.environ.get("RESET_DB"):
-            db.drop_all()
         db.create_all()
 
         # Migration: add featured column if missing
@@ -74,10 +73,19 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
+        theme = 'navy'
+        try:
+            from .models import Setting
+            s = Setting.query.get("theme")
+            if s:
+                theme = s.value
+        except Exception:
+            pass
         return dict(
             current_user=get_current_user(),
             APP_NAME=app_config.APP_NAME,
             APP_VERSION=app_config.APP_VERSION,
+            current_theme=theme,
         )
 
     return app

@@ -172,3 +172,43 @@ def simulate_results():
     return jsonify({"updated": len(scheduled)})
 
 
+@api_bp.route("/settings/theme", methods=["POST"])
+@admin_required
+def set_theme():
+    data = request.get_json(silent=True) or {}
+    theme = data.get("theme", "navy")
+    if theme not in ("navy", "forest", "purple", "crimson"):
+        return jsonify({"error": "unknown theme"}), 400
+    s = Setting.query.get("theme") or Setting(key="theme")
+    s.value = theme
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({"ok": True, "theme": theme})
+
+
+@api_bp.route("/reset-scores", methods=["POST"])
+@admin_required
+def reset_scores():
+    from ..models import PredictionPoints
+    data = request.get_json(silent=True) or {}
+    if data.get("confirm") != "RESET":
+        return jsonify({"error": "confirm required"}), 400
+    PredictionPoints.query.delete()
+    Prediction.query.delete()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/reset-db", methods=["POST"])
+@admin_required
+def reset_db():
+    data = request.get_json(silent=True) or {}
+    if data.get("confirm") != "RESET":
+        return jsonify({"error": "confirm required"}), 400
+    db.drop_all()
+    db.create_all()
+    from ..seed import run as seed
+    seed()
+    return jsonify({"ok": True})
+
+

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_styles %}{% endblock %}
 </head>
-<body>
+<body{% if current_theme and current_theme != 'navy' %} data-theme="{{ current_theme }}"{% endif %}>
 
 <nav class="navbar-custom">
     <div class="container-fluid" style="max-width:1400px;padding:0 20px;">

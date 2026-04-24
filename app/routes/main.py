@@ -135,4 +135,7 @@ def admin():
         .order_by(Match.kickoff_time.asc())
         .all()
     )
-    return render_template("admin.html", all_scheduled=all_scheduled)
+    from ..models import Setting
+    theme_s = Setting.query.get("theme")
+    current_theme = theme_s.value if theme_s else "navy"
+    return render_template("admin.html", all_scheduled=all_scheduled, current_theme=current_theme)
