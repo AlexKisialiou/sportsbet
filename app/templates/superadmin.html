@@ -1,0 +1,524 @@
+{% extends "base.html" %}
+{% block title %}Супер Админ{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .admin-card { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+    .admin-card h6 { color: #7a9ab5; font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 12px; }
+    .btn-action { background: #1e1e3a; color: #9a9ae0; border: 1px solid #2a2a6a; padding: 10px 28px; border-radius: 8px; font-size: .95rem; cursor: pointer; }
+    .btn-action:hover { background: #2a2a5a; color: #fff; }
+    .btn-action:disabled { opacity: .5; cursor: default; }
+    .spinner { display: none; width: 20px; height: 20px; border: 2px solid #7a9ab5; border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; margin: 10px auto 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .result-msg { font-size: .85rem; margin-top: 10px; }
+    .error-msg { color: #e05555; }
+    .success-msg { color: #5db85d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h5 class="fw-bold text-white mb-0">⚡ Супер Админ</h5>
+    <a href="/activity-log"
+       style="font-size:.8rem;background:#1a2634;border:1px solid #2a3a4a;color:#7a9ab5;
+              border-radius:8px;padding:6px 14px;text-decoration:none;transition:border-color .2s,color .2s;"
+       onmouseover="this.style.borderColor='#4a6a8a';this.style.color='#c0c8d0'"
+       onmouseout="this.style.borderColor='#2a3a4a';this.style.color='#7a9ab5'">
+        📋 Лог активности
+    </a>
+</div>
+
+<div class="admin-card">
+    <h6>Права администратора</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">Назначай или снимай права админа для пользователей.</p>
+    <div id="users-list">
+        {% for u in users %}
+        <div class="d-flex align-items-center gap-3" style="padding:9px 0;border-bottom:1px solid #1e2d3d;"
+             id="user-row-{{ u.id }}">
+            <span style="flex:1;font-size:.9rem;color:{% if u.is_superuser %}#9d6fff{% else %}#c0c8d0{% endif %};display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                {{ u.display_name }}
+                {% if u.superadmin_note %}
+                <span id="note-label-{{ u.id }}" style="font-size:.75rem;color:#7a6a9a;background:#1a142a;padding:1px 7px;border-radius:8px;border:1px solid #2a1a4a;">
+                    ({{ u.superadmin_note }})
+                </span>
+                {% else %}
+                <span id="note-label-{{ u.id }}" style="display:none;font-size:.75rem;color:#7a6a9a;background:#1a142a;padding:1px 7px;border-radius:8px;border:1px solid #2a1a4a;"></span>
+                {% endif %}
+                {% if u.is_superuser %}<span style="font-size:.7rem;color:#9d6fff;">⚡ супер</span>{% endif %}
+                {% if not u.is_superuser %}
+                <button onclick="openNoteEdit({{ u.id }}, '{{ (u.superadmin_note or '') | e }}')"
+                        id="note-edit-btn-{{ u.id }}"
+                        title="Заметка"
+                        style="font-size:.65rem;padding:1px 6px;border-radius:5px;cursor:pointer;
+                               background:transparent;color:#3a4a6a;border:1px solid #2a3a5a;line-height:1.4;">
+                    ✏️
+                </button>
+                <span id="note-edit-{{ u.id }}" style="display:none;align-items:center;gap:4px;">
+                    <input id="note-input-{{ u.id }}" type="text" maxlength="100"
+                           placeholder="Заметка..."
+                           style="font-size:.78rem;padding:2px 8px;border-radius:5px;background:#0d1b28;
+                                  border:1px solid #2a3a5a;color:#c0c8d0;outline:none;width:130px;"
+                           onkeydown="if(event.key==='Enter')saveNote({{ u.id }});if(event.key==='Escape')closeNoteEdit({{ u.id }});">
+                    <button onclick="saveNote({{ u.id }})"
+                            style="font-size:.72rem;padding:2px 8px;border-radius:5px;cursor:pointer;
+                                   background:#1a1a3a;color:#9a9ae0;border:1px solid #2a2a6a;">✓</button>
+                    <button onclick="closeNoteEdit({{ u.id }})"
+                            style="font-size:.72rem;padding:2px 6px;border-radius:5px;cursor:pointer;
+                                   background:#1a1a1a;color:#6a6a6a;border:1px solid #2a2a2a;">✕</button>
+                </span>
+                {% endif %}
+            </span>
+            <span id="badge-{{ u.id }}" style="font-size:.75rem;padding:2px 8px;border-radius:10px;
+                  background:{% if u.is_admin %}#1a2e1a{% else %}#1a1a2e{% endif %};
+                  color:{% if u.is_admin %}#5db85d{% else %}#5a5a9a{% endif %};">
+                {% if u.is_admin %}Админ{% else %}Юзер{% endif %}
+            </span>
+            {% if not u.is_superuser and (not current_user or current_user.id != u.id) %}
+            <button onclick="toggleAdmin({{ u.id }}, {{ 'false' if u.is_admin else 'true' }})"
+                    id="btn-{{ u.id }}"
+                    style="font-size:.78rem;padding:4px 12px;border-radius:6px;cursor:pointer;
+                           background:{% if u.is_admin %}#2a0a0a{% else %}#0a1a0a{% endif %};
+                           color:{% if u.is_admin %}#e05555{% else %}#5db85d{% endif %};
+                           border:1px solid {% if u.is_admin %}#5a1a1a{% else %}#1a5a1a{% endif %};">
+                {% if u.is_admin %}Снять{% else %}Назначить{% endif %}
+            </button>
+            <button onclick="resetPassword({{ u.id }}, '{{ u.display_name }}')"
+                    style="font-size:.78rem;padding:4px 10px;border-radius:6px;cursor:pointer;
+                           background:#1a1000;color:#e09a40;border:1px solid #4a3010;">
+                Сброс пароля
+            </button>
+            <button onclick="deleteUser({{ u.id }}, '{{ u.display_name | e }}')"
+                    style="font-size:.78rem;padding:4px 10px;border-radius:6px;cursor:pointer;
+                           background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;">
+                Удалить
+            </button>
+            {% else %}
+            <span style="width:160px;"></span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <div id="adminMsg" style="font-size:.82rem;margin-top:8px;"></div>
+</div>
+
+<div class="admin-card" style="border-color:#1a3a2a;">
+    <h6 style="color:#5db85d;">Создать пользователя</h6>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.67rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">Логин *</label>
+            <input type="text" id="new-username" maxlength="80" placeholder="username"
+                   style="background:#0d1b28;border:1px solid #1a3a2a;color:#c0c8d0;border-radius:7px;
+                          padding:7px 12px;font-size:.85rem;outline:none;width:140px;"
+                   onfocus="this.style.borderColor='#5db85d'" onblur="this.style.borderColor='#1a3a2a'">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.67rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">Пароль *</label>
+            <input type="text" id="new-password" maxlength="100" placeholder="пароль"
+                   style="background:#0d1b28;border:1px solid #1a3a2a;color:#c0c8d0;border-radius:7px;
+                          padding:7px 12px;font-size:.85rem;outline:none;width:140px;"
+                   onfocus="this.style.borderColor='#5db85d'" onblur="this.style.borderColor='#1a3a2a'">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.67rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">Никнейм</label>
+            <input type="text" id="new-nickname" maxlength="100" placeholder="необязательно"
+                   style="background:#0d1b28;border:1px solid #1a3a2a;color:#c0c8d0;border-radius:7px;
+                          padding:7px 12px;font-size:.85rem;outline:none;width:140px;"
+                   onfocus="this.style.borderColor='#5db85d'" onblur="this.style.borderColor='#1a3a2a'">
+        </div>
+        <button onclick="createUser()"
+                style="background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;border-radius:7px;
+                       padding:7px 18px;font-size:.85rem;cursor:pointer;"
+                onmouseover="this.style.background='#0f3818'" onmouseout="this.style.background='#0a2a10'">
+            Создать
+        </button>
+    </div>
+    <div id="createMsg" style="font-size:.82rem;margin-top:8px;"></div>
+</div>
+
+<div class="admin-card">
+    <h6>Тема оформления</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">Выбери цветовую схему для всех пользователей.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        {% set themes = [
+            ('navy',    '#d4af37', '#07071c', 'Синяя'),
+            ('forest',  '#2dda8a', '#04120a', 'Зелёная'),
+            ('purple',  '#9d6fff', '#0d071e', 'Фиолет'),
+            ('crimson', '#e05555', '#130509', 'Алая'),
+        ] %}
+        {% for tid, accent, bg, label in themes %}
+        <button onclick="setTheme('{{ tid }}')"
+                style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                       background:{{ bg }};border:2px solid {{ accent if current_theme == tid else '#2a3a4a' }};
+                       border-radius:10px;padding:10px 16px;cursor:pointer;
+                       opacity:{% if current_theme == tid %}1{% else %}.65{% endif %};
+                       transition:opacity .2s,border-color .2s;"
+                id="theme-btn-{{ tid }}">
+            <span style="width:28px;height:28px;border-radius:50%;background:{{ accent }};display:block;"></span>
+            <span style="font-size:.75rem;color:{{ accent }};font-weight:600;">{{ label }}</span>
+        </button>
+        {% endfor %}
+    </div>
+    <span id="themeMsg" style="font-size:.82rem;margin-top:10px;display:block;"></span>
+</div>
+
+<div class="admin-card" style="border-color:#3a2a1a;">
+    <h6 style="color:#b87a4a;">🧪 Симуляция результатов</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Выбери матчи, которые перевести в <strong>finished</strong> со счётом 1:0. Очки пересчитаются автоматически.
+    </p>
+    {% if all_scheduled %}
+    <form id="simForm">
+        {% set ns = namespace(cur_date='') %}
+        {% for m in all_scheduled %}
+            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+            {% if mdate != ns.cur_date %}
+                {% set ns.cur_date = mdate %}
+                <div style="font-size:.7rem;color:#7a4a2a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #2a1e14;cursor:pointer;">
+                <input type="checkbox" name="sim_match" value="{{ m.id }}"
+                       style="width:16px;height:16px;accent-color:#e09a5a;cursor:pointer;">
+                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                </span>
+                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                </span>
+            </label>
+        {% endfor %}
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+            <button type="button" class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
+                    id="simBtn" onclick="simulateResults()">
+                Симулировать выбранные
+            </button>
+            <div class="spinner" id="simSpinner"></div>
+            <span id="simMsg" class="result-msg"></span>
+        </div>
+    </form>
+    {% else %}
+    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+    {% endif %}
+</div>
+
+<div class="admin-card" style="border-color:#2a3a1a;">
+    <h6 style="color:#8ab85a;">🧪 Тест: матчи АПЛ <span style="font-size:.65rem;color:#4a6a3a;font-weight:400;font-style:italic;">временный функционал</span></h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Загрузить матчи Английской Премьер-лиги для тестирования. Они появятся в симуляции и в матчах для ставок.
+    </p>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;font-size:.85rem;color:#a0b890;">
+        <input type="checkbox" id="plClearCheck" style="width:15px;height:15px;accent-color:#8ab85a;cursor:pointer;">
+        Сначала удалить существующие матчи АПЛ
+    </label>
+    <div style="display:flex;align-items:center;gap:12px;">
+        <button class="btn-action" style="background:#1a2a0a;color:#8ab85a;border-color:#3a5a1a;"
+                id="plBtn" onclick="loadPlMatches()">
+            Загрузить матчи АПЛ
+        </button>
+        <div class="spinner" id="plSpinner"></div>
+        <span id="plMsg" class="result-msg"></span>
+    </div>
+</div>
+
+<div class="admin-card" style="border-color:#5a1a1a;">
+    <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
+    <p class="text-secondary mb-2" style="font-size:.85rem;">
+        Сброс ставок и очков. Матчи и пользователи останутся. Необратимо.
+    </p>
+    <button class="btn-action" style="background:#1a1000;color:#e09a40;border-color:#4a3010;"
+            id="resetScoresBtn" onclick="confirmResetScores()">
+        Сбросить ставки и очки
+    </button>
+    <div class="spinner" id="resetScoresSpinner"></div>
+    <div class="result-msg" id="resetScoresMsg"></div>
+
+    <hr style="border-color:#3a1218;margin:18px 0;">
+
+    <p class="text-secondary mb-2" style="font-size:.85rem;">
+        Полный сброс базы данных. Удалит всех пользователей, матчи, ставки и очки. Необратимо.
+    </p>
+    <button class="btn-action" style="background:#2a0a0a;color:#e05555;border-color:#5a1a1a;"
+            id="resetBtn" onclick="confirmReset()">
+        Сбросить базу данных
+    </button>
+    <div class="spinner" id="resetSpinner"></div>
+    <div class="result-msg" id="resetMsg"></div>
+</div>
+
+<script>
+async function createUser() {
+    const username = document.getElementById('new-username').value.trim();
+    const password = document.getElementById('new-password').value.trim();
+    const nickname = document.getElementById('new-nickname').value.trim();
+    const msg = document.getElementById('createMsg');
+    if (!username || !password) {
+        msg.innerHTML = '<span class="error-msg">Логин и пароль обязательны.</span>';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/user/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, nickname: nickname || null })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">Пользователь «${data.display_name}» создан. Страница перезагрузится…</span>`;
+            document.getElementById('new-username').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('new-nickname').value = '';
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function deleteUser(userId, name) {
+    if (!confirm(`Удалить пользователя «${name}»?\nВсе его ставки и очки тоже удалятся.`)) return;
+    if (!confirm(`Подтверди ещё раз: удалить «${name}» без возможности восстановления?`)) return;
+    const msg = document.getElementById('adminMsg');
+    try {
+        const resp = await fetch(`/api/user/${userId}/delete`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            const row = document.getElementById(`user-row-${userId}`);
+            if (row) row.remove();
+            msg.innerHTML = `<span class="success-msg">Пользователь «${name}» удалён.</span>`;
+            setTimeout(() => msg.innerHTML = '', 3000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function resetPassword(userId, name) {
+    if (!confirm(`Сбросить пароль ${name} до дефолтного (логин = пароль)?`)) return;
+    const msg = document.getElementById('adminMsg');
+    try {
+        const resp = await fetch(`/api/user/${userId}/reset-password`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">Пароль ${name} сброшен.</span>`;
+        } else {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+    setTimeout(() => msg.innerHTML = '', 3000);
+}
+
+async function toggleAdmin(userId, makeAdmin) {
+    const btn = document.getElementById(`btn-${userId}`);
+    const badge = document.getElementById(`badge-${userId}`);
+    const msg = document.getElementById('adminMsg');
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/api/user/${userId}/set-admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_admin: makeAdmin })
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+            btn.disabled = false;
+            return;
+        }
+        if (makeAdmin) {
+            badge.textContent = 'Админ';
+            badge.style.background = '#1a2e1a'; badge.style.color = '#5db85d';
+            btn.textContent = 'Снять';
+            btn.style.background = '#2a0a0a'; btn.style.color = '#e05555'; btn.style.borderColor = '#5a1a1a';
+            btn.onclick = () => toggleAdmin(userId, false);
+        } else {
+            badge.textContent = 'Юзер';
+            badge.style.background = '#1a1a2e'; badge.style.color = '#5a5a9a';
+            btn.textContent = 'Назначить';
+            btn.style.background = '#0a1a0a'; btn.style.color = '#5db85d'; btn.style.borderColor = '#1a5a1a';
+            btn.onclick = () => toggleAdmin(userId, true);
+        }
+        msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+        setTimeout(() => msg.innerHTML = '', 2000);
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function simulateResults() {
+    const checked = [...document.querySelectorAll('input[name="sim_match"]:checked')]
+        .map(el => parseInt(el.value));
+    if (!checked.length) {
+        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Выбери хотя бы один матч.</span>`;
+        return;
+    }
+    const btn = document.getElementById("simBtn");
+    btn.disabled = true;
+    document.getElementById("simSpinner").style.display = "block";
+    document.getElementById("simMsg").innerHTML = "";
+    try {
+        const resp = await fetch("/api/simulate-results", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ match_ids: checked })
+        });
+        const data = await resp.json();
+        document.getElementById("simMsg").innerHTML =
+            `<span class="success-msg">Обновлено матчей: ${data.updated}</span>`;
+        checked.forEach(id => {
+            const cb = document.querySelector(`input[name="sim_match"][value="${id}"]`);
+            if (cb) cb.closest('label').style.opacity = '.4';
+        });
+    } catch {
+        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Ошибка симуляции.</span>`;
+    } finally {
+        document.getElementById("simSpinner").style.display = "none";
+        btn.disabled = false;
+    }
+}
+
+async function setTheme(theme) {
+    try {
+        await fetch('/api/settings/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme })
+        });
+        document.getElementById('themeMsg').innerHTML = '<span class="success-msg">Тема сохранена. Перезагрузка…</span>';
+        setTimeout(() => location.reload(), 800);
+    } catch {
+        document.getElementById('themeMsg').innerHTML = '<span class="error-msg">Ошибка сохранения</span>';
+    }
+}
+
+async function loadPlMatches() {
+    const clear = document.getElementById('plClearCheck').checked;
+    const btn = document.getElementById('plBtn');
+    const msg = document.getElementById('plMsg');
+    btn.disabled = true;
+    document.getElementById('plSpinner').style.display = 'block';
+    msg.innerHTML = '';
+    try {
+        const resp = await fetch('/api/pl-matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clear })
+        });
+        const data = await resp.json();
+        if (data.error) {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        } else {
+            msg.innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        document.getElementById('plSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function confirmResetScores() {
+    if (!confirm('Сбросить все ставки и очки? Матчи и пользователи останутся.')) return;
+
+    const btn = document.getElementById('resetScoresBtn');
+    btn.disabled = true;
+    document.getElementById('resetScoresSpinner').style.display = 'block';
+    document.getElementById('resetScoresMsg').innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/reset-scores', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: 'RESET' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            document.getElementById('resetScoresMsg').innerHTML = '<span class="success-msg">Ставки и очки сброшены.</span>';
+        } else {
+            document.getElementById('resetScoresMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        document.getElementById('resetScoresMsg').innerHTML = '<span class="error-msg">Не удалось выполнить сброс.</span>';
+    } finally {
+        document.getElementById('resetScoresSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+function openNoteEdit(userId, currentNote) {
+    document.getElementById(`note-edit-btn-${userId}`).style.display = 'none';
+    const wrap = document.getElementById(`note-edit-${userId}`);
+    wrap.style.display = 'flex';
+    const inp = document.getElementById(`note-input-${userId}`);
+    inp.value = currentNote;
+    inp.focus();
+    inp.select();
+}
+
+function closeNoteEdit(userId) {
+    document.getElementById(`note-edit-${userId}`).style.display = 'none';
+    document.getElementById(`note-edit-btn-${userId}`).style.display = '';
+}
+
+async function saveNote(userId) {
+    const note = document.getElementById(`note-input-${userId}`).value.trim();
+    try {
+        const resp = await fetch(`/api/user/${userId}/set-note`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            const label = document.getElementById(`note-label-${userId}`);
+            if (data.note) {
+                label.textContent = `(${data.note})`;
+                label.style.display = '';
+            } else {
+                label.textContent = '';
+                label.style.display = 'none';
+            }
+        }
+    } catch {}
+    closeNoteEdit(userId);
+}
+
+async function confirmReset() {
+    if (!confirm('Ты уверен? Это удалит ВСЕ данные: пользователей, матчи, ставки, очки.')) return;
+    if (!confirm('Последний шанс. Сброс базы необратим. Продолжить?')) return;
+
+    const btn = document.getElementById('resetBtn');
+    btn.disabled = true;
+    document.getElementById('resetSpinner').style.display = 'block';
+    document.getElementById('resetMsg').innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/reset-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: 'RESET' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            document.getElementById('resetMsg').innerHTML =
+                `<span class="success-msg">База сброшена. <a href="/login" style="color:#9a9ae0;">Войти заново →</a></span>`;
+        } else {
+            document.getElementById('resetMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        document.getElementById('resetMsg').innerHTML = `<span class="error-msg">Не удалось выполнить сброс.</span>`;
+    } finally {
+        document.getElementById('resetSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+</script>
+{% endblock %}

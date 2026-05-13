@@ -68,10 +68,12 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False, default="")
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     nickname = db.Column(db.String(100), nullable=True)
     is_bot = db.Column(db.Boolean, default=False, nullable=False)
     avatar_emoji = db.Column(db.String(10), nullable=True)
     avatar_color = db.Column(db.String(10), nullable=True)
+    superadmin_note = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     predictions = db.relationship("Prediction", backref="user", lazy=True)
@@ -131,3 +133,16 @@ class Setting(db.Model):
 
     key = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.String(255), nullable=False, default="")
+
+
+class ActivityLog(db.Model):
+    __tablename__ = "activity_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = db.Column(db.String(50), nullable=False)
+    details = db.Column(db.String(500), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", backref="activity_logs")

@@ -25,6 +25,87 @@ STATUS_MAP = {
 }
 
 
+def fetch_and_save_pl_matches():
+    api_key = os.environ.get("FOOTBALL_API_KEY", "")
+    if not api_key:
+        raise ValueError("FOOTBALL_API_KEY not set")
+
+    url = "https://api.football-data.org/v4/competitions/PL/matches"
+    req = urllib.request.Request(url, headers={"X-Auth-Token": api_key})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+
+    season = data.get("competition", {}).get("currentSeason", {}).get("startDate", "2025")[:4]
+    season_str = f"{season}/{int(season) + 1}"
+
+    return _save_pl_matches(data.get("matches", []), season_str)
+
+
+def _save_pl_matches(raw_matches, season):
+    added = updated = 0
+
+    groups = defaultdict(list)
+    for m in raw_matches:
+        groups[m.get("matchday")].append(m)
+
+    for matchday, matches in groups.items():
+        name = f"АПЛ Тур {matchday}" if matchday else "АПЛ"
+        round_number = matchday or 0
+        tour = Tour.query.filter_by(league="PL", round_number=round_number, season=season).first()
+        if not tour:
+            tour = Tour(name=name, season=season, round_number=round_number,
+                        league="PL", status="active")
+            db.session.add(tour)
+            db.session.flush()
+
+        for m in matches:
+            if not m["homeTeam"].get("name") or not m["awayTeam"].get("name"):
+                continue
+
+            home_team = _get_or_create_team(m["homeTeam"])
+            away_team = _get_or_create_team(m["awayTeam"])
+            if not home_team or not away_team:
+                continue
+
+            ext_id = m["id"]
+            status = STATUS_MAP.get(m["status"], "scheduled")
+            kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
+            hs = m["score"]["fullTime"].get("home")
+            as_ = m["score"]["fullTime"].get("away")
+
+            existing = Match.query.filter_by(external_id=ext_id).first()
+            if existing:
+                existing.status = status
+                if hs is not None:
+                    if existing.score:
+                        existing.score.home_score = hs
+                        existing.score.away_score = as_
+                        existing.score.updated_at = datetime.utcnow()
+                    else:
+                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                db.session.flush()
+                if status == "finished":
+                    update_points_for_match(existing)
+                updated += 1
+            else:
+                match = Match(
+                    tour_id=tour.id,
+                    external_id=ext_id,
+                    home_team_id=home_team.id,
+                    away_team_id=away_team.id,
+                    kickoff_time=kickoff,
+                    status=status,
+                )
+                db.session.add(match)
+                db.session.flush()
+                if hs is not None:
+                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+                added += 1
+
+    db.session.commit()
+    return added, updated
+
+
 def fetch_and_save_cl_matches():
     api_key = os.environ.get("FOOTBALL_API_KEY", "")
     if not api_key:

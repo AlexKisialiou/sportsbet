@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import user_avatar, role_badge %}
 {% block title %}{{ APP_NAME }}{% endblock %}
 
 {% block content %}
@@ -38,8 +39,8 @@
             {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
             <div class="lb-row" {% if loop.index == 1 %}style="background:rgba(212,175,55,.03);"{% endif %}>
                 <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
-                <span class="avatar avatar-sm" style="{% if row.user.avatar_color %}background:{{ row.user.avatar_color }};{% endif %}margin-right:8px;font-size:{% if row.user.avatar_emoji %}1rem{% else %}.7rem{% endif %};">{{ row.user.avatar_emoji or row.user.display_name[0].upper() }}</span>
-                <span class="lb-name">{{ row.user.display_name }}</span>
+                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
+                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
                 <span class="lb-pts">{{ row.total }}</span>
                 {% for d in row.days %}
                 {% if not d.has_pred %}
@@ -68,8 +69,8 @@
             {% set done = row.filled == row.total %}
             <div class="lb-row">
                 <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
-                <span class="avatar avatar-sm" style="{% if row.user.avatar_color %}background:{{ row.user.avatar_color }};{% endif %}margin-right:8px;font-size:{% if row.user.avatar_emoji %}1rem{% else %}.7rem{% endif %};">{{ row.user.avatar_emoji or row.user.display_name[0].upper() }}</span>
-                <span class="lb-name">{{ row.user.display_name }}</span>
+                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
+                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
                 <span class="lb-day" style="color:{% if done %}#00c87a{% else %}#d4a030{% endif %};">
                     {% if done %}✓{% else %}{{ row.filled }}/{{ row.total }}{% endif %}
                 </span>
@@ -151,8 +152,8 @@
                     {% for u in all_users %}
                     <th class="ptable-th" style="text-align:center;min-width:80px;">
                         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-                            <span class="avatar avatar-sm" style="{% if u.avatar_color %}background:{{ u.avatar_color }};{% endif %}font-size:{% if u.avatar_emoji %}1rem{% else %}.7rem{% endif %};">{{ u.avatar_emoji or u.display_name[0].upper() }}</span>
-                            <span style="white-space:nowrap;">{{ u.display_name }}</span>
+                            {{ user_avatar(u) }}
+                            <span style="white-space:nowrap;">{{ u.display_name }} {{ role_badge(u) }}</span>
                         </div>
                     </th>
                     {% endfor %}

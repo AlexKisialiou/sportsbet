@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Лог активности{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .log-card { background: #1a2634; border: 1px solid #2a3a4a; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+    .log-card h6 { color: #7a9ab5; font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 14px; }
+    .filter-input {
+        background: #0d1b28; border: 1px solid #2a3a4a; color: #c0c8d0;
+        border-radius: 7px; padding: 7px 12px; font-size: .85rem; outline: none;
+    }
+    .filter-input:focus { border-color: var(--accent); }
+    .log-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    .log-table th { color: #7a9ab5; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em;
+                    padding: 8px 10px; border-bottom: 1px solid #2a3a4a; text-align: left; }
+    .log-table td { padding: 8px 10px; border-bottom: 1px solid #1a2634; color: #c0c8d0; vertical-align: top; }
+    .log-table tr:last-child td { border-bottom: none; }
+    .log-table tr:hover td { background: #1e2d3d; }
+    .badge-action {
+        display: inline-block; font-size: .7rem; padding: 2px 8px; border-radius: 10px;
+        white-space: nowrap;
+    }
+    .action-login          { background: #0a1e2a; color: #4a9ab5; border: 1px solid #1a3a4a; }
+    .action-prediction_set { background: #0a2010; color: #4ab87a; border: 1px solid #1a4a2a; }
+    .action-password_changed    { background: #1e1a00; color: #c8a020; border: 1px solid #4a3a00; }
+    .action-profile_updated     { background: #1a1a30; color: #7070c8; border: 1px solid #2a2a5a; }
+    .action-admin_password_reset { background: #2a1400; color: #e09a40; border: 1px solid #5a3010; }
+    .action-admin_toggle        { background: #1e0a1e; color: #c070c0; border: 1px solid #4a1a4a; }
+    .action-results_simulated   { background: #1e1000; color: #e0a030; border: 1px solid #5a3a00; }
+    .action-scores_reset        { background: #2a0a0a; color: #e05555; border: 1px solid #5a1a1a; }
+    .action-db_reset            { background: #2a0a0a; color: #e02020; border: 1px solid #6a0a0a; }
+    .action-theme_changed       { background: #0a1a10; color: #40c080; border: 1px solid #1a4a2a; }
+    .action-featured_set        { background: #0a0a2a; color: #7070e0; border: 1px solid #1a1a5a; }
+    .ip-label { font-size: .7rem; color: #3a5a6a; }
+    .empty-state { text-align: center; color: #3a5a6a; padding: 40px 0; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+    <a href="/superadmin" style="font-size:.78rem;color:#3a5a6a;transition:color .15s;"
+       onmouseover="this.style.color='#6a9ab5'" onmouseout="this.style.color='#3a5a6a'">← Супер Админ</a>
+    <h5 class="fw-bold text-white mb-0">📋 Лог активности</h5>
+</div>
+
+<!-- Filter -->
+<div class="log-card">
+    <h6>Фильтр</h6>
+    <form method="GET" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.68rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">С</label>
+            <input type="date" name="date_from" value="{{ date_from }}" class="filter-input">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.68rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">По</label>
+            <input type="date" name="date_to" value="{{ date_to }}" class="filter-input">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:.68rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.07em;">Пользователь</label>
+            <select name="user_id" class="filter-input" style="min-width:140px;">
+                <option value="">Все</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if filter_user_id == u.id %}selected{% endif %}>{{ u.display_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit"
+                style="background:#1a2634;border:1px solid #2a3a4a;color:#c0c8d0;border-radius:7px;
+                       padding:7px 18px;font-size:.85rem;cursor:pointer;"
+                onmouseover="this.style.background='#223040'" onmouseout="this.style.background='#1a2634'">
+            Показать
+        </button>
+        <span style="font-size:.78rem;color:#3a5a6a;align-self:center;">Найдено: {{ logs|length }}</span>
+    </form>
+</div>
+
+<!-- Log table -->
+<div class="log-card" style="padding:0;overflow:hidden;">
+    {% if logs %}
+    <table class="log-table">
+        <thead>
+            <tr>
+                <th style="width:140px;">Дата / время</th>
+                <th style="width:130px;">Пользователь</th>
+                <th style="width:160px;">Действие</th>
+                <th>Детали</th>
+                <th style="width:100px;">IP</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for log in logs %}
+        <tr>
+            <td style="white-space:nowrap;color:#4a7a9a;">
+                {{ log.created_at.strftime('%d.%m.%Y') }}<br>
+                <span style="font-size:.75rem;color:#2a5a7a;">{{ log.created_at.strftime('%H:%M:%S') }}</span>
+            </td>
+            <td>
+                {% if log.user %}
+                <span style="color:{% if log.user.is_superuser %}#9d6fff{% elif log.user.is_admin %}#5db85d{% else %}#c0c8d0{% endif %};">
+                    {{ log.user.display_name }}
+                </span>
+                {% if log.user.superadmin_note %}
+                <span style="font-size:.68rem;color:#7a6a9a;">({{ log.user.superadmin_note }})</span>
+                {% endif %}
+                {% if log.user.is_superuser %}<span style="font-size:.65rem;color:#9d6fff;">⚡</span>
+                {% elif log.user.is_admin %}<span style="font-size:.65rem;color:#5db85d;">🛡️</span>{% endif %}
+                {% else %}
+                <span style="color:#3a5a6a;">—</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge-action action-{{ log.action }}">
+                    {{ action_labels.get(log.action, log.action) }}
+                </span>
+            </td>
+            <td style="color:#a0a8b0;">{{ log.details or '—' }}</td>
+            <td><span class="ip-label">{{ log.ip_address or '—' }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Нет записей за выбранный период.</div>
+    {% endif %}
+</div>
+{% endblock %}

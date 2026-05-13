@@ -23,7 +23,17 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         user = get_current_user()
-        if not user or not user.is_admin:
+        if not user or (not user.is_admin and not user.is_superuser):
+            return redirect(url_for("main.index"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def superuser_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if not user or not user.is_superuser:
             return redirect(url_for("main.index"))
         return f(*args, **kwargs)
     return decorated

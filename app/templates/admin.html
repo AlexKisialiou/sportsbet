@@ -68,98 +68,10 @@
     {% endif %}
 </div>
 
-<div class="admin-card" style="border-color:#3a2a1a;">
-    <h6 style="color:#b87a4a;">🧪 Симуляция результатов</h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Выбери матчи, которые перевести в <strong>finished</strong> со счётом 1:0. Очки пересчитаются автоматически.
-    </p>
-    {% if all_scheduled %}
-    <form id="simForm">
-        {% set ns2 = namespace(cur_date='') %}
-        {% for m in all_scheduled %}
-            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-            {% if mdate != ns2.cur_date %}
-                {% set ns2.cur_date = mdate %}
-                <div style="font-size:.7rem;color:#7a4a2a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-            {% endif %}
-            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #2a1e14;cursor:pointer;">
-                <input type="checkbox" name="sim_match" value="{{ m.id }}"
-                       style="width:16px;height:16px;accent-color:#e09a5a;cursor:pointer;">
-                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                </span>
-                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
-                </span>
-            </label>
-        {% endfor %}
-        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-            <button type="button" class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
-                    id="simBtn" onclick="simulateResults()">
-                Симулировать выбранные
-            </button>
-            <div class="spinner" id="simSpinner"></div>
-            <span id="simMsg" class="result-msg"></span>
-        </div>
-    </form>
-    {% else %}
-    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
-    {% endif %}
-</div>
-
-<div class="admin-card">
-    <h6>Тема оформления</h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">Выбери цветовую схему для всех пользователей.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        {% set themes = [
-            ('navy',    '#d4af37', '#07071c', 'Синяя'),
-            ('forest',  '#2dda8a', '#04120a', 'Зелёная'),
-            ('purple',  '#9d6fff', '#0d071e', 'Фиолет'),
-            ('crimson', '#e05555', '#130509', 'Алая'),
-        ] %}
-        {% for tid, accent, bg, label in themes %}
-        <button onclick="setTheme('{{ tid }}')"
-                style="display:flex;flex-direction:column;align-items:center;gap:6px;
-                       background:{{ bg }};border:2px solid {{ accent if current_theme == tid else '#2a3a4a' }};
-                       border-radius:10px;padding:10px 16px;cursor:pointer;
-                       opacity:{% if current_theme == tid %}1{% else %}.65{% endif %};
-                       transition:opacity .2s,border-color .2s;"
-                id="theme-btn-{{ tid }}">
-            <span style="width:28px;height:28px;border-radius:50%;background:{{ accent }};display:block;"></span>
-            <span style="font-size:.75rem;color:{{ accent }};font-weight:600;">{{ label }}</span>
-        </button>
-        {% endfor %}
-    </div>
-    <span id="themeMsg" style="font-size:.82rem;margin-top:10px;display:block;"></span>
-</div>
-
-<div class="admin-card" style="border-color:#5a1a1a;">
-    <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
-    <p class="text-secondary mb-2" style="font-size:.85rem;">
-        Сброс ставок и очков. Матчи и пользователи останутся. Необратимо.
-    </p>
-    <button class="btn-action" style="background:#1a1000;color:#e09a40;border-color:#4a3010;"
-            id="resetScoresBtn" onclick="confirmResetScores()">
-        Сбросить ставки и очки
-    </button>
-    <div class="spinner" id="resetScoresSpinner"></div>
-    <div class="result-msg" id="resetScoresMsg"></div>
-
-    <hr style="border-color:#3a1218;margin:18px 0;">
-
-    <p class="text-secondary mb-2" style="font-size:.85rem;">
-        Полный сброс базы данных. Удалит всех пользователей, матчи, ставки и очки. Необратимо.
-    </p>
-    <button class="btn-action" style="background:#2a0a0a;color:#e05555;border-color:#5a1a1a;"
-            id="resetBtn" onclick="confirmReset()">
-        Сбросить базу данных
-    </button>
-    <div class="spinner" id="resetSpinner"></div>
-    <div class="result-msg" id="resetMsg"></div>
-</div>
 
 <script>
 async function saveFeatured() {
+
     const checked = [...document.querySelectorAll('input[name="featured"]:checked')]
         .map(el => parseInt(el.value));
     const msg = document.getElementById('featuredMsg');
@@ -176,39 +88,6 @@ async function saveFeatured() {
     }
 }
 
-async function simulateResults() {
-    const checked = [...document.querySelectorAll('input[name="sim_match"]:checked')]
-        .map(el => parseInt(el.value));
-    if (!checked.length) {
-        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Выбери хотя бы один матч.</span>`;
-        return;
-    }
-    const btn = document.getElementById("simBtn");
-    btn.disabled = true;
-    document.getElementById("simSpinner").style.display = "block";
-    document.getElementById("simMsg").innerHTML = "";
-
-    try {
-        const resp = await fetch("/api/simulate-results", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ match_ids: checked })
-        });
-        const data = await resp.json();
-        document.getElementById("simMsg").innerHTML =
-            `<span class="success-msg">Обновлено матчей: ${data.updated}</span>`;
-        // uncheck simulated matches
-        checked.forEach(id => {
-            const cb = document.querySelector(`input[name="sim_match"][value="${id}"]`);
-            if (cb) cb.closest('label').style.opacity = '.4';
-        });
-    } catch {
-        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Ошибка симуляции.</span>`;
-    } finally {
-        document.getElementById("simSpinner").style.display = "none";
-        btn.disabled = false;
-    }
-}
 
 async function loadMatches() {
     const btn = document.getElementById("fetchBtn");
@@ -234,76 +113,5 @@ async function loadMatches() {
     }
 }
 
-async function setTheme(theme) {
-    try {
-        await fetch('/api/settings/theme', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme })
-        });
-        document.getElementById('themeMsg').innerHTML = '<span class="success-msg">Тема сохранена. Перезагрузка…</span>';
-        setTimeout(() => location.reload(), 800);
-    } catch {
-        document.getElementById('themeMsg').innerHTML = '<span class="error-msg">Ошибка сохранения</span>';
-    }
-}
-
-async function confirmResetScores() {
-    if (!confirm('Сбросить все ставки и очки? Матчи и пользователи останутся.')) return;
-
-    const btn = document.getElementById('resetScoresBtn');
-    btn.disabled = true;
-    document.getElementById('resetScoresSpinner').style.display = 'block';
-    document.getElementById('resetScoresMsg').innerHTML = '';
-
-    try {
-        const resp = await fetch('/api/reset-scores', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirm: 'RESET' })
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            document.getElementById('resetScoresMsg').innerHTML = '<span class="success-msg">Ставки и очки сброшены.</span>';
-        } else {
-            document.getElementById('resetScoresMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
-        }
-    } catch {
-        document.getElementById('resetScoresMsg').innerHTML = '<span class="error-msg">Не удалось выполнить сброс.</span>';
-    } finally {
-        document.getElementById('resetScoresSpinner').style.display = 'none';
-        btn.disabled = false;
-    }
-}
-
-async function confirmReset() {
-    if (!confirm('Ты уверен? Это удалит ВСЕ данные: пользователей, матчи, ставки, очки.')) return;
-    if (!confirm('Последний шанс. Сброс базы необратим. Продолжить?')) return;
-
-    const btn = document.getElementById('resetBtn');
-    btn.disabled = true;
-    document.getElementById('resetSpinner').style.display = 'block';
-    document.getElementById('resetMsg').innerHTML = '';
-
-    try {
-        const resp = await fetch('/api/reset-db', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirm: 'RESET' })
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            document.getElementById('resetMsg').innerHTML =
-                `<span class="success-msg">База сброшена. <a href="/login" style="color:#9a9ae0;">Войти заново →</a></span>`;
-        } else {
-            document.getElementById('resetMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
-        }
-    } catch {
-        document.getElementById('resetMsg').innerHTML = `<span class="error-msg">Не удалось выполнить сброс.</span>`;
-    } finally {
-        document.getElementById('resetSpinner').style.display = 'none';
-        btn.disabled = false;
-    }
-}
 </script>
 {% endblock %}

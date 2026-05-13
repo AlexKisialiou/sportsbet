@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Слишком много запросов</title>
+    <style>
+        body { background: #0f1923; color: #e0e0e0; display: flex; align-items: center;
+               justify-content: center; min-height: 100vh; font-family: sans-serif; margin: 0; }
+        .box { background: #1a2634; border: 1px solid #4a2a1a; border-radius: 12px;
+               padding: 40px 36px; max-width: 380px; text-align: center; }
+        .code { font-size: 3rem; font-weight: 800; color: #e09a40; margin-bottom: 8px; }
+        .title { font-size: 1rem; font-weight: 600; color: #c0a070; margin-bottom: 12px; }
+        .msg { font-size: .85rem; color: #7a8a9a; margin-bottom: 24px; line-height: 1.5; }
+        a { color: #7a9ab5; font-size: .85rem; text-decoration: none; }
+        a:hover { color: #c0c8d0; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="code">429</div>
+        <div class="title">Слишком много запросов</div>
+        <div class="msg">Ты отправляешь запросы слишком часто.<br>Подожди немного и попробуй снова.</div>
+        <a href="javascript:history.back()">← Назад</a>
+    </div>
+</body>
+</html>

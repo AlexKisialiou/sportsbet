@@ -1,3 +1,4 @@
+{% from '_macros.html' import user_avatar %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -18,9 +19,12 @@
             {% if current_user and current_user.is_admin %}
             <a href="/admin" class="nav-link-admin">Админ</a>
             {% endif %}
+            {% if current_user and current_user.is_superuser %}
+            <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">⚡ Супер</a>
+            {% endif %}
             {% if current_user %}
             <a href="/profile" style="display:flex;align-items:center;gap:8px;margin-left:auto;text-decoration:none;" title="Профиль">
-                <span class="avatar avatar-sm" style="{% if current_user.avatar_color %}background:{{ current_user.avatar_color }};{% endif %}font-size:{% if current_user.avatar_emoji %}1rem{% else %}.7rem{% endif %};">{{ current_user.avatar_emoji or current_user.display_name[0].upper() }}</span>
+                {{ user_avatar(current_user) }}
                 <span style="color:#35405a;font-size:.82rem;transition:color .15s;"
                       onmouseover="this.style.color='#d4af37'"
                       onmouseout="this.style.color='#35405a'">{{ current_user.display_name }}</span>

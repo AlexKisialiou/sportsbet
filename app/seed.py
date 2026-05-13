@@ -22,7 +22,7 @@ def run():
             {"username": os.environ["ADMIN_USERNAME"],
              "password": os.environ["ADMIN_PASSWORD"],
              "nickname": os.environ.get("ADMIN_NICKNAME"),
-             "is_admin": True},
+             "is_admin": True, "is_superuser": True},
             {"username": os.environ["USER1_USERNAME"],
              "password": os.environ["USER1_PASSWORD"],
              "nickname": os.environ.get("USER1_NICKNAME"),
@@ -43,5 +43,6 @@ def run():
                 password_hash=generate_password_hash(u["password"]),
                 nickname=u["nickname"],
                 is_admin=u["is_admin"],
+                is_superuser=u.get("is_superuser", False),
             ))
         db.session.commit()

@@ -24,6 +24,7 @@
 
         <!-- Form -->
         <form method="POST" style="padding:20px;" id="profile-form">
+        <input type="hidden" name="action" value="profile">
 
             <!-- Никнейм -->
             <div style="margin-bottom:22px;">
@@ -87,6 +88,47 @@
 
         </form>
     </div>
+
+    {% if not user.is_superuser %}
+    <div style="background:linear-gradient(150deg,#0c0c28,#101040);border:1px solid #1a1a48;border-radius:14px;overflow:hidden;margin-top:16px;">
+        <div style="background:#0a0a22;border-bottom:1px solid #1a1a48;padding:12px 20px;">
+            <span style="font-size:.68rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.1em;">Смена пароля</span>
+        </div>
+        <form method="POST" style="padding:20px;">
+            <input type="hidden" name="action" value="password">
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Текущий пароль</label>
+                <input type="password" name="current_password" required
+                    style="width:100%;background:#0a0a22;border:1px solid #202050;color:#fff;border-radius:8px;padding:9px 14px;font-size:.9rem;outline:none;"
+                    onfocus="this.style.borderColor='#d4af37'" onblur="this.style.borderColor='#202050'">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Новый пароль</label>
+                <input type="password" name="new_password" required minlength="3"
+                    style="width:100%;background:#0a0a22;border:1px solid #202050;color:#fff;border-radius:8px;padding:9px 14px;font-size:.9rem;outline:none;"
+                    onfocus="this.style.borderColor='#d4af37'" onblur="this.style.borderColor='#202050'">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:.68rem;color:#d4af37;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Подтверждение</label>
+                <input type="password" name="confirm_password" required
+                    style="width:100%;background:#0a0a22;border:1px solid #202050;color:#fff;border-radius:8px;padding:9px 14px;font-size:.9rem;outline:none;"
+                    onfocus="this.style.borderColor='#d4af37'" onblur="this.style.borderColor='#202050'">
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button type="submit"
+                    style="background:#1a1500;border:1px solid #4a3a00;color:#d4af37;border-radius:8px;padding:9px 20px;font-size:.85rem;font-weight:700;cursor:pointer;"
+                    onmouseover="this.style.background='#2a2000'" onmouseout="this.style.background='#1a1500'">
+                    Сменить пароль
+                </button>
+                {% if pwd_saved %}
+                <span style="font-size:.78rem;color:#00c87a;font-weight:600;">✓ Пароль изменён</span>
+                {% elif pwd_error %}
+                <span style="font-size:.78rem;color:#e05555;">{{ pwd_error }}</span>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+    {% endif %}
 
     <div style="margin-top:12px;text-align:center;">
         <a href="/" style="font-size:.78rem;color:#2e3a5a;transition:color .15s;"
