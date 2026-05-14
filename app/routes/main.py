@@ -96,19 +96,25 @@ def index():
             "user_fill_status": user_fill_status,
         }
 
-    from ..services.groq_api import STANDINGS_LABEL
-    commentaries = Commentary.query.filter(
-        Commentary.match_label != STANDINGS_LABEL
+    from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
+    ucl_commentaries = Commentary.query.filter(
+        Commentary.match_label.like("UCL:%")
     ).order_by(Commentary.created_at.asc()).all()
-    standings_commentary = Commentary.query.filter_by(match_label=STANDINGS_LABEL).first()
+    pl_commentaries = Commentary.query.filter(
+        Commentary.match_label.like("PL:%")
+    ).order_by(Commentary.created_at.asc()).all()
+    ucl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_UCL).first()
+    pl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_PL).first()
 
     return render_template("index.html",
                            ucl=_build("UCL"),
                            pl=_build("PL"),
                            all_users=all_users,
                            predictions=predictions,
-                           commentaries=commentaries,
-                           standings_commentary=standings_commentary)
+                           ucl_commentaries=ucl_commentaries,
+                           pl_commentaries=pl_commentaries,
+                           ucl_standings=ucl_standings,
+                           pl_standings=pl_standings)
 
 
 @main_bp.route("/admin")

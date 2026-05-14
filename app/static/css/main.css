@@ -426,8 +426,10 @@ a { text-decoration: none; }
     }
     .bender-panel-gold  { border-color: #3a2a00; }
     .bender-panel-green { border-color: #183018; }
-    #bender-standings { left: 20px; }
-    #bender-match     { right: 20px; }
+    #bender-standings-ucl,
+    #bender-standings-pl  { left: 20px; }
+    #bender-match-ucl,
+    #bender-match-pl      { right: 20px; }
 }
 
 @media (max-width: 480px) {

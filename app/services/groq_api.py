@@ -1,6 +1,8 @@
 import os
 
 STANDINGS_LABEL = "__standings__"
+STANDINGS_LABEL_UCL = "__standings_ucl__"
+STANDINGS_LABEL_PL = "__standings_pl__"
 
 
 def _client():

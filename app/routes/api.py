@@ -118,7 +118,7 @@ def set_featured_matches():
     for m in featured_matches:
         home = m.home_team.display_name
         away = m.away_team.display_name
-        label = f"{home} vs {away}"
+        label = f"{m.tour.league}:{home} vs {away}"
         try:
             result = generate_bender_pick(home, away)
             if result:
@@ -176,45 +176,49 @@ def simulate_results():
 
     db.session.commit()
 
-    # Generate Бендер standings comment
+    # Generate Бендер standings comments per league
     try:
         from ..services.points import get_leaderboard
-        from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL
+        from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
         from datetime import date as date_type
         from sqlalchemy import func as sqlfunc
 
-        lb = get_leaderboard()
-        standings_lines = ["Турнирная таблица:"]
-        for i, row in enumerate(lb, 1):
-            standings_lines.append(f"  {i}. {row['user'].display_name} — {row['total']} очков")
+        for league, label_key, league_name in [
+            ("UCL", STANDINGS_LABEL_UCL, "ЛЧ"),
+            ("PL", STANDINGS_LABEL_PL, "АПЛ"),
+        ]:
+            lb = get_leaderboard(league=league)
+            standings_lines = [f"Турнирная таблица ({league_name}):"]
+            for i, row in enumerate(lb, 1):
+                standings_lines.append(f"  {i}. {row['user'].display_name} — {row['total']} очков")
 
-        # Last game day
-        day_row = (
-            db.session.query(sqlfunc.date(Match.kickoff_time))
-            .filter(Match.status == "finished")
-            .group_by(sqlfunc.date(Match.kickoff_time))
-            .order_by(sqlfunc.date(Match.kickoff_time).desc())
-            .first()
-        )
-        if day_row:
-            last_day = day_row[0]
-            lb_day = get_leaderboard(last_days=[
-                date_type.fromisoformat(last_day) if isinstance(last_day, str) else last_day
-            ])
-            standings_lines.append(f"\nПоследний игровой день ({last_day}):")
-            for row in lb_day:
-                d = row["days"][0] if row["days"] else {"pts": 0, "has_pred": False}
-                if d["has_pred"]:
-                    standings_lines.append(f"  {row['user'].display_name}: +{d['pts']}")
-                else:
-                    standings_lines.append(f"  {row['user'].display_name}: не ставил")
+            day_row = (
+                db.session.query(sqlfunc.date(Match.kickoff_time))
+                .join(Tour, Match.tour_id == Tour.id)
+                .filter(Match.status == "finished", Tour.league == league)
+                .group_by(sqlfunc.date(Match.kickoff_time))
+                .order_by(sqlfunc.date(Match.kickoff_time).desc())
+                .first()
+            )
+            if day_row:
+                last_day = day_row[0]
+                lb_day = get_leaderboard(last_days=[
+                    date_type.fromisoformat(last_day) if isinstance(last_day, str) else last_day
+                ], league=league)
+                standings_lines.append(f"\nПоследний игровой день ({last_day}):")
+                for row in lb_day:
+                    d = row["days"][0] if row["days"] else {"pts": 0, "has_pred": False}
+                    if d["has_pred"]:
+                        standings_lines.append(f"  {row['user'].display_name}: +{d['pts']}")
+                    else:
+                        standings_lines.append(f"  {row['user'].display_name}: не ставил")
 
-        standings_text = "\n".join(standings_lines)
-        text = generate_bender_standings(standings_text)
-        if text:
-            Commentary.query.filter_by(match_label=STANDINGS_LABEL).delete()
-            db.session.add(Commentary(match_label=STANDINGS_LABEL, text=text))
-            db.session.commit()
+            standings_text = "\n".join(standings_lines)
+            text = generate_bender_standings(standings_text)
+            if text:
+                Commentary.query.filter_by(match_label=label_key).delete()
+                db.session.add(Commentary(match_label=label_key, text=text))
+                db.session.commit()
     except Exception as e:
         print(f"[groq] standings comment skipped: {e}")
 
