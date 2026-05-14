@@ -22,7 +22,7 @@ def cl_matches():
 
 
 @api_bp.route("/pl-matches", methods=["POST"])
-@superuser_required
+@admin_required
 @limiter.limit("5 per minute")
 def pl_matches():
     data = request.get_json(silent=True) or {}

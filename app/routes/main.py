@@ -114,14 +114,19 @@ def index():
 @main_bp.route("/admin")
 @admin_required
 def admin():
-    all_scheduled = (
-        Match.query
-        .join(Tour)
-        .filter(Tour.league.in_(["UCL", "PL"]), Match.status == "scheduled")
+    ucl_scheduled = (
+        Match.query.join(Tour)
+        .filter(Tour.league == "UCL", Match.status == "scheduled")
         .order_by(Match.kickoff_time.asc())
         .all()
     )
-    return render_template("admin.html", all_scheduled=all_scheduled)
+    pl_scheduled = (
+        Match.query.join(Tour)
+        .filter(Tour.league == "PL", Match.status == "scheduled")
+        .order_by(Match.kickoff_time.asc())
+        .all()
+    )
+    return render_template("admin.html", ucl_scheduled=ucl_scheduled, pl_scheduled=pl_scheduled)
 
 
 @main_bp.route("/superadmin")

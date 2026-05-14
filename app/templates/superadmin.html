@@ -200,25 +200,6 @@
     {% endif %}
 </div>
 
-<div class="admin-card" style="border-color:#2a3a1a;">
-    <h6 style="color:#8ab85a;">🧪 Тест: матчи АПЛ <span style="font-size:.65rem;color:#4a6a3a;font-weight:400;font-style:italic;">временный функционал</span></h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Загрузить матчи Английской Премьер-лиги для тестирования. Они появятся в симуляции и в матчах для ставок.
-    </p>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;font-size:.85rem;color:#a0b890;">
-        <input type="checkbox" id="plClearCheck" style="width:15px;height:15px;accent-color:#8ab85a;cursor:pointer;">
-        Сначала удалить существующие матчи АПЛ
-    </label>
-    <div style="display:flex;align-items:center;gap:12px;">
-        <button class="btn-action" style="background:#1a2a0a;color:#8ab85a;border-color:#3a5a1a;"
-                id="plBtn" onclick="loadPlMatches()">
-            Загрузить матчи АПЛ
-        </button>
-        <div class="spinner" id="plSpinner"></div>
-        <span id="plMsg" class="result-msg"></span>
-    </div>
-</div>
-
 <div class="admin-card" style="border-color:#5a1a1a;">
     <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
     <p class="text-secondary mb-2" style="font-size:.85rem;">
@@ -397,33 +378,6 @@ async function setTheme(theme) {
     }
 }
 
-async function loadPlMatches() {
-    const clear = document.getElementById('plClearCheck').checked;
-    const btn = document.getElementById('plBtn');
-    const msg = document.getElementById('plMsg');
-    btn.disabled = true;
-    document.getElementById('plSpinner').style.display = 'block';
-    msg.innerHTML = '';
-    try {
-        const resp = await fetch('/api/pl-matches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clear })
-        });
-        const data = await resp.json();
-        if (data.error) {
-            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
-        } else {
-            msg.innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
-            setTimeout(() => location.reload(), 1200);
-        }
-    } catch {
-        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
-    } finally {
-        document.getElementById('plSpinner').style.display = 'none';
-        btn.disabled = false;
-    }
-}
 
 async function confirmResetScores() {
     if (!confirm('Сбросить все ставки и очки? Матчи и пользователи останутся.')) return;

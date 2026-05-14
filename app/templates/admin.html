@@ -19,62 +19,144 @@
 {% block content %}
 <h5 class="fw-bold text-white mb-4">Админ панель</h5>
 
-<div class="admin-card">
-    <h6>Лига Чемпионов</h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Загрузить актуальные матчи из football-data.org API.<br>
-        Новые матчи добавятся, существующие обновятся.
-    </p>
-    <button class="btn-action" id="fetchBtn" onclick="loadMatches()">
-        Загрузить матчи ЛЧ
-    </button>
-    <div class="spinner" id="spinner"></div>
-    <div class="result-msg" id="resultMsg"></div>
+<div class="league-tabs" style="margin-bottom:20px;">
+    <button class="tab-btn" data-tab="ucl" onclick="switchAdminTab('ucl')">🏆 Лига Чемпионов</button>
+    <button class="tab-btn" data-tab="pl" onclick="switchAdminTab('pl')">🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ</button>
 </div>
 
-<div class="admin-card">
-    <h6>Матчи для ставок</h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Отметь матчи, которые должны показываться пользователям для предикта.
-    </p>
-    {% if all_scheduled %}
-    <form id="featuredForm">
-        {% set ns = namespace(cur_date='') %}
-        {% for m in all_scheduled %}
-            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-            {% if mdate != ns.cur_date %}
-                {% set ns.cur_date = mdate %}
-                <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-            {% endif %}
-            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
-                <input type="checkbox" name="featured" value="{{ m.id }}"
-                       {% if m.featured %}checked{% endif %}
-                       style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
-                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                </span>
-                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
-                </span>
-            </label>
-        {% endfor %}
-        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-            <button type="button" class="btn-action" onclick="saveFeatured()">Сохранить выбор</button>
-            <span id="featuredMsg" style="font-size:.85rem;"></span>
-        </div>
-    </form>
-    {% else %}
-    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
-    {% endif %}
-</div>
+<!-- ── UCL Tab ── -->
+<div class="tab-pane" id="admin-tab-ucl">
 
+    <div class="admin-card">
+        <h6>Загрузить матчи</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Загрузить актуальные матчи Лиги Чемпионов из football-data.org API.<br>
+            Новые матчи добавятся, существующие обновятся.
+        </p>
+        <button class="btn-action" id="fetchUclBtn" onclick="loadUclMatches()">
+            Загрузить матчи ЛЧ
+        </button>
+        <div class="spinner" id="uclSpinner"></div>
+        <div class="result-msg" id="uclMsg"></div>
+    </div>
+
+    <div class="admin-card">
+        <h6>Матчи для ставок</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Отметь матчи, которые должны показываться пользователям для предикта.
+        </p>
+        {% if ucl_scheduled %}
+        <form id="featuredFormUcl">
+            {% set ns = namespace(cur_date='') %}
+            {% for m in ucl_scheduled %}
+                {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                {% if mdate != ns.cur_date %}
+                    {% set ns.cur_date = mdate %}
+                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                {% endif %}
+                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                    <input type="checkbox" name="featured" value="{{ m.id }}"
+                           {% if m.featured %}checked{% endif %}
+                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
+                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                    </span>
+                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                        {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                    </span>
+                </label>
+            {% endfor %}
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button type="button" class="btn-action" onclick="saveFeatured('ucl')">Сохранить выбор</button>
+                <span id="featuredMsgUcl" style="font-size:.85rem;"></span>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+        {% endif %}
+    </div>
+
+</div><!-- #admin-tab-ucl -->
+
+<!-- ── PL Tab ── -->
+<div class="tab-pane" id="admin-tab-pl">
+
+    <div class="admin-card">
+        <h6>Загрузить матчи</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Загрузить актуальные матчи Английской Премьер-лиги из football-data.org API.<br>
+            Новые матчи добавятся, существующие обновятся.
+        </p>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;font-size:.85rem;color:#a0b890;">
+            <input type="checkbox" id="plClearCheck" style="width:15px;height:15px;accent-color:#8ab85a;cursor:pointer;">
+            Сначала удалить существующие матчи АПЛ
+        </label>
+        <button class="btn-action" style="background:#1a2a0a;color:#8ab85a;border-color:#3a5a1a;"
+                id="fetchPlBtn" onclick="loadPlMatches()">
+            Загрузить матчи АПЛ
+        </button>
+        <div class="spinner" id="plSpinner"></div>
+        <div class="result-msg" id="plMsg"></div>
+    </div>
+
+    <div class="admin-card">
+        <h6>Матчи для ставок</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Отметь матчи, которые должны показываться пользователям для предикта.
+        </p>
+        {% if pl_scheduled %}
+        <form id="featuredFormPl">
+            {% set ns = namespace(cur_date='') %}
+            {% for m in pl_scheduled %}
+                {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                {% if mdate != ns.cur_date %}
+                    {% set ns.cur_date = mdate %}
+                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                {% endif %}
+                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                    <input type="checkbox" name="featured" value="{{ m.id }}"
+                           {% if m.featured %}checked{% endif %}
+                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
+                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                    </span>
+                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                        {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                    </span>
+                </label>
+            {% endfor %}
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button type="button" class="btn-action" onclick="saveFeatured('pl')">Сохранить выбор</button>
+                <span id="featuredMsgPl" style="font-size:.85rem;"></span>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи АПЛ выше.</p>
+        {% endif %}
+    </div>
+
+</div><!-- #admin-tab-pl -->
 
 <script>
-async function saveFeatured() {
+function switchAdminTab(tab) {
+    document.querySelectorAll('.tab-pane[id^="admin-tab-"]').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('admin-tab-' + tab).classList.add('active');
+    document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add('active');
+    sessionStorage.setItem('activeAdminTab', tab);
+}
 
-    const checked = [...document.querySelectorAll('input[name="featured"]:checked')]
+document.addEventListener('DOMContentLoaded', () => {
+    const saved = sessionStorage.getItem('activeAdminTab') || 'ucl';
+    switchAdminTab(saved);
+});
+
+async function saveFeatured(league) {
+    const formId = league === 'ucl' ? 'featuredFormUcl' : 'featuredFormPl';
+    const msgId  = league === 'ucl' ? 'featuredMsgUcl' : 'featuredMsgPl';
+    const checked = [...document.querySelectorAll(`#${formId} input[name="featured"]:checked`)]
         .map(el => parseInt(el.value));
-    const msg = document.getElementById('featuredMsg');
+    const msg = document.getElementById(msgId);
     try {
         const resp = await fetch('/api/featured-matches', {
             method: 'POST',
@@ -88,30 +170,55 @@ async function saveFeatured() {
     }
 }
 
-
-async function loadMatches() {
-    const btn = document.getElementById("fetchBtn");
+async function loadUclMatches() {
+    const btn = document.getElementById('fetchUclBtn');
     btn.disabled = true;
-    document.getElementById("spinner").style.display = "block";
-    document.getElementById("resultMsg").innerHTML = "";
-
+    document.getElementById('uclSpinner').style.display = 'block';
+    document.getElementById('uclMsg').innerHTML = '';
     try {
-        const resp = await fetch("/api/cl-matches", { method: "POST" });
+        const resp = await fetch('/api/cl-matches', { method: 'POST' });
         const data = await resp.json();
         if (data.error) {
-            document.getElementById("resultMsg").innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
-            return;
+            document.getElementById('uclMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        } else {
+            document.getElementById('uclMsg').innerHTML =
+                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
         }
-        document.getElementById("resultMsg").innerHTML =
-            `<span class="success-msg">Добавлено: ${data.added} &nbsp;|&nbsp; Обновлено: ${data.updated}</span>
-             <br><a href="/" style="color:#9a9ae0;font-size:.85rem;display:inline-block;margin-top:.5rem;">Перейти на главную →</a>`;
     } catch {
-        document.getElementById("resultMsg").innerHTML = `<span class="error-msg">Не удалось загрузить данные.</span>`;
+        document.getElementById('uclMsg').innerHTML = `<span class="error-msg">Не удалось загрузить данные.</span>`;
     } finally {
-        document.getElementById("spinner").style.display = "none";
+        document.getElementById('uclSpinner').style.display = 'none';
         btn.disabled = false;
     }
 }
 
+async function loadPlMatches() {
+    const clear = document.getElementById('plClearCheck').checked;
+    const btn = document.getElementById('fetchPlBtn');
+    btn.disabled = true;
+    document.getElementById('plSpinner').style.display = 'block';
+    document.getElementById('plMsg').innerHTML = '';
+    try {
+        const resp = await fetch('/api/pl-matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clear })
+        });
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('plMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        } else {
+            document.getElementById('plMsg').innerHTML =
+                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
+        }
+    } catch {
+        document.getElementById('plMsg').innerHTML = `<span class="error-msg">Ошибка запроса.</span>`;
+    } finally {
+        document.getElementById('plSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
 </script>
 {% endblock %}
