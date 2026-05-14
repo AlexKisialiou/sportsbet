@@ -33,6 +33,10 @@ def login():
 
 @auth_bp.route("/logout")
 def logout():
+    from ..auth import get_current_user
+    user = get_current_user()
+    if user:
+        log_action(user.id, "logout", "Вышел из системы")
     session.clear()
     return redirect(url_for("auth.login"))
 

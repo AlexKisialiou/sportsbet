@@ -14,6 +14,9 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 def cl_matches():
     try:
         added, updated = fetch_and_save_cl_matches()
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "cl_matches_loaded",
+                   f"ЛЧ матчи загружены: +{added} новых, {updated} обновлено")
         return jsonify({"added": added, "updated": updated})
     except ValueError as e:
         return jsonify({"error": str(e)}), 500
@@ -309,6 +312,9 @@ def set_user_note(user_id):
         return jsonify({"error": "user not found"}), 404
     user.superadmin_note = note if note else None
     db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "note_set",
+               f"Заметка для {user.display_name}: «{note}»" if note else f"Заметка удалена у {user.display_name}")
     return jsonify({"ok": True, "note": user.superadmin_note})
 
 

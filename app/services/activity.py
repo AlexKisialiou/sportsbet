@@ -15,6 +15,9 @@ ACTION_LABELS = {
     'user_created':         'Создание пользователя',
     'user_deleted':         'Удаление пользователя',
     'pl_matches_loaded':    'Загрузка матчей АПЛ',
+    'cl_matches_loaded':    'Загрузка матчей ЛЧ',
+    'logout':               'Выход из системы',
+    'note_set':             'Заметка на пользователя',
 }
 
 
