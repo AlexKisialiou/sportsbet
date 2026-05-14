@@ -97,12 +97,17 @@ def create_app():
 
         from .seed import run as seed
         seed()
-        from .services.football_api import fetch_and_save_cl_matches
+        from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches
         try:
             added, updated = fetch_and_save_cl_matches()
             print(f"[startup] CL matches: +{added} added, {updated} updated")
         except Exception as e:
             print(f"[startup] CL fetch skipped: {e}")
+        try:
+            added, updated = fetch_and_save_pl_matches()
+            print(f"[startup] PL matches: +{added} added, {updated} updated")
+        except Exception as e:
+            print(f"[startup] PL fetch skipped: {e}")
 
     from .routes.main import main_bp
     from .routes.api import api_bp
