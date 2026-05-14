@@ -13,7 +13,7 @@
 
 <nav class="navbar-custom">
     <div class="container-fluid" style="max-width:1400px;padding:0 20px;">
-        <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-3 navbar-inner">
             <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
             <span class="app-version">{{ APP_VERSION }}</span>
             {% if current_user and current_user.is_admin %}
@@ -23,7 +23,7 @@
             <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">Суперпанель</a>
             {% endif %}
             {% if current_user %}
-            <a href="/profile" style="display:flex;align-items:center;gap:8px;margin-left:auto;text-decoration:none;" title="Профиль">
+            <a href="/profile" class="navbar-profile" style="display:flex;align-items:center;gap:8px;margin-left:auto;text-decoration:none;" title="Профиль">
                 {{ user_avatar(current_user) }}
                 <span style="color:#35405a;font-size:.82rem;transition:color .15s;"
                       onmouseover="this.style.color='#d4af37'"
