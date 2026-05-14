@@ -441,3 +441,25 @@ a { text-decoration: none; }
     .lb-pts { width: 36px; }
     .lb-row { padding: 8px 10px; font-size: .78rem; }
 }
+
+/* ── League Tabs ── */
+.league-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .85rem;
+    transition: background .2s, color .2s, border-color .2s;
+}
+.tab-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+.tab-btn.active {
+    background: var(--accent-bg);
+    border-color: var(--accent-dim);
+    color: var(--accent);
+    font-weight: 600;
+}
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }

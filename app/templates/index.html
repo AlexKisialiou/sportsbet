@@ -2,28 +2,25 @@
 {% from '_macros.html' import user_avatar, role_badge %}
 {% block title %}{{ APP_NAME }}{% endblock %}
 
-{% block content %}
-<div class="page-content-pad" style="padding-top:8px;">
-
-<!-- Status badge -->
-{% if scheduled_total > 0 %}
-<div id="status-wrap" style="margin-bottom:18px;">
-    {% if unfilled_count == 0 %}
-    <span id="pred-status" class="pred-status-done">✓ Все ставки сделаны</span>
-    {% else %}
-    <span id="pred-status" class="pred-status-warn">⚠ Осталось {{ unfilled_count }} из {{ scheduled_total }}</span>
-    {% endif %}
-</div>
-{% endif %}
-
-<!-- ══ Two-column grid ══ -->
+{% macro render_tab(tab_id, data) %}
 <div class="main-grid" style="margin-bottom:32px;">
 
     <!-- ── Left: Очки ── -->
     <div class="col-scores">
+
+        {% if data.scheduled_total > 0 %}
+        <div style="margin-bottom:14px;">
+            {% if data.unfilled_count == 0 %}
+            <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
+            {% else %}
+            <span class="pred-status pred-status-warn">⚠ Осталось {{ data.unfilled_count }} из {{ data.scheduled_total }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <div class="col-section-title">Очки</div>
 
-        {% if leaderboard %}
+        {% if data.leaderboard %}
         <div class="leaderboard">
             <div class="leaderboard-header">Турнирная таблица</div>
             <div class="lb-col-row">
@@ -31,11 +28,11 @@
                 <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
                 <span class="lb-name lb-col-label">Участник</span>
                 <span class="lb-pts lb-col-label">Всего</span>
-                {% for day in last_days %}
+                {% for day in data.pred_days %}
                 <span class="lb-day lb-col-label">{{ day.strftime('%d.%m') }}</span>
                 {% endfor %}
             </div>
-            {% for row in leaderboard %}
+            {% for row in data.leaderboard %}
             {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
             <div class="lb-row" {% if loop.index == 1 %}style="background:rgba(212,175,55,.03);"{% endif %}>
                 <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
@@ -56,7 +53,7 @@
         </div>
         {% endif %}
 
-        {% if user_fill_status and scheduled_total > 0 %}
+        {% if data.user_fill_status and data.scheduled_total > 0 %}
         <div class="leaderboard">
             <div class="leaderboard-header">Ставки на ближайшие матчи</div>
             <div class="lb-col-row">
@@ -65,7 +62,7 @@
                 <span class="lb-name lb-col-label">Участник</span>
                 <span class="lb-day lb-col-label">Статус</span>
             </div>
-            {% for row in user_fill_status %}
+            {% for row in data.user_fill_status %}
             {% set done = row.filled == row.total %}
             <div class="lb-row">
                 <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
@@ -84,9 +81,9 @@
     <div class="col-matches">
         <div class="col-section-title">Ставки</div>
 
-        {% if scheduled_matches %}
+        {% if data.scheduled_matches %}
             {% set ns = namespace(current_stage='') %}
-            {% for match in scheduled_matches %}
+            {% for match in data.scheduled_matches %}
                 {% set stage = match.tour.name %}
                 {% if stage != ns.current_stage %}
                     {% set ns.current_stage = stage %}
@@ -138,8 +135,8 @@
 
 </div><!-- .main-grid -->
 
-<!-- ══ Full-width: Предикты ══ -->
-{% if finished_recent %}
+<!-- ══ Предикты ══ -->
+{% if data.finished_recent %}
 <div style="margin-bottom:32px;">
     <div class="col-section-title">Предикты</div>
     <div class="pred-table-wrap">
@@ -161,7 +158,7 @@
             </thead>
             <tbody>
                 {% set ns2 = namespace(cur_date='') %}
-                {% for match in finished_recent %}
+                {% for match in data.finished_recent %}
                     {% set mdate = match.kickoff_time.strftime('%d.%m') %}
                     {% if mdate != ns2.cur_date %}
                         {% set ns2.cur_date = mdate %}
@@ -189,7 +186,7 @@
                             {{ match.score.home_score }}:{{ match.score.away_score }}
                         </td>
                         {% for u in all_users %}
-                        {% set pred = pred_map.get((match.id, u.id)) %}
+                        {% set pred = data.pred_map.get((match.id, u.id)) %}
                         <td class="ptable-td" style="text-align:center;white-space:nowrap;">
                             {% if pred %}
                                 {% if pred.result %}
@@ -216,6 +213,26 @@
     </div>
 </div>
 {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="page-content-pad" style="padding-top:8px;">
+
+<!-- Tab switcher -->
+<div class="league-tabs">
+    <button class="tab-btn" data-tab="ucl">🏆 Лига Чемпионов</button>
+    <button class="tab-btn" data-tab="pl">🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ</button>
+</div>
+
+<!-- UCL Tab -->
+<div class="tab-pane" id="tab-ucl">
+    {{ render_tab('ucl', ucl) }}
+</div>
+
+<!-- PL Tab -->
+<div class="tab-pane" id="tab-pl">
+    {{ render_tab('pl', pl) }}
+</div>
 
 </div><!-- .page-content-pad -->
 
@@ -250,7 +267,6 @@
 </div>
 {% endif %}
 
-
 <div class="bender-tray">
     {% if standings_commentary %}
     <button class="bender-chip chip-gold" onclick="benderToggle('standings')">📊 Бендер об очках</button>
@@ -283,8 +299,10 @@ async function savePrediction(matchId) {
 }
 
 function updatePredStatus() {
-    const badge = document.getElementById('pred-status');
-    const homeInputs = document.querySelectorAll('.pred-input[id^="ph-"]');
+    const activePane = document.querySelector('.tab-pane.active');
+    if (!activePane) return;
+    const badge = activePane.querySelector('.pred-status');
+    const homeInputs = activePane.querySelectorAll('.pred-input[id^="ph-"]');
     const total = homeInputs.length;
     let unfilled = 0;
 
@@ -298,19 +316,29 @@ function updatePredStatus() {
 
     if (!badge || total === 0) return;
     if (unfilled === 0) {
-        badge.className = 'pred-status-done';
+        badge.className = 'pred-status pred-status-done';
         badge.textContent = '✓ Все ставки сделаны';
     } else {
-        badge.className = 'pred-status-warn';
+        badge.className = 'pred-status pred-status-warn';
         badge.textContent = `⚠ Осталось ${unfilled} из ${total}`;
     }
+}
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    const pane = document.getElementById('tab-' + tabId);
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    if (pane) pane.classList.add('active');
+    if (btn) btn.classList.add('active');
+    updatePredStatus();
+    sessionStorage.setItem('activeLeagueTab', tabId);
 }
 
 function benderToggle(id) {
     const panel = document.getElementById('bender-' + id);
     if (!panel) return;
     const isOpen = panel.classList.contains('open');
-    // Close all other panels
     document.querySelectorAll('.bender-panel.open').forEach(p => {
         if (p.id !== 'bender-' + id) p.classList.remove('open');
     });
@@ -319,17 +347,17 @@ function benderToggle(id) {
     document.getElementById('bender-backdrop').classList.toggle('open', !!anyOpen && window.innerWidth < 576);
 }
 
-
 function benderCloseAll() {
     document.querySelectorAll('.bender-panel.open').forEach(p => p.classList.remove('open'));
     document.getElementById('bender-backdrop').classList.remove('open');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    updatePredStatus();
-    const wrap = document.getElementById('status-wrap');
-    if (wrap) document.querySelector('.col-scores')?.prepend(wrap);
-
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+    const saved = sessionStorage.getItem('activeLeagueTab') || 'ucl';
+    switchTab(saved);
 });
 </script>
 {% endblock %}

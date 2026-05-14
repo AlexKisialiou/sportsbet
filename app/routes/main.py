@@ -21,111 +21,93 @@ def _parse_days(rows):
 @main_bp.route("/")
 @login_required
 def index():
-    _leagues = ["UCL", "PL"]
-
-    # Last 4 game days with finished matches
-    pred_days = _parse_days(
-        db.session.query(func.date(Match.kickoff_time))
-        .join(Tour)
-        .filter(Tour.league.in_(_leagues), Match.status == "finished")
-        .group_by(func.date(Match.kickoff_time))
-        .order_by(func.date(Match.kickoff_time).desc())
-        .limit(4)
-        .all()
-    )
-
-    # Leaderboard: 4 columns (one per game day)
-    leaderboard = get_leaderboard(last_days=pred_days)
-
-    # Matches list: featured scheduled + finished from last 4 game days (max 10 finished)
-    scheduled = (
-        Match.query
-        .join(Tour)
-        .filter(Tour.league.in_(_leagues), Match.status == "scheduled", Match.featured == True)
-        .order_by(Match.kickoff_time.asc())
-        .all()
-    )
-    finished_for_list = []
-    if pred_days:
-        finished_for_list = (
-            Match.query
-            .join(Tour)
-            .filter(
-                Tour.league.in_(_leagues),
-                Match.status != "scheduled",
-                func.date(Match.kickoff_time).in_(pred_days),
-            )
-            .order_by(Match.kickoff_time.desc())
-            .limit(10)
-            .all()
-        )
-    matches = sorted(
-        scheduled + finished_for_list,
-        key=lambda m: m.kickoff_time,
-        reverse=True,
-    )
-
     user = get_current_user()
+    all_users = User.query.order_by(User.username).all()
+
     predictions = {}
     if user:
         for p in Prediction.query.filter_by(user_id=user.id).all():
             predictions[p.match_id] = p
 
-    scheduled_matches = [m for m in matches if m.status == "scheduled"]
-    scheduled_total = len(scheduled_matches)
-    unfilled_count = sum(1 for m in scheduled_matches if m.id not in predictions)
-
-    # Fill status per user across all featured scheduled matches
-    all_sched_ids = [m.id for m in scheduled_matches]
-    all_preds_sched = set()
-    if all_sched_ids:
-        for p in Prediction.query.filter(Prediction.match_id.in_(all_sched_ids)).all():
-            all_preds_sched.add((p.match_id, p.user_id))
-
-    user_fill_status = []
-    for lb_row in leaderboard:
-        u = lb_row["user"]
-        filled = sum(1 for m in scheduled_matches if (m.id, u.id) in all_preds_sched)
-        user_fill_status.append({"user": u, "filled": filled, "total": scheduled_total})
-
-    # Predictions table: finished matches from last 4 game days, max 10
-    all_users = User.query.order_by(User.username).all()
-    finished_recent = []
-    pred_map = {}
-    if pred_days:
-        finished_recent = (
-            Match.query
+    def _build(league):
+        pred_days = _parse_days(
+            db.session.query(func.date(Match.kickoff_time))
             .join(Tour)
-            .filter(
-                Tour.league.in_(_leagues),
-                Match.status == "finished",
-                func.date(Match.kickoff_time).in_(pred_days),
-            )
-            .order_by(Match.kickoff_time.desc())
-            .limit(10)
+            .filter(Tour.league == league, Match.status == "finished")
+            .group_by(func.date(Match.kickoff_time))
+            .order_by(func.date(Match.kickoff_time).desc())
+            .limit(4)
             .all()
         )
-        match_ids = [m.id for m in finished_recent]
-        if match_ids:
-            for p in Prediction.query.filter(Prediction.match_id.in_(match_ids)).all():
-                pred_map[(p.match_id, p.user_id)] = p
+
+        leaderboard = get_leaderboard(last_days=pred_days, league=league)
+
+        scheduled = (
+            Match.query
+            .join(Tour)
+            .filter(Tour.league == league, Match.status == "scheduled", Match.featured == True)
+            .order_by(Match.kickoff_time.asc())
+            .all()
+        )
+
+        finished_recent = []
+        pred_map = {}
+        if pred_days:
+            finished_recent = (
+                Match.query.join(Tour)
+                .filter(
+                    Tour.league == league,
+                    Match.status == "finished",
+                    func.date(Match.kickoff_time).in_(pred_days),
+                )
+                .order_by(Match.kickoff_time.desc())
+                .limit(10)
+                .all()
+            )
+            match_ids = [m.id for m in finished_recent]
+            if match_ids:
+                for p in Prediction.query.filter(Prediction.match_id.in_(match_ids)).all():
+                    pred_map[(p.match_id, p.user_id)] = p
+
+        scheduled_total = len(scheduled)
+        unfilled_count = sum(1 for m in scheduled if m.id not in predictions)
+
+        all_sched_ids = [m.id for m in scheduled]
+        all_preds_sched = set()
+        if all_sched_ids:
+            for p in Prediction.query.filter(Prediction.match_id.in_(all_sched_ids)).all():
+                all_preds_sched.add((p.match_id, p.user_id))
+
+        user_fill_status = []
+        for lb_row in leaderboard:
+            u = lb_row["user"]
+            filled = sum(1 for m in scheduled if (m.id, u.id) in all_preds_sched)
+            user_fill_status.append({"user": u, "filled": filled, "total": scheduled_total})
+
+        return {
+            "leaderboard": leaderboard,
+            "pred_days": pred_days,
+            "scheduled_matches": scheduled,
+            "finished_recent": finished_recent,
+            "pred_map": pred_map,
+            "scheduled_total": scheduled_total,
+            "unfilled_count": unfilled_count,
+            "user_fill_status": user_fill_status,
+        }
 
     from ..services.groq_api import STANDINGS_LABEL
-    commentaries = Commentary.query.filter(Commentary.match_label != STANDINGS_LABEL).order_by(Commentary.created_at.asc()).all()
+    commentaries = Commentary.query.filter(
+        Commentary.match_label != STANDINGS_LABEL
+    ).order_by(Commentary.created_at.asc()).all()
     standings_commentary = Commentary.query.filter_by(match_label=STANDINGS_LABEL).first()
 
     return render_template("index.html",
-                           scheduled_matches=scheduled_matches,
+                           ucl=_build("UCL"),
+                           pl=_build("PL"),
+                           all_users=all_users,
                            predictions=predictions,
                            commentaries=commentaries,
-                           standings_commentary=standings_commentary,
-                           leaderboard=leaderboard, last_days=pred_days,
-                           scheduled_total=scheduled_total,
-                           unfilled_count=unfilled_count,
-                           user_fill_status=user_fill_status,
-                           finished_recent=finished_recent,
-                           all_users=all_users,
-                           pred_map=pred_map)
+                           standings_commentary=standings_commentary)
 
 
 @main_bp.route("/admin")

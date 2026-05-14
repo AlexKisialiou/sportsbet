@@ -46,41 +46,52 @@ def update_points_for_match(match, commit=True):
     return count
 
 
-def get_leaderboard(last_days=None):
-    """
-    Returns list of dicts: { user, total, last_day }
-    last_days: list of date objects — points for matches on any of those dates.
-    """
+def get_leaderboard(last_days=None, league=None):
     from ..models import User
 
-    rows = (
-        db.session.query(
-            User,
-            func.coalesce(func.sum(PredictionPoints.points), 0).label("total"),
+    if league:
+        pts_sq = (
+            db.session.query(
+                Prediction.user_id,
+                func.coalesce(func.sum(PredictionPoints.points), 0).label("total"),
+            )
+            .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+            .join(Match, Prediction.match_id == Match.id)
+            .join(Tour, Match.tour_id == Tour.id)
+            .filter(Tour.league == league)
+            .group_by(Prediction.user_id)
+            .subquery()
         )
-        .outerjoin(Prediction, User.id == Prediction.user_id)
-        .outerjoin(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
-        .group_by(User.id)
-        .order_by(func.coalesce(func.sum(PredictionPoints.points), 0).desc())
-        .all()
-    )
+        rows = (
+            db.session.query(User, func.coalesce(pts_sq.c.total, 0).label("total"))
+            .outerjoin(pts_sq, User.id == pts_sq.c.user_id)
+            .order_by(func.coalesce(pts_sq.c.total, 0).desc())
+            .all()
+        )
+    else:
+        rows = (
+            db.session.query(
+                User,
+                func.coalesce(func.sum(PredictionPoints.points), 0).label("total"),
+            )
+            .outerjoin(Prediction, User.id == Prediction.user_id)
+            .outerjoin(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+            .group_by(User.id)
+            .order_by(func.coalesce(func.sum(PredictionPoints.points), 0).desc())
+            .all()
+        )
 
     result = []
     for user, total in rows:
         day_pts = []
         for day in (last_days or []):
-            pts = (
+            pts_q = (
                 db.session.query(func.coalesce(func.sum(PredictionPoints.points), 0))
                 .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
                 .join(Match, Prediction.match_id == Match.id)
-                .filter(
-                    func.date(Match.kickoff_time) == day,
-                    Prediction.user_id == user.id,
-                )
-                .scalar()
-            ) or 0
-
-            has_pred = (
+                .filter(func.date(Match.kickoff_time) == day, Prediction.user_id == user.id)
+            )
+            has_q = (
                 db.session.query(func.count(Prediction.id))
                 .join(Match, Prediction.match_id == Match.id)
                 .filter(
@@ -88,15 +99,13 @@ def get_leaderboard(last_days=None):
                     Prediction.user_id == user.id,
                     Match.status == "finished",
                 )
-                .scalar()
-            ) > 0
+            )
+            if league:
+                pts_q = pts_q.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
+                has_q = has_q.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
 
-            day_pts.append({"pts": int(pts), "has_pred": has_pred})
+            day_pts.append({"pts": int(pts_q.scalar() or 0), "has_pred": has_q.scalar() > 0})
 
-        result.append({
-            "user": user,
-            "total": int(total),
-            "days": day_pts,
-        })
+        result.append({"user": user, "total": int(total), "days": day_pts})
 
     return result
