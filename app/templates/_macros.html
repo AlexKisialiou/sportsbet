@@ -1,4 +1,4 @@
-{% macro role_badge(user) %}{% if user.is_superuser %}<span title="Супер Админ" style="font-size:.7rem;opacity:.85;">⚡</span>{% elif user.is_admin %}<span title="Админ" style="font-size:.7rem;opacity:.75;">🛡️</span>{% endif %}{% endmacro %}
+{% macro role_badge(user) %}{% if user.is_bot %}<span title="AI" style="font-size:.6rem;font-weight:700;letter-spacing:.04em;color:#a78bfa;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.35);border-radius:4px;padding:1px 4px;vertical-align:middle;">AI</span>{% elif user.is_superuser %}<span title="Супер Админ" style="font-size:.7rem;opacity:.85;">⚡</span>{% elif user.is_admin %}<span title="Админ" style="font-size:.7rem;opacity:.75;">🛡️</span>{% endif %}{% endmacro %}
 
 {% macro user_avatar(user, size_class='avatar-sm') %}
 {% if user.is_bot %}
