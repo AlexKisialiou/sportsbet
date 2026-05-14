@@ -33,7 +33,7 @@ def index():
         pred_days = _parse_days(
             db.session.query(func.date(Match.kickoff_time))
             .join(Tour)
-            .filter(Tour.league == league, Match.status == "finished")
+            .filter(Tour.league == league, Match.status == "finished", Match.featured == True)
             .group_by(func.date(Match.kickoff_time))
             .order_by(func.date(Match.kickoff_time).desc())
             .limit(4)
@@ -58,6 +58,7 @@ def index():
                 .filter(
                     Tour.league == league,
                     Match.status == "finished",
+                    Match.featured == True,
                     func.date(Match.kickoff_time).in_(pred_days),
                 )
                 .order_by(Match.kickoff_time.desc())
