@@ -146,10 +146,8 @@
     <p class="text-secondary mb-3" style="font-size:.85rem;">Выбери цветовую схему для всех пользователей.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
         {% set themes = [
-            ('navy',    '#d4af37', '#07071c', 'Синяя'),
-            ('forest',  '#2dda8a', '#04120a', 'Зелёная'),
-            ('purple',  '#9d6fff', '#0d071e', 'Фиолет'),
-            ('crimson', '#e05555', '#130509', 'Алая'),
+            ('purple', '#9d6fff', '#0d071e', 'Фиолет'),
+            ('ucl',    '#00c8e8', '#06081a', 'UCL'),
         ] %}
         {% for tid, accent, bg, label in themes %}
         <button onclick="setTheme('{{ tid }}')"

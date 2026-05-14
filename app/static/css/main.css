@@ -1,38 +1,5 @@
 /* ── Themes ── */
-:root {
-    --bg:           #07071c;
-    --surface:      #0c0c28;
-    --surface-hi:   #101040;
-    --surface-deep: #09092a;
-    --border:       #1a1a48;
-    --border-sub:   #10102a;
-    --accent:       #d4af37;
-    --accent-rgb:   212,175,55;
-    --accent-muted: #c89c28;
-    --accent-bg:    #130f00;
-    --accent-dim:   #4a3a00;
-    --text:         #d8ddf0;
-    --text-muted:   #4a5a88;
-    --text-dim:     #2c3454;
-    --text-label:   #8890c0;
-}
-[data-theme="forest"] {
-    --bg:           #04120a;
-    --surface:      #071a0e;
-    --surface-hi:   #0a2014;
-    --surface-deep: #060f09;
-    --border:       #122e1a;
-    --border-sub:   #0a1e10;
-    --accent:       #2dda8a;
-    --accent-rgb:   45,218,138;
-    --accent-muted: #22b870;
-    --accent-bg:    #031408;
-    --accent-dim:   #0a3a1e;
-    --text:         #d0ead8;
-    --text-muted:   #3a6a50;
-    --text-dim:     #1a3628;
-    --text-label:   #608870;
-}
+:root,
 [data-theme="purple"] {
     --bg:           #0d071e;
     --surface:      #150e2a;
@@ -50,24 +17,23 @@
     --text-dim:     #2a1e48;
     --text-label:   #8870c8;
 }
-[data-theme="crimson"] {
-    --bg:           #130509;
-    --surface:      #1c090e;
-    --surface-hi:   #220c14;
-    --surface-deep: #160608;
-    --border:       #3a1220;
-    --border-sub:   #200a10;
-    --accent:       #e05555;
-    --accent-rgb:   224,85,85;
-    --accent-muted: #c04040;
-    --accent-bg:    #180408;
-    --accent-dim:   #4a1818;
-    --text:         #f0d8d8;
-    --text-muted:   #6a4048;
-    --text-dim:     #3a1828;
-    --text-label:   #a06878;
+[data-theme="ucl"] {
+    --bg:           #06081a;
+    --surface:      #090c24;
+    --surface-hi:   #0d1030;
+    --surface-deep: #07091e;
+    --border:       #141838;
+    --border-sub:   #0c0e28;
+    --accent:       #00c8e8;
+    --accent-rgb:   0,200,232;
+    --accent-muted: #00a8c8;
+    --accent-bg:    #030e18;
+    --accent-dim:   #004858;
+    --text:         #d0e4f8;
+    --text-muted:   #2e4a70;
+    --text-dim:     #182840;
+    --text-label:   #5080a8;
 }
-
 /* ── Reset & Base ── */
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, -apple-system, sans-serif; }

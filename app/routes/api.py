@@ -235,8 +235,8 @@ def simulate_results():
 @superuser_required
 def set_theme():
     data = request.get_json(silent=True) or {}
-    theme = data.get("theme", "navy")
-    if theme not in ("navy", "forest", "purple", "crimson"):
+    theme = data.get("theme", "purple")
+    if theme not in ("purple", "ucl"):
         return jsonify({"error": "unknown theme"}), 400
     s = Setting.query.get("theme") or Setting(key="theme")
     s.value = theme
