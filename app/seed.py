@@ -17,32 +17,13 @@ def run():
         ))
         db.session.commit()
 
-    if User.query.filter_by(is_bot=False).count() == 0:
-        users = [
-            {"username": os.environ["ADMIN_USERNAME"],
-             "password": os.environ["ADMIN_PASSWORD"],
-             "nickname": os.environ.get("ADMIN_NICKNAME"),
-             "is_admin": True, "is_superuser": True},
-            {"username": os.environ["USER1_USERNAME"],
-             "password": os.environ["USER1_PASSWORD"],
-             "nickname": os.environ.get("USER1_NICKNAME"),
-             "is_admin": False},
-            {"username": os.environ.get("USER2_USERNAME", ""),
-             "password": os.environ.get("USER2_PASSWORD", ""),
-             "nickname": os.environ.get("USER2_NICKNAME"),
-             "is_admin": False},
-            {"username": os.environ.get("USER3_USERNAME", ""),
-             "password": os.environ.get("USER3_PASSWORD", ""),
-             "nickname": os.environ.get("USER3_NICKNAME"),
-             "is_admin": False},
-        ]
-        users = [u for u in users if u["username"]]
-        for u in users:
-            db.session.add(User(
-                username=u["username"],
-                password_hash=generate_password_hash(u["password"]),
-                nickname=u["nickname"],
-                is_admin=u["is_admin"],
-                is_superuser=u.get("is_superuser", False),
-            ))
+    admin_username = os.environ.get("ADMIN_USERNAME", "")
+    if admin_username and not User.query.filter_by(username=admin_username).first():
+        db.session.add(User(
+            username=admin_username,
+            password_hash=generate_password_hash(os.environ.get("ADMIN_PASSWORD", "")),
+            nickname=os.environ.get("ADMIN_NICKNAME"),
+            is_admin=True,
+            is_superuser=True,
+        ))
         db.session.commit()
