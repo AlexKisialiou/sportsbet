@@ -102,8 +102,6 @@
                 {% if log.user.superadmin_note %}
                 <span style="font-size:.68rem;color:#7a6a9a;">({{ log.user.superadmin_note }})</span>
                 {% endif %}
-                {% if log.user.is_superuser %}<span style="font-size:.65rem;color:#d4af37;">SA</span>
-                {% elif log.user.is_admin %}<span style="font-size:.65rem;color:#5db85d;">А</span>{% endif %}
                 {% else %}
                 <span style="color:#3a5a6a;">—</span>
                 {% endif %}
