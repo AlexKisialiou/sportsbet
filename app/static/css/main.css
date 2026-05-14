@@ -347,6 +347,66 @@ a { text-decoration: none; }
     text-transform: uppercase;
     letter-spacing: .12em;
 }
+.ptable-sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface-deep);
+}
+
+/* ── Predictions card layout ── */
+.pred-day-sep {
+    font-size: .65rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    padding: 16px 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.pred-day-sep::before { content: ''; width: 10px; height: 1px; background: var(--accent); flex-shrink: 0; }
+.pred-day-sep::after  { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(var(--accent-rgb),.4), transparent); }
+
+.pred-match-card {
+    background: linear-gradient(150deg, var(--surface) 0%, var(--surface-hi) 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.pred-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--border-sub);
+}
+.pred-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface-deep);
+    border: 1px solid var(--border-sub);
+    border-radius: 20px;
+    padding: 4px 10px 4px 5px;
+}
+.pred-chip-name {
+    font-size: .72rem;
+    color: var(--text-label);
+    white-space: nowrap;
+}
+.pred-chip-score {
+    font-size: .78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.pred-chip-pts {
+    font-size: .68rem;
+    font-weight: 700;
+    white-space: nowrap;
+    opacity: .85;
+}
 .pred-exact  { color: #00c87a; font-weight: 700; }
 .pred-winner { color: var(--accent); font-weight: 600; }
 .pred-miss   { color: var(--text-dim); }

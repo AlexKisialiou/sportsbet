@@ -62,7 +62,7 @@ def index():
                     func.date(Match.kickoff_time).in_(pred_days),
                 )
                 .order_by(Match.kickoff_time.desc())
-                .limit(10)
+                .limit(30)
                 .all()
             )
             match_ids = [m.id for m in finished_recent]

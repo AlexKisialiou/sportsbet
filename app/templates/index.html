@@ -137,80 +137,67 @@
 
 <!-- ══ Предикты ══ -->
 {% if data.finished_recent %}
+{% set months = ['','января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'] %}
 <div style="margin-bottom:32px;">
     <div class="col-section-title">Предикты</div>
-    <div class="pred-table-wrap">
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
-            <thead>
-                <tr>
-                    <th class="ptable-th" style="text-align:left;min-width:130px;">Матч</th>
-                    <th class="ptable-th" style="text-align:center;white-space:nowrap;">Счёт</th>
-                    {% for u in all_users %}
-                    <th class="ptable-th" style="text-align:center;min-width:80px;">
-                        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-                            {{ user_avatar(u) }}
-                            <span style="white-space:nowrap;">{{ u.display_name }} {{ role_badge(u) }}</span>
-                        </div>
-                    </th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% set ns2 = namespace(cur_date='') %}
-                {% for match in data.finished_recent %}
-                    {% set mdate = match.kickoff_time.strftime('%d.%m') %}
-                    {% if mdate != ns2.cur_date %}
-                        {% set ns2.cur_date = mdate %}
-                        <tr>
-                            <td colspan="{{ 2 + all_users|length }}" class="ptable-date">
-                                {{ match.kickoff_time.strftime('%d %B %Y').lower() }}
-                            </td>
-                        </tr>
+    {% set ns2 = namespace(cur_date='') %}
+    {% for match in data.finished_recent %}
+        {% set mdate = match.kickoff_time.strftime('%d.%m') if match.kickoff_time else '' %}
+        {% if mdate != ns2.cur_date %}
+            {% set ns2.cur_date = mdate %}
+            <div class="pred-day-sep">{{ match.kickoff_time.day }} {{ months[match.kickoff_time.month] }}</div>
+        {% endif %}
+        <div class="pred-match-card">
+            <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
+                <div class="team-wrap team-wrap-home">
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                    {% if match.home_team.crest %}
+                    <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
-                    <tr class="ptable-row">
-                        <td class="ptable-td" style="color:#9aa0b8;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                {% if match.home_team.crest %}
-                                <img src="{{ match.home_team.crest }}" alt="" style="width:18px;height:18px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">
-                                {% endif %}
-                                {{ match.home_team.short_name or match.home_team.display_name }}
-                                <span style="color:#2e3a5a;">—</span>
-                                {{ match.away_team.short_name or match.away_team.display_name }}
-                                {% if match.away_team.crest %}
-                                <img src="{{ match.away_team.crest }}" alt="" style="width:18px;height:18px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">
-                                {% endif %}
-                            </div>
-                        </td>
-                        <td class="ptable-td" style="text-align:center;font-weight:800;color:#fff;white-space:nowrap;letter-spacing:.06em;">
-                            {{ match.score.home_score }}:{{ match.score.away_score }}
-                        </td>
-                        {% for u in all_users %}
-                        {% set pred = data.pred_map.get((match.id, u.id)) %}
-                        <td class="ptable-td" style="text-align:center;white-space:nowrap;">
-                            {% if pred %}
-                                {% if pred.result %}
-                                    {% if pred.result.reason == 'exact' %}
-                                    <span class="pred-exact">{{ pred.home_score }}:{{ pred.away_score }}</span>
-                                    {% elif pred.result.reason == 'winner' %}
-                                    <span class="pred-winner">{{ pred.home_score }}:{{ pred.away_score }}</span>
-                                    {% else %}
-                                    <span class="pred-miss">{{ pred.home_score }}:{{ pred.away_score }}</span>
-                                    {% endif %}
-                                {% else %}
-                                <span style="color:#5a6080;">{{ pred.home_score }}:{{ pred.away_score }}</span>
-                                {% endif %}
+                </div>
+                <div class="score-block" style="min-width:60px;">
+                    {% if match.score %}
+                    <div class="score" style="font-size:1rem;">{{ match.score.home_score }}:{{ match.score.away_score }}</div>
+                    {% endif %}
+                    <div><span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span></div>
+                </div>
+                <div class="team-wrap team-wrap-away">
+                    {% if match.away_team.crest %}
+                    <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
+                    {% endif %}
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                </div>
+            </div>
+            <div class="pred-chips-row">
+                {% for row in data.leaderboard %}
+                {% set u = row.user %}
+                {% set pred = data.pred_map.get((match.id, u.id)) %}
+                <div class="pred-chip">
+                    {{ user_avatar(u) }}
+                    <span class="pred-chip-name">{{ u.display_name }}</span>
+                    {% if pred %}
+                        {% if pred.result %}
+                            {% if pred.result.reason == 'exact' %}
+                            <span class="pred-chip-score pred-exact">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                            <span class="pred-chip-pts" style="color:#00c87a;">+3</span>
+                            {% elif pred.result.reason == 'winner' %}
+                            <span class="pred-chip-score pred-winner">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                            <span class="pred-chip-pts" style="color:var(--accent);">+1</span>
                             {% else %}
-                            <span style="color:#1c1c38;">—</span>
+                            <span class="pred-chip-score pred-miss">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                            <span class="pred-chip-pts" style="color:var(--text-dim);">0</span>
                             {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
+                        {% else %}
+                        <span class="pred-chip-score" style="color:#5a6080;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="pred-chip-score" style="color:#1c1c38;">—</span>
+                    {% endif %}
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
         </div>
-    </div>
+    {% endfor %}
 </div>
 {% endif %}
 {% endmacro %}
@@ -371,6 +358,35 @@ function switchTab(tabId) {
     if (btn) btn.classList.add('active');
     updatePredStatus();
     sessionStorage.setItem('activeLeagueTab', tabId);
+    requestAnimationFrame(adjustPredTables);
+}
+
+function adjustPredTables() {
+    document.querySelectorAll('.pred-table-wrap table').forEach(table => {
+        const wrap = table.closest('.pred-table-wrap');
+        if (!wrap || wrap.clientWidth === 0) return;
+
+        const headerCols = table.querySelectorAll('thead tr th');
+        if (headerCols.length < 2) return;
+
+        // reset all to measure real widths
+        headerCols.forEach(th => th.style.display = '');
+        table.querySelectorAll('tbody tr td').forEach(td => td.style.display = '');
+
+        const stickyW = headerCols[0].offsetWidth || 110;
+        const matchW  = headerCols[1].offsetWidth || 80;
+        const available = wrap.clientWidth - stickyW;
+        const maxVisible = Math.max(1, Math.min(Math.floor(available / matchW), headerCols.length - 1));
+
+        for (let i = 1; i < headerCols.length; i++) {
+            headerCols[i].style.display = i <= maxVisible ? '' : 'none';
+        }
+        table.querySelectorAll('tbody tr').forEach(row => {
+            row.querySelectorAll('td:not(:first-child)').forEach((td, i) => {
+                td.style.display = i < maxVisible ? '' : 'none';
+            });
+        });
+    });
 }
 
 function benderToggle(id) {
@@ -389,6 +405,12 @@ function benderCloseAll() {
     document.querySelectorAll('.bender-panel.open').forEach(p => p.classList.remove('open'));
     document.getElementById('bender-backdrop').classList.remove('open');
 }
+
+let _resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(adjustPredTables, 120);
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
