@@ -97,9 +97,10 @@ def save_prediction():
 def set_featured_matches():
     data = request.get_json()
     featured_ids = set(data.get("match_ids", []))
+    league = data.get("league", "UCL")
     matches = (
         Match.query.join(Tour)
-        .filter(Tour.league.in_(["UCL", "PL"]), Match.status == "scheduled")
+        .filter(Tour.league == league, Match.status == "scheduled")
         .all()
     )
     for m in matches:
@@ -112,7 +113,7 @@ def set_featured_matches():
     from ..seed import BENDER_USERNAME
 
     bender = User.query.filter_by(username=BENDER_USERNAME).first()
-    Commentary.query.delete()
+    Commentary.query.filter(Commentary.match_label.like(f"{league}:%")).delete(synchronize_session=False)
     db.session.commit()
 
     for m in featured_matches:

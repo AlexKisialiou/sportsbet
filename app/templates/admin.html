@@ -157,7 +157,7 @@ async function saveFeatured(league) {
         const resp = await fetch('/api/featured-matches', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ match_ids: checked })
+            body: JSON.stringify({ match_ids: checked, league: league.toUpperCase() })
         });
         const data = await resp.json();
         msg.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей</span>`;
