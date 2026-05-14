@@ -92,8 +92,14 @@
                            background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;">
                 Удалить
             </button>
+            {% elif current_user and current_user.id != u.id %}
+            <button onclick="revokeSuperuser({{ u.id }}, '{{ u.display_name | e }}')"
+                    style="font-size:.78rem;padding:4px 10px;border-radius:6px;cursor:pointer;
+                           background:#1a0a2a;color:#d4af37;border:1px solid #4a2a6a;">
+                Снять SA
+            </button>
             {% else %}
-            <span style="width:160px;"></span>
+            <span style="width:80px;"></span>
             {% endif %}
         </div>
         {% endfor %}
@@ -250,6 +256,23 @@ async function createUser() {
             setTimeout(() => location.reload(), 1200);
         } else {
             msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function revokeSuperuser(userId, name) {
+    if (!confirm(`Снять права суперадмина у «${name}»?`)) return;
+    const msg = document.getElementById('adminMsg');
+    try {
+        const resp = await fetch(`/api/user/${userId}/revoke-superuser`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">Права SA сняты у «${name}». Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
         }
     } catch {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';

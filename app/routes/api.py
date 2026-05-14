@@ -318,6 +318,24 @@ def set_user_note(user_id):
     return jsonify({"ok": True, "note": user.superadmin_note})
 
 
+@api_bp.route("/user/<int:user_id>/revoke-superuser", methods=["POST"])
+@superuser_required
+def revoke_superuser(user_id):
+    current = get_current_user()
+    if current and current.id == user_id:
+        return jsonify({"error": "Нельзя снять права у себя"}), 403
+    user = User.query.get(user_id)
+    if not user or user.is_bot:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    if not user.is_superuser:
+        return jsonify({"error": "Пользователь не является суперадмином"}), 400
+    user.is_superuser = False
+    db.session.commit()
+    log_action(current.id if current else None, "superuser_revoked",
+               f"Снял права суперадмина: {user.display_name}")
+    return jsonify({"ok": True})
+
+
 @api_bp.route("/user/create", methods=["POST"])
 @superuser_required
 def create_user():
@@ -360,7 +378,7 @@ def delete_user(user_id):
         return jsonify({"error": "Пользователь не найден"}), 404
     current = get_current_user()
     if user.is_superuser:
-        return jsonify({"error": "Нельзя удалить суперадмина"}), 403
+        return jsonify({"error": "Сначала снимите права суперадмина"}), 403
     if current and current.id == user_id:
         return jsonify({"error": "Нельзя удалить себя"}), 403
 

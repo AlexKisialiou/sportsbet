@@ -18,6 +18,7 @@ ACTION_LABELS = {
     'cl_matches_loaded':    'Загрузка матчей ЛЧ',
     'logout':               'Выход из системы',
     'note_set':             'Заметка на пользователя',
+    'superuser_revoked':    'Снятие прав суперадмина',
 }
 
 
