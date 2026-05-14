@@ -70,8 +70,7 @@
 
 /* ── Reset & Base ── */
 * { box-sizing: border-box; }
-html { overflow-x: hidden; }
-body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 a { text-decoration: none; }
 
 /* ── Navbar ── */
@@ -268,8 +267,10 @@ a { text-decoration: none; }
     background: linear-gradient(160deg, var(--surface) 0%, var(--surface-hi) 100%);
     border: 1px solid var(--border);
     border-radius: 14px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     margin-bottom: 1.4rem;
+    -webkit-overflow-scrolling: touch;
 }
 .leaderboard-header {
     background: var(--surface-deep);
@@ -304,7 +305,9 @@ a { text-decoration: none; }
     background: linear-gradient(160deg, var(--surface) 0%, var(--surface-hi) 100%);
     border: 1px solid var(--border);
     border-radius: 14px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
 }
 .pred-table-header {
     background: var(--surface-deep);
@@ -434,12 +437,18 @@ a { text-decoration: none; }
     #bender-match-pl      { right: 20px; }
 }
 
-@media (max-width: 576px) {
-    .navbar-inner { flex-wrap: wrap; gap: 6px !important; }
+/* ── Navbar inner layout ── */
+.navbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+@media (max-width: 640px) {
+    .navbar-inner { flex-direction: column; align-items: flex-start; gap: 6px; }
     .app-version { display: none; }
-    .navbar-profile { margin-left: 0 !important; }
     .nav-link-admin { font-size: .75rem; padding: 4px 8px; }
-    .lb-day { display: none; }
     .bender-chip { font-size: .7rem; padding: 7px 11px; }
     .container-fluid { padding-left: 12px !important; padding-right: 12px !important; }
 }

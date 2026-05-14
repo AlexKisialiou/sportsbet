@@ -13,26 +13,30 @@
 
 <nav class="navbar-custom">
     <div class="container-fluid" style="max-width:1400px;padding:0 20px;">
-        <div class="d-flex align-items-center gap-3 navbar-inner">
-            <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
-            <span class="app-version">{{ APP_VERSION }}</span>
-            {% if current_user and current_user.is_admin %}
-            <a href="/admin" class="nav-link-admin">Админ панель</a>
-            {% endif %}
-            {% if current_user and current_user.is_superuser %}
-            <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">Суперпанель</a>
-            {% endif %}
-            {% if current_user %}
-            <a href="/profile" class="navbar-profile" style="display:flex;align-items:center;gap:8px;margin-left:auto;text-decoration:none;" title="Профиль">
-                {{ user_avatar(current_user) }}
-                <span style="color:#35405a;font-size:.82rem;transition:color .15s;"
-                      onmouseover="this.style.color='#d4af37'"
-                      onmouseout="this.style.color='#35405a'">{{ current_user.display_name }}</span>
-            </a>
-            <a href="/logout" style="color:#35405a;font-size:.78rem;border:1px solid #18243a;border-radius:6px;padding:4px 10px;transition:color .15s,border-color .15s;"
-               onmouseover="this.style.color='#6a80a8';this.style.borderColor='#2a3a5a'"
-               onmouseout="this.style.color='#35405a';this.style.borderColor='#18243a'">Выйти</a>
-            {% endif %}
+        <div class="navbar-inner">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
+                <span class="app-version">{{ APP_VERSION }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;">
+                {% if current_user and current_user.is_admin %}
+                <a href="/admin" class="nav-link-admin">Админ панель</a>
+                {% endif %}
+                {% if current_user and current_user.is_superuser %}
+                <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">Суперпанель</a>
+                {% endif %}
+                {% if current_user %}
+                <a href="/profile" style="display:flex;align-items:center;gap:8px;text-decoration:none;" title="Профиль">
+                    {{ user_avatar(current_user) }}
+                    <span style="color:#35405a;font-size:.82rem;transition:color .15s;"
+                          onmouseover="this.style.color='#d4af37'"
+                          onmouseout="this.style.color='#35405a'">{{ current_user.display_name }}</span>
+                </a>
+                <a href="/logout" style="color:#35405a;font-size:.78rem;border:1px solid #18243a;border-radius:6px;padding:4px 10px;transition:color .15s,border-color .15s;"
+                   onmouseover="this.style.color='#6a80a8';this.style.borderColor='#2a3a5a'"
+                   onmouseout="this.style.color='#35405a';this.style.borderColor='#18243a'">Выйти</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 </nav>
