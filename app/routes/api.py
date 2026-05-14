@@ -325,8 +325,6 @@ def create_user():
         return jsonify({"error": "Логин обязателен"}), 400
     if len(username) < 2:
         return jsonify({"error": "Логин минимум 2 символа"}), 400
-    if len(username) > 11:
-        return jsonify({"error": "Логин максимум 11 символов"}), 400
     if not password or len(password) < 3:
         return jsonify({"error": "Пароль минимум 3 символа"}), 400
     if User.query.filter_by(username=username).first():

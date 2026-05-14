@@ -66,7 +66,7 @@ def profile():
                 pwd_saved = True
                 log_action(user.id, "password_changed", "Изменил пароль")
         else:
-            nickname = request.form.get("nickname", "").strip()
+            nickname = request.form.get("nickname", "").strip()[:11]
             user.nickname = nickname if nickname else None
             emoji = request.form.get("avatar_emoji", "").strip()
             color = request.form.get("avatar_color", "").strip()
