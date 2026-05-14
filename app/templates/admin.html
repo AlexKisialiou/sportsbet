@@ -87,10 +87,6 @@
             Загрузить актуальные матчи Английской Премьер-лиги из football-data.org API.<br>
             Новые матчи добавятся, существующие обновятся.
         </p>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;font-size:.85rem;color:#a0b890;">
-            <input type="checkbox" id="plClearCheck" style="width:15px;height:15px;accent-color:#8ab85a;cursor:pointer;">
-            Сначала удалить существующие матчи АПЛ
-        </label>
         <button class="btn-action" style="background:#1a2a0a;color:#8ab85a;border-color:#3a5a1a;"
                 id="fetchPlBtn" onclick="loadPlMatches()">
             Загрузить матчи АПЛ
@@ -194,7 +190,6 @@ async function loadUclMatches() {
 }
 
 async function loadPlMatches() {
-    const clear = document.getElementById('plClearCheck').checked;
     const btn = document.getElementById('fetchPlBtn');
     btn.disabled = true;
     document.getElementById('plSpinner').style.display = 'block';
@@ -203,7 +198,7 @@ async function loadPlMatches() {
         const resp = await fetch('/api/pl-matches', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clear })
+            body: JSON.stringify({})
         });
         const data = await resp.json();
         if (data.error) {
