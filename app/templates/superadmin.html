@@ -44,7 +44,7 @@
                 {% else %}
                 <span id="note-label-{{ u.id }}" style="display:none;font-size:.75rem;color:#7a6a9a;background:#1a142a;padding:1px 7px;border-radius:8px;border:1px solid #2a1a4a;"></span>
                 {% endif %}
-                {% if u.is_superuser %}<span style="font-size:.7rem;color:#9d6fff;">⚡ супер</span>{% endif %}
+                {% if u.is_superuser %}<span style="font-size:.7rem;color:#9d6fff;">SA</span>{% endif %}
                 {% if not u.is_superuser %}
                 <button onclick="openNoteEdit({{ u.id }}, '{{ (u.superadmin_note or '') | e }}')"
                         id="note-edit-btn-{{ u.id }}"

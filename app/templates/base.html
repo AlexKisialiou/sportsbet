@@ -17,10 +17,10 @@
             <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
             <span class="app-version">{{ APP_VERSION }}</span>
             {% if current_user and current_user.is_admin %}
-            <a href="/admin" class="nav-link-admin">Админ</a>
+            <a href="/admin" class="nav-link-admin">А</a>
             {% endif %}
             {% if current_user and current_user.is_superuser %}
-            <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">⚡ Супер</a>
+            <a href="/superadmin" class="nav-link-admin" style="color:#9d6fff;border-color:#3a2a6a;">SA</a>
             {% endif %}
             {% if current_user %}
             <a href="/profile" style="display:flex;align-items:center;gap:8px;margin-left:auto;text-decoration:none;" title="Профиль">
