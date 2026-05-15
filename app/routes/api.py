@@ -10,6 +10,7 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 
 @api_bp.route("/cl-matches", methods=["POST"])
+@admin_required
 @limiter.limit("5 per minute")
 def cl_matches():
     try:
@@ -69,6 +70,11 @@ def save_prediction():
 
     if match_id is None or home_score is None or away_score is None:
         return jsonify({"error": "match_id, home_score, away_score required"}), 400
+
+    if not isinstance(home_score, int) or not isinstance(away_score, int):
+        return jsonify({"error": "scores must be integers"}), 400
+    if not (0 <= home_score <= 99 and 0 <= away_score <= 99):
+        return jsonify({"error": "scores must be between 0 and 99"}), 400
 
     user = get_current_user()
     if not user:

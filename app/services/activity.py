@@ -24,12 +24,7 @@ ACTION_LABELS = {
 
 def log_action(user_id, action, details=None):
     try:
-        from flask import request as _req
-        ip = _req.remote_addr
-    except RuntimeError:
-        ip = None
-    try:
-        entry = ActivityLog(user_id=user_id, action=action, details=details, ip_address=ip)
+        entry = ActivityLog(user_id=user_id, action=action, details=details)
         db.session.add(entry)
         db.session.commit()
     except Exception as e:

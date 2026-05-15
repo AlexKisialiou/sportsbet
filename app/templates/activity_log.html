@@ -84,7 +84,6 @@
                 <th style="width:130px;">Пользователь</th>
                 <th style="width:160px;">Действие</th>
                 <th>Детали</th>
-                <th style="width:100px;">IP</th>
             </tr>
         </thead>
         <tbody>
@@ -112,7 +111,6 @@
                 </span>
             </td>
             <td style="color:#a0a8b0;">{{ log.details or '—' }}</td>
-            <td><span class="ip-label">{{ log.ip_address or '—' }}</span></td>
         </tr>
         {% endfor %}
         </tbody>

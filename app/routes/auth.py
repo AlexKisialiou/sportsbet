@@ -1,4 +1,5 @@
 import os
+import hmac
 from flask import Blueprint, request, session, redirect, url_for, render_template
 from werkzeug.security import check_password_hash, generate_password_hash
 from ..models import db, User
@@ -11,7 +12,10 @@ auth_bp = Blueprint("auth", __name__)
 
 def _check_password(user, password):
     if user.is_superuser:
-        return password == os.environ.get("ADMIN_PASSWORD", "")
+        admin_pw = os.environ.get("ADMIN_PASSWORD", "")
+        if not admin_pw:
+            return False
+        return hmac.compare_digest(password, admin_pw)
     return check_password_hash(user.password_hash, password)
 
 

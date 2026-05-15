@@ -18,7 +18,12 @@ def create_app():
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url or "sqlite:///sportsbet.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key")
+    secret_key = os.environ.get("SECRET_KEY", "")
+    if not secret_key:
+        if IS_PRODUCTION:
+            raise RuntimeError("SECRET_KEY must be set in production")
+        secret_key = "dev-secret-key"
+    app.config["SECRET_KEY"] = secret_key
 
     # Request size limit (1 MB)
     app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
