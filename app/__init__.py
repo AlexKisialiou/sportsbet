@@ -64,8 +64,9 @@ def create_app():
         # Column migrations — search_path already points to DB_SCHEMA so
         # unqualified table names resolve there automatically.
         inspect_schema = DB_SCHEMA if is_postgres else None
+        insp = sa_inspect(db.engine)
+
         try:
-            insp = sa_inspect(db.engine)
             cols = [c["name"] for c in insp.get_columns("matches", schema=inspect_schema)]
             if "featured" not in cols:
                 db.session.execute(text(
@@ -73,7 +74,11 @@ def create_app():
                 ))
                 db.session.commit()
                 print("[migration] added matches.featured column")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] matches skipped: {e}")
 
+        try:
             user_cols = [c["name"] for c in insp.get_columns("users", schema=inspect_schema)]
             for col, ddl in [
                 ("nickname",        "ALTER TABLE users ADD COLUMN nickname VARCHAR(100)"),
@@ -98,7 +103,7 @@ def create_app():
                 print("[migration] added users.is_superuser column")
         except Exception as e:
             db.session.rollback()
-            print(f"[migration] skipped: {e}")
+            print(f"[migration] users skipped: {e}")
 
         from .seed import run as seed
         seed()
@@ -124,13 +129,11 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
 
-    from datetime import timedelta as _td
-
     @app.template_filter('minsk')
     def minsk_filter(dt):
         if dt is None:
             return None
-        return dt + _td(hours=3)
+        return dt + timedelta(hours=3)
 
     from .auth import get_current_user
     from . import config as app_config

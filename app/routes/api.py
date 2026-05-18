@@ -21,8 +21,6 @@ def cl_matches():
         log_action(actor.id if actor else None, "cl_matches_loaded",
                    f"ЛЧ матчи загружены: +{added} новых, {updated} обновлено")
         return jsonify({"added": added, "updated": updated})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -56,8 +54,6 @@ def pl_matches():
         log_action(actor.id if actor else None, "pl_matches_loaded",
                    f"АПЛ матчи загружены: +{added} новых, {updated} обновлено")
         return jsonify({"added": added, "updated": updated})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -104,8 +100,7 @@ def save_prediction():
         db.session.add(prediction)
 
     db.session.commit()
-    # Log prediction
-    match = Match.query.get(match_id)
+    match = match_obj
     if match:
         label = f"{match.home_team.display_name} — {match.away_team.display_name}: {home_score}:{away_score}"
     else:
@@ -120,7 +115,6 @@ def save_prediction():
 def set_featured_matches():
     import threading
     from concurrent.futures import ThreadPoolExecutor
-    from flask import current_app
 
     data = request.get_json()
     featured_ids = set(data.get("match_ids", []))

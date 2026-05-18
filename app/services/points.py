@@ -81,31 +81,43 @@ def get_leaderboard(last_days=None, league=None):
             .all()
         )
 
+    pts_map = {}
+    has_set = set()
+    if last_days:
+        from datetime import date as _date
+        pts_bulk = (
+            db.session.query(
+                Prediction.user_id,
+                func.date(Match.kickoff_time).label("day"),
+                func.coalesce(func.sum(PredictionPoints.points), 0).label("pts"),
+            )
+            .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
+            .join(Match, Prediction.match_id == Match.id)
+            .filter(func.date(Match.kickoff_time).in_(last_days))
+            .group_by(Prediction.user_id, func.date(Match.kickoff_time))
+        )
+        has_bulk = (
+            db.session.query(Prediction.user_id, func.date(Match.kickoff_time).label("day"))
+            .join(Match, Prediction.match_id == Match.id)
+            .filter(func.date(Match.kickoff_time).in_(last_days), Match.status == "finished")
+            .distinct()
+        )
+        if league:
+            pts_bulk = pts_bulk.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
+            has_bulk = has_bulk.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
+
+        def _as_date(v):
+            return _date.fromisoformat(v) if isinstance(v, str) else v
+
+        pts_map = {(r.user_id, _as_date(r.day)): int(r.pts) for r in pts_bulk.all()}
+        has_set = {(r.user_id, _as_date(r.day)) for r in has_bulk.all()}
+
     result = []
     for user, total in rows:
-        day_pts = []
-        for day in (last_days or []):
-            pts_q = (
-                db.session.query(func.coalesce(func.sum(PredictionPoints.points), 0))
-                .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
-                .join(Match, Prediction.match_id == Match.id)
-                .filter(func.date(Match.kickoff_time) == day, Prediction.user_id == user.id)
-            )
-            has_q = (
-                db.session.query(func.count(Prediction.id))
-                .join(Match, Prediction.match_id == Match.id)
-                .filter(
-                    func.date(Match.kickoff_time) == day,
-                    Prediction.user_id == user.id,
-                    Match.status == "finished",
-                )
-            )
-            if league:
-                pts_q = pts_q.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
-                has_q = has_q.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
-
-            day_pts.append({"pts": int(pts_q.scalar() or 0), "has_pred": has_q.scalar() > 0})
-
+        day_pts = [
+            {"pts": pts_map.get((user.id, day), 0), "has_pred": (user.id, day) in has_set}
+            for day in (last_days or [])
+        ]
         result.append({"user": user, "total": int(total), "days": day_pts})
 
     return result

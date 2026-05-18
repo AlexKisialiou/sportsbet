@@ -1,9 +1,10 @@
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
 from sqlalchemy import func
-from ..models import db, Match, Tour, Prediction, User, Commentary, ActivityLog
+from ..models import db, Match, Tour, Prediction, User, Commentary, ActivityLog, Setting
 from ..services.points import get_leaderboard
 from ..services.activity import ACTION_LABELS
+from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
 from ..auth import get_current_user, login_required, admin_required, superuser_required
 
 from flask import Blueprint
@@ -96,8 +97,6 @@ def index():
             "user_fill_status": user_fill_status,
         }
 
-    from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
-    from ..models import Setting
     ucl_data = _build("UCL")
     pl_data = _build("PL")
 
@@ -158,7 +157,6 @@ def admin():
 @main_bp.route("/superadmin")
 @superuser_required
 def superadmin():
-    from ..models import Setting
     theme_s = Setting.query.get("theme")
     current_theme = theme_s.value if theme_s else "navy"
     users = User.query.filter_by(is_bot=False).order_by(User.username).all()
@@ -170,8 +168,7 @@ def superadmin():
         .order_by(Match.kickoff_time.asc())
         .all()
     )
-    from ..models import Setting as _Setting
-    lock_s = _Setting.query.get("betting_locked")
+    lock_s = Setting.query.get("betting_locked")
     betting_locked = lock_s is not None and lock_s.value == "1"
     return render_template("superadmin.html", current_theme=current_theme, users=users,
                            current_user=current, all_scheduled=all_scheduled,
