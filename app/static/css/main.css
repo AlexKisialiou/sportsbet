@@ -490,6 +490,24 @@ a { text-decoration: none; }
     .lb-row { padding: 8px 10px; font-size: .78rem; }
 }
 
+/* ── Betting countdown bar ── */
+.betting-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .83rem;
+}
+.betting-bar.locked { border-color: #3a1a1a; background: #110608; }
+.betting-bar .bb-label { color: var(--text-muted); }
+.betting-bar .bb-timer { color: var(--text); font-weight: 700; font-family: monospace; letter-spacing: .04em; }
+.betting-bar.locked .bb-label { color: #c05050; }
+.betting-bar.locked .bb-timer { display: none; }
+
 /* ── League Tabs ── */
 .league-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .tab-btn {

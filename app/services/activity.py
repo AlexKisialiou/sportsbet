@@ -19,6 +19,7 @@ ACTION_LABELS = {
     'logout':               'Выход из системы',
     'note_set':             'Заметка на пользователя',
     'superuser_revoked':    'Снятие прав суперадмина',
+    'betting_lock':         'Блокировка ставок',
 }
 
 

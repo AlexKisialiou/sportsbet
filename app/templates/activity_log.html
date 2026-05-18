@@ -90,8 +90,8 @@
         {% for log in logs %}
         <tr>
             <td style="white-space:nowrap;color:#4a7a9a;">
-                {{ log.created_at.strftime('%d.%m.%Y') }}<br>
-                <span style="font-size:.75rem;color:#2a5a7a;">{{ log.created_at.strftime('%H:%M:%S') }}</span>
+                {{ (log.created_at | minsk).strftime('%d.%m.%Y') }}<br>
+                <span style="font-size:.75rem;color:#2a5a7a;">{{ (log.created_at | minsk).strftime('%H:%M:%S') }}</span>
             </td>
             <td>
                 {% if log.user %}

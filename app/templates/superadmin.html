@@ -165,43 +165,26 @@
     <span id="themeMsg" style="font-size:.82rem;margin-top:10px;display:block;"></span>
 </div>
 
-<div class="admin-card" style="border-color:#3a2a1a;">
-    <h6 style="color:#b87a4a;">🧪 Симуляция результатов</h6>
+
+<div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#7a9ab5;">🔒 Приём ставок</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Выбери матчи, которые перевести в <strong>finished</strong> со счётом 1:0. Очки пересчитаются автоматически.
+        Блокировать или разблокировать возможность делать ставки для всех пользователей.
     </p>
-    {% if all_scheduled %}
-    <form id="simForm">
-        {% set ns = namespace(cur_date='') %}
-        {% for m in all_scheduled %}
-            {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-            {% if mdate != ns.cur_date %}
-                {% set ns.cur_date = mdate %}
-                <div style="font-size:.7rem;color:#7a4a2a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-            {% endif %}
-            <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #2a1e14;cursor:pointer;">
-                <input type="checkbox" name="sim_match" value="{{ m.id }}"
-                       style="width:16px;height:16px;accent-color:#e09a5a;cursor:pointer;">
-                <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                    {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                </span>
-                <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                    {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
-                </span>
-            </label>
-        {% endfor %}
-        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-            <button type="button" class="btn-action" style="background:#2a1a0a;color:#e09a5a;border-color:#4a2a1a;"
-                    id="simBtn" onclick="simulateResults()">
-                Симулировать выбранные
-            </button>
-            <div class="spinner" id="simSpinner"></div>
-            <span id="simMsg" class="result-msg"></span>
-        </div>
-    </form>
-    {% else %}
-    <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
-    {% endif %}
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <span id="lock-status" style="font-size:.88rem;color:{% if betting_locked %}#e05555{% else %}#5db85d{% endif %};">
+            {% if betting_locked %}🔒 Ставки заблокированы{% else %}✓ Ставки открыты{% endif %}
+        </span>
+        <button onclick="toggleBettingLock({{ 'false' if betting_locked else 'true' }})"
+                id="lock-btn"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:{% if betting_locked %}#0a2a10{% else %}#2a0a0a{% endif %};
+                       color:{% if betting_locked %}#5db85d{% else %}#e05555{% endif %};
+                       border:1px solid {% if betting_locked %}#1a5a2a{% else %}#5a1a1a{% endif %};">
+            {% if betting_locked %}Разблокировать{% else %}Заблокировать{% endif %}
+        </button>
+        <span id="lockMsg" style="font-size:.82rem;"></span>
+    </div>
 </div>
 
 <div class="admin-card" style="border-color:#5a1a1a;">
@@ -353,37 +336,6 @@ async function toggleAdmin(userId, makeAdmin) {
     }
 }
 
-async function simulateResults() {
-    const checked = [...document.querySelectorAll('input[name="sim_match"]:checked')]
-        .map(el => parseInt(el.value));
-    if (!checked.length) {
-        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Выбери хотя бы один матч.</span>`;
-        return;
-    }
-    const btn = document.getElementById("simBtn");
-    btn.disabled = true;
-    document.getElementById("simSpinner").style.display = "block";
-    document.getElementById("simMsg").innerHTML = "";
-    try {
-        const resp = await fetch("/api/simulate-results", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ match_ids: checked })
-        });
-        const data = await resp.json();
-        document.getElementById("simMsg").innerHTML =
-            `<span class="success-msg">Обновлено матчей: ${data.updated}</span>`;
-        checked.forEach(id => {
-            const cb = document.querySelector(`input[name="sim_match"][value="${id}"]`);
-            if (cb) cb.closest('label').style.opacity = '.4';
-        });
-    } catch {
-        document.getElementById("simMsg").innerHTML = `<span class="error-msg">Ошибка симуляции.</span>`;
-    } finally {
-        document.getElementById("simSpinner").style.display = "none";
-        btn.disabled = false;
-    }
-}
 
 async function setTheme(theme) {
     try {
@@ -464,6 +416,44 @@ async function saveNote(userId) {
         }
     } catch {}
     closeNoteEdit(userId);
+}
+
+async function toggleBettingLock(lock) {
+    const btn = document.getElementById('lock-btn');
+    const status = document.getElementById('lock-status');
+    const msg = document.getElementById('lockMsg');
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/settings/betting-lock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locked: lock })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (lock) {
+                status.textContent = '🔒 Ставки заблокированы';
+                status.style.color = '#e05555';
+                btn.textContent = 'Разблокировать';
+                btn.style.background = '#0a2a10'; btn.style.color = '#5db85d'; btn.style.borderColor = '#1a5a2a';
+                btn.onclick = () => toggleBettingLock(false);
+            } else {
+                status.textContent = '✓ Ставки открыты';
+                status.style.color = '#5db85d';
+                btn.textContent = 'Заблокировать';
+                btn.style.background = '#2a0a0a'; btn.style.color = '#e05555'; btn.style.borderColor = '#5a1a1a';
+                btn.onclick = () => toggleBettingLock(true);
+            }
+            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function confirmReset() {

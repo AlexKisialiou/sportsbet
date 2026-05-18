@@ -103,14 +103,17 @@ def create_app():
         from .seed import run as seed
         seed()
         from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches
+        from .services.standings import maybe_generate_standings
         try:
             added, updated = fetch_and_save_cl_matches()
             print(f"[startup] CL matches: +{added} added, {updated} updated")
+            maybe_generate_standings("UCL", app)
         except Exception as e:
             print(f"[startup] CL fetch skipped: {e}")
         try:
             added, updated = fetch_and_save_pl_matches()
             print(f"[startup] PL matches: +{added} added, {updated} updated")
+            maybe_generate_standings("PL", app)
         except Exception as e:
             print(f"[startup] PL fetch skipped: {e}")
 
@@ -120,6 +123,14 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
+
+    from datetime import timedelta as _td
+
+    @app.template_filter('minsk')
+    def minsk_filter(dt):
+        if dt is None:
+            return None
+        return dt + _td(hours=3)
 
     from .auth import get_current_user
     from . import config as app_config

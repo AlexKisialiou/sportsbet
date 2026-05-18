@@ -2,7 +2,13 @@
 {% from '_macros.html' import user_avatar, role_badge %}
 {% block title %}{{ APP_NAME }}{% endblock %}
 
-{% macro render_tab(tab_id, data) %}
+{% macro render_tab(tab_id, data, locked=false, first_match_iso=none) %}
+{% if first_match_iso or locked %}
+<div class="betting-bar{% if locked %} locked{% endif %}" id="betting-bar-{{ tab_id }}">
+    <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До закрытия ставок:{% endif %}</span>
+    {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>{% endif %}
+</div>
+{% endif %}
 <div class="main-grid" style="margin-bottom:32px;">
 
     <!-- ── Left: Очки ── -->
@@ -99,9 +105,9 @@
                             {% endif %}
                         </div>
                         <div class="score-block">
-                            <div class="score-time">{{ match.kickoff_time.strftime('%H:%M') if match.kickoff_time else '—' }}</div>
+                            <div class="score-time">{{ (match.kickoff_time | minsk).strftime('%H:%M') if match.kickoff_time else '—' }}</div>
                             <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
-                            <div class="match-date">{{ match.kickoff_time.strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                            <div class="match-date">{{ (match.kickoff_time | minsk).strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
                         </div>
                         <div class="team-wrap team-wrap-away">
                             {% if match.away_team.crest %}
@@ -112,13 +118,15 @@
                     </div>
                     <div class="prediction-row" style="padding-left:4px;">
                         <span style="font-size:.68rem;color:#2e3a5a;margin-right:6px;letter-spacing:.04em;">Ставка</span>
-                        <input class="pred-input" type="number" min="0" max="20" id="ph-{{ match.id }}"
+                        <input class="pred-input{% if locked %} readonly{% endif %}" type="number" min="0" max="20" id="ph-{{ match.id }}"
                                value="{{ pred.home_score if pred is not none else '' }}"
-                               placeholder="—" onchange="savePrediction({{ match.id }})">
+                               placeholder="—" {% if not locked %}onchange="savePrediction({{ match.id }})"{% endif %}
+                               {% if locked %}disabled{% endif %}>
                         <span class="pred-sep">:</span>
-                        <input class="pred-input" type="number" min="0" max="20" id="pa-{{ match.id }}"
+                        <input class="pred-input{% if locked %} readonly{% endif %}" type="number" min="0" max="20" id="pa-{{ match.id }}"
                                value="{{ pred.away_score if pred is not none else '' }}"
-                               placeholder="—" onchange="savePrediction({{ match.id }})">
+                               placeholder="—" {% if not locked %}onchange="savePrediction({{ match.id }})"{% endif %}
+                               {% if locked %}disabled{% endif %}>
                         <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
                     </div>
                 </div>
@@ -142,10 +150,11 @@
     <div class="col-section-title">Предикты</div>
     {% set ns2 = namespace(cur_date='') %}
     {% for match in data.finished_recent %}
-        {% set mdate = match.kickoff_time.strftime('%d.%m') if match.kickoff_time else '' %}
+        {% set mdate = (match.kickoff_time | minsk).strftime('%d.%m') if match.kickoff_time else '' %}
         {% if mdate != ns2.cur_date %}
             {% set ns2.cur_date = mdate %}
-            <div class="pred-day-sep">{{ match.kickoff_time.day }} {{ months[match.kickoff_time.month] }}</div>
+            {% set mdt = match.kickoff_time | minsk %}
+            <div class="pred-day-sep">{{ mdt.day }} {{ months[mdt.month] }}</div>
         {% endif %}
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
@@ -213,12 +222,12 @@
 
 <!-- UCL Tab -->
 <div class="tab-pane" id="tab-ucl">
-    {{ render_tab('ucl', ucl) }}
+    {{ render_tab('ucl', ucl, locked=betting_locked, first_match_iso=ucl_first_match_iso) }}
 </div>
 
 <!-- PL Tab -->
 <div class="tab-pane" id="tab-pl">
-    {{ render_tab('pl', pl) }}
+    {{ render_tab('pl', pl, locked=betting_locked, first_match_iso=pl_first_match_iso) }}
 </div>
 
 </div><!-- .page-content-pad -->
@@ -306,21 +315,82 @@
 </div>
 
 <script>
+const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
+const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
+let _bettingLocked = {{ 'true' if betting_locked else 'false' }};
+const _lockedTabs = new Set({{ (['ucl', 'pl'] if betting_locked else []) | tojson }});
+
+function lockTab(tabId) {
+    if (_lockedTabs.has(tabId)) return;
+    _lockedTabs.add(tabId);
+    document.querySelectorAll(`#tab-${tabId} .pred-input`).forEach(inp => {
+        inp.disabled = true;
+        inp.classList.add('readonly');
+        inp.removeAttribute('onchange');
+    });
+    const bar = document.getElementById(`betting-bar-${tabId}`);
+    if (bar) {
+        bar.classList.add('locked');
+        bar.innerHTML = '<span class="bb-label">🔒 Ставки закрыты</span>';
+    }
+}
+
+function lockBetting() {
+    _bettingLocked = true;
+    lockTab('ucl');
+    lockTab('pl');
+}
+
+function formatCountdown(ms) {
+    const total = Math.floor(ms / 1000);
+    const d = Math.floor(total / 86400);
+    const h = Math.floor((total % 86400) / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const hh = String(h).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return d > 0 ? `${d}д ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
+function startCountdown(tabId, isoTime) {
+    if (!isoTime || _lockedTabs.has(tabId)) return;
+    const target = new Date(isoTime).getTime();
+    const el = document.getElementById(`bb-timer-${tabId}`);
+    function tick() {
+        const diff = target - Date.now();
+        if (diff <= 0) { lockTab(tabId); return; }
+        if (el) el.textContent = formatCountdown(diff);
+        setTimeout(tick, 1000);
+    }
+    tick();
+}
+
 async function savePrediction(matchId) {
-    const home = document.getElementById(`ph-${matchId}`).value;
-    const away = document.getElementById(`pa-${matchId}`).value;
+    if (_bettingLocked) return;
+    const inp = document.getElementById(`ph-${matchId}`);
+    if (inp) {
+        const pane = inp.closest('.tab-pane');
+        if (pane && _lockedTabs.has(pane.id.replace('tab-', ''))) return;
+    }
+    const home = inp ? inp.value : '';
+    const away = document.getElementById(`pa-${matchId}`)?.value ?? '';
     if (home === '' || away === '') return;
 
-    await fetch('/api/prediction', {
+    const resp = await fetch('/api/prediction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ match_id: matchId, home_score: parseInt(home), away_score: parseInt(away) })
     });
 
-    const saved = document.getElementById(`ps-${matchId}`);
-    saved.classList.add('show');
-    setTimeout(() => saved.classList.remove('show'), 1500);
-    updatePredStatus();
+    if (resp.ok) {
+        const saved = document.getElementById(`ps-${matchId}`);
+        saved.classList.add('show');
+        setTimeout(() => saved.classList.remove('show'), 1500);
+        updatePredStatus();
+    } else if (resp.status === 423) {
+        lockBetting();
+    }
 }
 
 function updatePredStatus() {
@@ -418,6 +488,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const saved = sessionStorage.getItem('activeLeagueTab') || 'ucl';
     switchTab(saved);
+    startCountdown('ucl', UCL_FIRST_MATCH);
+    startCountdown('pl', PL_FIRST_MATCH);
 });
 </script>
 {% endblock %}

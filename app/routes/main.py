@@ -97,6 +97,23 @@ def index():
         }
 
     from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
+    from ..models import Setting
+    ucl_data = _build("UCL")
+    pl_data = _build("PL")
+
+    lock_s = Setting.query.get("betting_locked")
+    betting_locked = lock_s is not None and lock_s.value == "1"
+
+    def _first_kickoff(matches):
+        t = None
+        for m in matches:
+            if m.kickoff_time and (t is None or m.kickoff_time < t):
+                t = m.kickoff_time
+        return t.strftime('%Y-%m-%dT%H:%M:%SZ') if t else None
+
+    ucl_first_match_iso = _first_kickoff(ucl_data["scheduled_matches"])
+    pl_first_match_iso = _first_kickoff(pl_data["scheduled_matches"])
+
     ucl_commentaries = Commentary.query.filter(
         Commentary.match_label.like("UCL:%")
     ).order_by(Commentary.created_at.asc()).all()
@@ -107,14 +124,17 @@ def index():
     pl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_PL).first()
 
     return render_template("index.html",
-                           ucl=_build("UCL"),
-                           pl=_build("PL"),
+                           ucl=ucl_data,
+                           pl=pl_data,
                            all_users=all_users,
                            predictions=predictions,
                            ucl_commentaries=ucl_commentaries,
                            pl_commentaries=pl_commentaries,
                            ucl_standings=ucl_standings,
-                           pl_standings=pl_standings)
+                           pl_standings=pl_standings,
+                           betting_locked=betting_locked,
+                           ucl_first_match_iso=ucl_first_match_iso,
+                           pl_first_match_iso=pl_first_match_iso)
 
 
 @main_bp.route("/admin")
@@ -150,8 +170,12 @@ def superadmin():
         .order_by(Match.kickoff_time.asc())
         .all()
     )
+    from ..models import Setting as _Setting
+    lock_s = _Setting.query.get("betting_locked")
+    betting_locked = lock_s is not None and lock_s.value == "1"
     return render_template("superadmin.html", current_theme=current_theme, users=users,
-                           current_user=current, all_scheduled=all_scheduled)
+                           current_user=current, all_scheduled=all_scheduled,
+                           betting_locked=betting_locked)
 
 
 @main_bp.route("/activity-log")

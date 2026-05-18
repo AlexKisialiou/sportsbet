@@ -1,9 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from ..models import db, Prediction, Match, Score, Tour, Commentary, User, Setting
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches
 from ..services.points import update_points_for_match
 from ..auth import get_current_user, login_required, admin_required, superuser_required
 from ..services.activity import log_action
+from ..services.standings import maybe_generate_standings
 from ..limiter import limiter
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -15,6 +16,7 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 def cl_matches():
     try:
         added, updated = fetch_and_save_cl_matches()
+        maybe_generate_standings("UCL", current_app._get_current_object())
         actor = get_current_user()
         log_action(actor.id if actor else None, "cl_matches_loaded",
                    f"ЛЧ матчи загружены: +{added} новых, {updated} обновлено")
@@ -49,6 +51,7 @@ def pl_matches():
                 Tour.query.filter_by(league="PL").delete()
                 db.session.commit()
         added, updated = fetch_and_save_pl_matches()
+        maybe_generate_standings("PL", current_app._get_current_object())
         actor = get_current_user()
         log_action(actor.id if actor else None, "pl_matches_loaded",
                    f"АПЛ матчи загружены: +{added} новых, {updated} обновлено")
@@ -63,6 +66,7 @@ def pl_matches():
 @login_required
 @limiter.limit("60 per minute")
 def save_prediction():
+    from datetime import datetime as _dt
     data = request.get_json()
     match_id = data.get("match_id")
     home_score = data.get("home_score")
@@ -75,6 +79,16 @@ def save_prediction():
         return jsonify({"error": "scores must be integers"}), 400
     if not (0 <= home_score <= 99 and 0 <= away_score <= 99):
         return jsonify({"error": "scores must be between 0 and 99"}), 400
+
+    lock_s = Setting.query.get("betting_locked")
+    if lock_s and lock_s.value == "1":
+        return jsonify({"error": "Ставки заблокированы"}), 423
+
+    match_obj = Match.query.get(match_id)
+    if not match_obj:
+        return jsonify({"error": "match not found"}), 404
+    if match_obj.kickoff_time and match_obj.kickoff_time <= _dt.utcnow():
+        return jsonify({"error": "Матч уже начался"}), 423
 
     user = get_current_user()
     if not user:
@@ -104,6 +118,10 @@ def save_prediction():
 @admin_required
 @limiter.limit("10 per minute")
 def set_featured_matches():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from flask import current_app
+
     data = request.get_json()
     featured_ids = set(data.get("match_ids", []))
     league = data.get("league", "UCL")
@@ -118,39 +136,66 @@ def set_featured_matches():
 
     featured_matches = [m for m in matches if m.featured]
 
-    from ..services.groq_api import generate_bender_pick
-    from ..seed import BENDER_USERNAME
+    # Extract data before thread — ORM objects must not cross session boundaries
+    match_data = [
+        (m.id, m.home_team.display_name, m.away_team.display_name,
+         f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}")
+        for m in featured_matches
+    ]
 
-    bender = User.query.filter_by(username=BENDER_USERNAME).first()
-    Commentary.query.filter(Commentary.match_label.like(f"{league}:%")).delete(synchronize_session=False)
-    db.session.commit()
-
-    for m in featured_matches:
-        home = m.home_team.display_name
-        away = m.away_team.display_name
-        label = f"{m.tour.league}:{home} vs {away}"
-        try:
-            result = generate_bender_pick(home, away)
-            if result:
-                hs, as_, text = result
-                # Save Бендер's prediction
-                if bender:
-                    pred = Prediction.query.filter_by(user_id=bender.id, match_id=m.id).first()
-                    if pred:
-                        pred.home_score = hs
-                        pred.away_score = as_
-                    else:
-                        db.session.add(Prediction(
-                            user_id=bender.id, match_id=m.id,
-                            home_score=hs, away_score=as_,
-                        ))
-                db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
-        except Exception as e:
-            print(f"[groq] bender skipped for {label}: {e}")
-
-    db.session.commit()
     admin = get_current_user()
     log_action(admin.id if admin else None, "featured_set", f"Матчи для ставок: {len(featured_ids)} шт.")
+
+    if match_data:
+        app = current_app._get_current_object()
+
+        def generate_bender_async():
+            with app.app_context():
+                from ..services.groq_api import generate_bender_pick
+                from ..seed import BENDER_USERNAME
+
+                Commentary.query.filter(
+                    Commentary.match_label.like(f"{league}:%")
+                ).delete(synchronize_session=False)
+                db.session.commit()
+
+                bender = User.query.filter_by(username=BENDER_USERNAME).first()
+                bender_id = bender.id if bender else None
+
+                def call_groq(item):
+                    match_id, home, away, label = item
+                    try:
+                        result = generate_bender_pick(home, away)
+                        return (match_id, label, result)
+                    except Exception as e:
+                        print(f"[groq] bender skipped for {label}: {e}")
+                        return (match_id, label, None)
+
+                with ThreadPoolExecutor(max_workers=min(len(match_data), 5)) as executor:
+                    results = list(executor.map(call_groq, match_data))
+
+                for match_id, label, result in results:
+                    if not result:
+                        continue
+                    hs, as_, text = result
+                    if bender_id:
+                        pred = Prediction.query.filter_by(
+                            user_id=bender_id, match_id=match_id
+                        ).first()
+                        if pred:
+                            pred.home_score = hs
+                            pred.away_score = as_
+                        else:
+                            db.session.add(Prediction(
+                                user_id=bender_id, match_id=match_id,
+                                home_score=hs, away_score=as_,
+                            ))
+                    db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
+
+                db.session.commit()
+
+        threading.Thread(target=generate_bender_async, daemon=True).start()
+
     return jsonify({"ok": True, "featured": len(featured_ids)})
 
 
@@ -251,6 +296,23 @@ def set_theme():
     actor = get_current_user()
     log_action(actor.id if actor else None, "theme_changed", f"Тема: {theme}")
     return jsonify({"ok": True, "theme": theme})
+
+
+@api_bp.route("/settings/betting-lock", methods=["POST"])
+@superuser_required
+def set_betting_lock():
+    data = request.get_json(silent=True) or {}
+    locked = data.get("locked")
+    if locked is None:
+        return jsonify({"error": "locked required"}), 400
+    s = Setting.query.get("betting_locked") or Setting(key="betting_locked")
+    s.value = "1" if locked else "0"
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "betting_lock",
+               "Ставки заблокированы" if locked else "Ставки разблокированы")
+    return jsonify({"ok": True, "locked": locked})
 
 
 @api_bp.route("/reset-scores", methods=["POST"])

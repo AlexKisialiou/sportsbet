@@ -49,7 +49,7 @@ Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 5. `db.create_all()` — creates missing tables directly in `sportsbet`
 6. Applies inline column migrations via raw `ALTER TABLE` + `try/except` (no Alembic)
 7. Calls `seed.run()` — ensures bot user and real users exist
-8. Calls `fetch_and_save_cl_matches()` — refreshes UCL data from API on every startup
+8. Calls `fetch_and_save_cl_matches()` and `fetch_and_save_pl_matches()` — refreshes UCL+PL data on every startup; triggers `maybe_generate_standings()` for each league after fetch
 9. Registers three blueprints: `main_bp`, `api_bp`, `auth_bp`
 10. Context processor injects: `current_user`, `APP_NAME`, `APP_VERSION`, `current_theme`
 11. `after_request` sets security headers; 429 handler returns JSON for `/api/*`, HTML otherwise
@@ -80,7 +80,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `Prediction` | `user_id`, `match_id`, `home_score`, `away_score`; unique on `(user_id, match_id)` |
 | `PredictionPoints` | 1:1 with Prediction; `points` (0/1/3), `reason` (`"exact"`/`"winner"`/`"none"`) |
 | `Commentary` | `match_label`, `text`; Bender's AI comments; `"__standings__"` label for leaderboard commentary |
-| `Setting` | `key` (PK), `value`; stores `theme` setting |
+| `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl`, `standings_day_pl` |
 | `ActivityLog` | `user_id` (FK nullable), `action`, `details`, `ip_address`, `created_at`; records all user/admin actions |
 
 ### Routes
@@ -95,7 +95,8 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/prediction` | Upsert user's prediction (login required) |
 | `api` | `POST /api/featured-matches` | Set featured matches + regenerate Bender AI picks (admin) |
 | `api` | `POST /api/simulate-results` | Mark matches finished (1:0), recalculate points, generate standings commentary (superuser) |
-| `api` | `POST /api/settings/theme` | Set color theme: `navy`/`forest`/`purple`/`crimson` (superuser) |
+| `api` | `POST /api/settings/theme` | Set color theme: `purple` only (superuser) |
+| `api` | `POST /api/settings/betting-lock` | Lock/unlock betting globally; body `{"locked": true/false}` (superuser) |
 | `api` | `POST /api/reset-scores` | Delete all Predictions + PredictionPoints (superuser, confirm=`"RESET"`) |
 | `api` | `POST /api/reset-db` | Full DB drop+recreate+seed (superuser, confirm=`"RESET"`) |
 | `api` | `POST /api/user/create` | Create new user (superuser only) |
@@ -110,6 +111,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 ### Superadmin Panel (`/superadmin`)
 - **User list**: all users with role icons, private note (shown in parentheses, superadmin-only), inline note editor, reset password, toggle admin, delete
 - **Create user**: username, password, optional nickname
+- **🔒 Приём ставок** — manual lock/unlock button; shows current state; calls `POST /api/settings/betting-lock`
 - **🧪 Тест: матчи АПЛ** — load EPL matches with optional "clear existing PL data" checkbox
 - **📋 Лог активности** — link to activity log page
 
@@ -118,31 +120,38 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - Filters: date-from, date-to, user dropdown; default last 7 days, limit 500
 
 ### Admin Panel (`/admin`)
-- **Загрузить матчи ЛЧ** — fetches from football-data.org
-- **Матчи для ставок** — checkbox list to mark featured matches (UCL + PL); triggers Bender AI pick generation
-- **Симуляция результатов** — set selected matches to finished (1:0), recalculate points
-- **Тема оформления** — 4 color themes: Синяя (navy), Зелёная (forest), Фиолет (purple), Алая (crimson)
+- **Загрузить матчи ЛЧ / АПЛ** — fetches from football-data.org (per-league tabs)
+- **Матчи для ставок** — checkbox list to mark featured matches (UCL + PL tabs); saves immediately, generates Bender AI picks in background (parallel Groq calls via ThreadPoolExecutor)
 - **Опасная зона** — reset scores only, or full DB reset (with confirmations)
+- Simulation UI removed (API endpoint `POST /api/simulate-results` kept)
 
 ### CSS Theming (`app/static/css/main.css`)
-CSS custom properties on `:root` (navy default) + `[data-theme="forest|purple|crimson"]` overrides.  
+Only `purple` theme is active. CSS custom properties on `:root`.  
 Key variables: `--bg`, `--surface`, `--surface-hi`, `--surface-deep`, `--border`, `--border-sub`, `--accent`, `--accent-rgb`, `--accent-muted`, `--accent-bg`, `--accent-dim`, `--text`, `--text-muted`, `--text-dim`, `--text-label`.  
 Applied via `data-theme` on `<body>` from `current_theme` template variable.  
-Bender panel colors (gold/green) are hardcoded — not theme-dependent.
+Bender panel colors (gold/green) are hardcoded — not theme-dependent.  
+`.betting-bar` — per-league countdown strip; `.betting-bar.locked` — red locked state.
 
 ### Layout (`index.html`)
 - Two-column grid: left 420px leaderboard + fill status, right: featured scheduled matches for betting
+- Per-league countdown bar (`.betting-bar`) above match list; auto-locks inputs at first kickoff time
+- Inputs disabled when `betting_locked=True` (server) or tab locked by JS timer; 423 response also triggers lock
 - Full-width predictions table below: finished matches from last 4 game days
 - Floating bottom tray: 📊 Бендер об очках (gold chip), 📋 Прогноз (green chip)
+- All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
 
 ### Services
 - **`app/services/football_api.py`** — `fetch_and_save_cl_matches()`: UCL from `competitions/CL/matches`. `fetch_and_save_pl_matches()`: EPL from `competitions/PL/matches`, tours named "АПЛ Тур N" with `league="PL"`. Both upsert Teams/Tours/Matches/Scores and call `update_points_for_match()` on finished matches.
 - **`app/services/points.py`** — `calc_points()`: 3 pts exact, 1 pt correct winner/draw, 0 otherwise. `update_points_for_match()`: upserts `PredictionPoints`. `get_leaderboard(last_days=N)`: users sorted by total with per-day breakdown.
 - **`app/services/groq_api.py`** — `generate_bender_pick(home, away)` → analytical football forecast, parses `АНАЛИЗ:` / `СЧЁТ: X:Y`. `generate_bender_standings(text)` → Bender-persona leaderboard comment. Both use `llama-3.1-8b-instant`.
 - **`app/services/activity.py`** — `log_action(user_id, action, details)`: writes to `ActivityLog`, captures IP from request context, never raises (own try/except). `ACTION_LABELS` dict maps action codes to Russian display names.
+- **`app/services/standings.py`** — `maybe_generate_standings(league, app)`: called after every fetch (startup + API). Runs in background thread. Groups featured matches by Minsk date; finds latest day where ALL are `finished`; checks `Setting[standings_day_{league}]` for idempotency; if new complete day found, generates Bender standings commentary via `generate_bender_standings()` and saves to `Commentary`.
 
 ### Auth (`app/auth.py`)
 `login_required`, `admin_required`, `superuser_required` decorators. `get_current_user()` reads `session["user_id"]`.
+
+### Timezone
+All displayed times use Europe/Minsk (UTC+3, no DST). Implemented as `+timedelta(hours=3)` via `| minsk` Jinja2 filter registered in `create_app()`. Used in: index.html, admin.html, superadmin.html, activity_log.html.
 
 ### Seed (`app/seed.py`)
 Always creates the Bender bot user (`is_bot=True`). Creates up to 4 real users from env vars only if no non-bot users exist yet. USER2/USER3 are optional.

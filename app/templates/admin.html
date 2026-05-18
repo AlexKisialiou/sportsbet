@@ -49,7 +49,7 @@
         <form id="featuredFormUcl">
             {% set ns = namespace(cur_date='') %}
             {% for m in ucl_scheduled %}
-                {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
                 {% if mdate != ns.cur_date %}
                     {% set ns.cur_date = mdate %}
                     <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
@@ -62,7 +62,7 @@
                         {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
                     </span>
                     <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                        {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
                     </span>
                 </label>
             {% endfor %}
@@ -104,7 +104,7 @@
         <form id="featuredFormPl">
             {% set ns = namespace(cur_date='') %}
             {% for m in pl_scheduled %}
-                {% set mdate = m.kickoff_time.strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
                 {% if mdate != ns.cur_date %}
                     {% set ns.cur_date = mdate %}
                     <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
@@ -117,7 +117,7 @@
                         {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
                     </span>
                     <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                        {{ m.kickoff_time.strftime('%H:%M') if m.kickoff_time else '' }}
+                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
                     </span>
                 </label>
             {% endfor %}
@@ -160,7 +160,7 @@ async function saveFeatured(league) {
             body: JSON.stringify({ match_ids: checked, league: league.toUpperCase() })
         });
         const data = await resp.json();
-        msg.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей</span>`;
+        msg.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей. Прогнозы Бендера генерируются…</span>`;
     } catch {
         msg.innerHTML = `<span class="error-msg">Ошибка сохранения.</span>`;
     }
