@@ -79,6 +79,30 @@ def create_app():
             print(f"[migration] matches skipped: {e}")
 
         try:
+            score_cols = [c["name"] for c in insp.get_columns("scores", schema=inspect_schema)]
+            if "manual_lock" not in score_cols:
+                db.session.execute(text(
+                    "ALTER TABLE scores ADD COLUMN manual_lock BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                db.session.commit()
+                print("[migration] added scores.manual_lock column")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] scores skipped: {e}")
+
+        try:
+            pp_cols = [c["name"] for c in insp.get_columns("prediction_points", schema=inspect_schema)]
+            if "manual_lock" not in pp_cols:
+                db.session.execute(text(
+                    "ALTER TABLE prediction_points ADD COLUMN manual_lock BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                db.session.commit()
+                print("[migration] added prediction_points.manual_lock column")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] prediction_points skipped: {e}")
+
+        try:
             user_cols = [c["name"] for c in insp.get_columns("users", schema=inspect_schema)]
             for col, ddl in [
                 ("nickname",        "ALTER TABLE users ADD COLUMN nickname VARCHAR(100)"),
@@ -107,7 +131,7 @@ def create_app():
 
         from .seed import run as seed
         seed()
-        from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches
+        from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
         from .services.standings import maybe_generate_standings
         try:
             added, updated = fetch_and_save_cl_matches()
@@ -121,6 +145,12 @@ def create_app():
             maybe_generate_standings("PL", app)
         except Exception as e:
             print(f"[startup] PL fetch skipped: {e}")
+        try:
+            added, updated = fetch_and_save_wc_matches()
+            print(f"[startup] WC matches: +{added} added, {updated} updated")
+            maybe_generate_standings("WC", app)
+        except Exception as e:
+            print(f"[startup] WC fetch skipped: {e}")
 
     from .routes.main import main_bp
     from .routes.api import api_bp

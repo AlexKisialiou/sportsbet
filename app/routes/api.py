@@ -1,7 +1,8 @@
+from datetime import datetime
 from flask import Blueprint, jsonify, request, current_app
-from ..models import db, Prediction, Match, Score, Tour, Commentary, User, Setting
-from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches
-from ..services.points import update_points_for_match
+from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting
+from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
+from ..services.points import update_points_for_match, calc_points
 from ..auth import get_current_user, login_required, admin_required, superuser_required
 from ..services.activity import log_action
 from ..services.standings import maybe_generate_standings
@@ -53,6 +54,39 @@ def pl_matches():
         actor = get_current_user()
         log_action(actor.id if actor else None, "pl_matches_loaded",
                    f"АПЛ матчи загружены: +{added} новых, {updated} обновлено")
+        return jsonify({"added": added, "updated": updated})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/wc-matches", methods=["POST"])
+@admin_required
+@limiter.limit("5 per minute")
+def wc_matches():
+    data = request.get_json(silent=True) or {}
+    clear_first = data.get("clear", False)
+    try:
+        if clear_first:
+            from ..models import PredictionPoints, Score as ScoreModel
+            wc_tour_ids = [t.id for t in Tour.query.filter_by(league="WC").all()]
+            if wc_tour_ids:
+                wc_match_ids = [m.id for m in Match.query.filter(Match.tour_id.in_(wc_tour_ids)).all()]
+                if wc_match_ids:
+                    pred_ids = [p.id for p in Prediction.query.filter(
+                        Prediction.match_id.in_(wc_match_ids)).all()]
+                    if pred_ids:
+                        PredictionPoints.query.filter(
+                            PredictionPoints.prediction_id.in_(pred_ids)).delete(synchronize_session=False)
+                    Prediction.query.filter(Prediction.match_id.in_(wc_match_ids)).delete(synchronize_session=False)
+                    ScoreModel.query.filter(ScoreModel.match_id.in_(wc_match_ids)).delete(synchronize_session=False)
+                    Match.query.filter(Match.tour_id.in_(wc_tour_ids)).delete(synchronize_session=False)
+                Tour.query.filter_by(league="WC").delete()
+                db.session.commit()
+        added, updated = fetch_and_save_wc_matches()
+        maybe_generate_standings("WC", current_app._get_current_object())
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "wc_matches_loaded",
+                   f"ЧМ матчи загружены: +{added} новых, {updated} обновлено")
         return jsonify({"added": added, "updated": updated})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -156,10 +190,13 @@ def set_featured_matches():
                 bender = User.query.filter_by(username=BENDER_USERNAME).first()
                 bender_id = bender.id if bender else None
 
+                competition_names = {"UCL": "Лига Чемпионов УЕФА", "PL": "Английская Премьер-лига", "WC": "Чемпионат Мира по футболу"}
+                competition = competition_names.get(league, league)
+
                 def call_groq(item):
                     match_id, home, away, label = item
                     try:
-                        result = generate_bender_pick(home, away)
+                        result = generate_bender_pick(home, away, competition)
                         return (match_id, label, result)
                     except Exception as e:
                         print(f"[groq] bender skipped for {label}: {e}")
@@ -228,13 +265,14 @@ def simulate_results():
     # Generate Бендер standings comments per league
     try:
         from ..services.points import get_leaderboard
-        from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL
+        from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
         from datetime import date as date_type
         from sqlalchemy import func as sqlfunc
 
         for league, label_key, league_name in [
             ("UCL", STANDINGS_LABEL_UCL, "ЛЧ"),
             ("PL", STANDINGS_LABEL_PL, "АПЛ"),
+            ("WC", STANDINGS_LABEL_WC, "ЧМ"),
         ]:
             lb = get_leaderboard(league=league)
             standings_lines = [f"Турнирная таблица ({league_name}):"]
@@ -307,6 +345,122 @@ def set_betting_lock():
     log_action(actor.id if actor else None, "betting_lock",
                "Ставки заблокированы" if locked else "Ставки разблокированы")
     return jsonify({"ok": True, "locked": locked})
+
+
+@api_bp.route("/settings/league-enabled", methods=["POST"])
+@superuser_required
+def set_league_enabled():
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    enabled = data.get("enabled")
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "unknown league"}), 400
+    if enabled is None:
+        return jsonify({"error": "enabled required"}), 400
+    s = Setting.query.get(f"league_enabled_{league}") or Setting(key=f"league_enabled_{league}")
+    s.value = "1" if enabled else "0"
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "league_toggled",
+               f"Лига {league}: {'включена' if enabled else 'выключена'}")
+    return jsonify({"ok": True, "league": league, "enabled": enabled})
+
+
+@api_bp.route("/settings/pred-days", methods=["POST"])
+@superuser_required
+def set_pred_days():
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    days = data.get("days")
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "unknown league"}), 400
+    if not isinstance(days, int) or not (1 <= days <= 20):
+        return jsonify({"error": "days must be integer 1–20"}), 400
+    s = Setting.query.get(f"pred_days_{league}") or Setting(key=f"pred_days_{league}")
+    s.value = str(days)
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "pred_days_changed",
+               f"Кол-во дней {league}: {days}")
+    return jsonify({"ok": True, "league": league, "days": days})
+
+
+@api_bp.route("/settings/league-order", methods=["POST"])
+@superuser_required
+def set_league_order():
+    data = request.get_json(silent=True) or {}
+    order = data.get("order", [])
+    valid = [lg for lg in order if lg in ("UCL", "PL", "WC")]
+    if len(valid) != 3:
+        return jsonify({"error": "order must contain UCL, PL, WC"}), 400
+    s = Setting.query.get("league_order") or Setting(key="league_order")
+    s.value = ",".join(valid)
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "league_order_changed", f"Порядок лиг: {s.value}")
+    return jsonify({"ok": True, "order": valid})
+
+
+@api_bp.route("/admin/translate-teams-ru", methods=["POST"])
+@superuser_required
+def translate_teams_ru():
+    from ..models import Team as TeamModel
+    from ..services.groq_api import translate_team_names
+    teams = TeamModel.query.filter(
+        (TeamModel.name_ru == None) | (TeamModel.name_ru == "")
+    ).all()
+    if not teams:
+        return jsonify({"ok": True, "updated": 0, "failed": []})
+
+    BATCH = 30
+    all_translations = {}
+    names = [t.name for t in teams]
+    for i in range(0, len(names), BATCH):
+        try:
+            all_translations.update(translate_team_names(names[i:i + BATCH]))
+        except Exception as e:
+            print(f"[groq] translate batch error: {e}")
+
+    updated, failed = 0, []
+    for team in teams:
+        ru = all_translations.get(team.name)
+        if ru:
+            team.name_ru = ru
+            updated += 1
+        else:
+            failed.append(team.name)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "teams_ru_translated",
+               f"Groq перевёл: {updated}, не удалось: {len(failed)}")
+    return jsonify({"ok": True, "updated": updated, "failed": sorted(failed)})
+
+
+@api_bp.route("/admin/apply-teams-ru", methods=["POST"])
+@superuser_required
+def apply_teams_ru():
+    from ..models import Team as TeamModel
+    from ..data.teams_ru import TEAMS_RU
+    teams = TeamModel.query.all()
+    updated = 0
+    missing = []
+    for team in teams:
+        ru = TEAMS_RU.get(team.name)
+        if ru:
+            if team.name_ru != ru:
+                team.name_ru = ru
+                updated += 1
+        else:
+            if not team.name_ru:
+                missing.append(team.name)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "teams_ru_applied",
+               f"Русские названия: обновлено {updated}, без перевода {len(missing)}")
+    return jsonify({"ok": True, "updated": updated, "missing": sorted(missing)})
 
 
 @api_bp.route("/reset-scores", methods=["POST"])
@@ -456,6 +610,158 @@ def delete_user(user_id):
     db.session.commit()
     actor = get_current_user()
     log_action(actor.id if actor else None, "user_deleted", f"Удалён пользователь: {name}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/match/<int:match_id>/score", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def set_match_score(match_id):
+    data = request.get_json(silent=True) or {}
+    home_score = data.get("home_score")
+    away_score = data.get("away_score")
+    if not isinstance(home_score, int) or not isinstance(away_score, int):
+        return jsonify({"error": "home_score и away_score обязательны (целые числа)"}), 400
+    if not (0 <= home_score <= 99 and 0 <= away_score <= 99):
+        return jsonify({"error": "Счёт должен быть от 0 до 99"}), 400
+    match = Match.query.get(match_id)
+    if not match:
+        return jsonify({"error": "Матч не найден"}), 404
+    match.status = "finished"
+    if match.score:
+        match.score.home_score = home_score
+        match.score.away_score = away_score
+        match.score.manual_lock = True
+        match.score.updated_at = datetime.utcnow()
+    else:
+        db.session.add(Score(match_id=match_id, home_score=home_score, away_score=away_score,
+                             manual_lock=True))
+    db.session.flush()
+    db.session.refresh(match)
+    update_points_for_match(match)
+    # Auto-lock all calculated prediction points for this match
+    for pred in Prediction.query.filter_by(match_id=match_id).all():
+        if pred.result and not pred.result.manual_lock:
+            pred.result.manual_lock = True
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "score_manual_set",
+               f"{match.home_team.display_name} {home_score}:{away_score} {match.away_team.display_name}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/match/<int:match_id>/score/clear", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def clear_match_score(match_id):
+    match = Match.query.get(match_id)
+    if not match:
+        return jsonify({"error": "Матч не найден"}), 404
+    if match.score:
+        db.session.delete(match.score)
+    match.status = "scheduled"
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "score_manual_cleared",
+               f"{match.home_team.display_name} vs {match.away_team.display_name}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/match/<int:match_id>/predictions", methods=["GET"])
+@superuser_required
+def get_match_predictions(match_id):
+    match = Match.query.get(match_id)
+    if not match:
+        return jsonify({"error": "Матч не найден"}), 404
+    preds = Prediction.query.filter_by(match_id=match_id).all()
+    result = []
+    for pred in preds:
+        result.append({
+            "id": pred.id,
+            "user_id": pred.user_id,
+            "user_name": pred.user.display_name if pred.user else "?",
+            "home_score": pred.home_score,
+            "away_score": pred.away_score,
+            "points": pred.result.points if pred.result else None,
+            "reason": pred.result.reason if pred.result else None,
+            "manual_lock": pred.result.manual_lock if pred.result else False,
+        })
+    return jsonify({
+        "match_id": match_id,
+        "score_locked": match.score.manual_lock if match.score else False,
+        "predictions": result,
+    })
+
+
+@api_bp.route("/admin/prediction/<int:prediction_id>/points", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def set_prediction_points(prediction_id):
+    data = request.get_json(silent=True) or {}
+    points = data.get("points")
+    if points not in (0, 1, 3):
+        return jsonify({"error": "points должен быть 0, 1 или 3"}), 400
+    pred = Prediction.query.get(prediction_id)
+    if not pred:
+        return jsonify({"error": "Прогноз не найден"}), 404
+    reason_map = {0: "none", 1: "winner", 3: "exact"}
+    reason = reason_map[points]
+    if pred.result:
+        pred.result.points = points
+        pred.result.reason = reason
+        pred.result.manual_lock = True
+        pred.result.calculated_at = datetime.utcnow()
+    else:
+        db.session.add(PredictionPoints(
+            prediction_id=pred.id,
+            points=points,
+            reason=reason,
+            manual_lock=True,
+        ))
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "points_manual_set",
+               f"Прогноз #{pred.id}: {points} очков")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/prediction/<int:prediction_id>/points/lock", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def lock_prediction_points(prediction_id):
+    pred = Prediction.query.get(prediction_id)
+    if not pred:
+        return jsonify({"error": "Прогноз не найден"}), 404
+    if not pred.result:
+        return jsonify({"error": "Очки ещё не рассчитаны"}), 400
+    pred.result.manual_lock = True
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "points_manual_set",
+               f"Прогноз #{pred.id}: заблокировано ({pred.result.points} очков)")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/prediction/<int:prediction_id>/points/unlock", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def unlock_prediction_points(prediction_id):
+    pred = Prediction.query.get(prediction_id)
+    if not pred:
+        return jsonify({"error": "Прогноз не найден"}), 404
+    if pred.result:
+        pred.result.manual_lock = False
+        match = Match.query.get(pred.match_id)
+        if match and match.score and match.status == "finished":
+            pts, rsn = calc_points(pred.home_score, pred.away_score,
+                                   match.score.home_score, match.score.away_score)
+            pred.result.points = pts
+            pred.result.reason = rsn
+            pred.result.calculated_at = datetime.utcnow()
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "points_manual_unlocked",
+               f"Прогноз #{pred.id}: разблокировано")
     return jsonify({"ok": True})
 
 

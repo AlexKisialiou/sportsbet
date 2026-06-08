@@ -16,10 +16,20 @@ ACTION_LABELS = {
     'user_deleted':         'Удаление пользователя',
     'pl_matches_loaded':    'Загрузка матчей АПЛ',
     'cl_matches_loaded':    'Загрузка матчей ЛЧ',
+    'wc_matches_loaded':    'Загрузка матчей ЧМ',
     'logout':               'Выход из системы',
     'note_set':             'Заметка на пользователя',
     'superuser_revoked':    'Снятие прав суперадмина',
     'betting_lock':         'Блокировка ставок',
+    'score_manual_set':     'Счёт матча установлен вручную',
+    'score_manual_cleared': 'Счёт матча убран',
+    'points_manual_set':    'Очки установлены вручную',
+    'points_manual_unlocked': 'Очки разблокированы',
+    'league_toggled':       'Переключение лиги',
+    'league_order_changed': 'Порядок лиг изменён',
+    'pred_days_changed':    'Глубина прогнозов изменена',
+    'teams_ru_applied':     'Русские названия команд',
+    'teams_ru_translated':  'Перевод через Groq',
 }
 
 

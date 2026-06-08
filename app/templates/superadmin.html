@@ -141,6 +141,88 @@
     <div id="createMsg" style="font-size:.82rem;margin-top:8px;"></div>
 </div>
 
+<div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#7a9ab5;">🏆 Управление лигами</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Включай/выключай лиги и управляй порядком отображения табов для пользователей и админов.
+    </p>
+    {% set _lg_labels = {'UCL': '🏆 Лига Чемпионов', 'PL': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ', 'WC': '🌍 ЧМ 2026'} %}
+    <div id="leagues-list">
+        {% for lg in league_order %}
+        {% set en = league_enabled[lg] %}
+        <div class="d-flex align-items-center gap-2" style="padding:10px 0;border-bottom:1px solid #1e2d3d;"
+             id="league-row-{{ lg }}">
+            <span style="flex:1;font-size:.9rem;color:#c0c8d0;">{{ _lg_labels[lg] }}</span>
+            <span id="league-status-{{ lg }}"
+                  style="font-size:.75rem;padding:2px 8px;border-radius:10px;
+                         background:{% if en %}#1a2e1a{% else %}#2a0a0a{% endif %};
+                         color:{% if en %}#5db85d{% else %}#e05555{% endif %};">
+                {% if en %}Включена{% else %}Выключена{% endif %}
+            </span>
+            <button onclick="toggleLeague('{{ lg }}', {{ 'false' if en else 'true' }})"
+                    id="league-toggle-{{ lg }}"
+                    style="font-size:.78rem;padding:4px 12px;border-radius:6px;cursor:pointer;
+                           background:{% if en %}#2a0a0a{% else %}#0a2a10{% endif %};
+                           color:{% if en %}#e05555{% else %}#5db85d{% endif %};
+                           border:1px solid {% if en %}#5a1a1a{% else %}#1a5a2a{% endif %};">
+                {% if en %}Выключить{% else %}Включить{% endif %}
+            </button>
+            <button onclick="moveLeague('{{ lg }}', -1)"
+                    style="font-size:.78rem;padding:4px 8px;border-radius:6px;cursor:pointer;
+                           background:#0d1b28;color:#7a9ab5;border:1px solid #1e2d3d;"
+                    {% if loop.first %}disabled style="opacity:.35;cursor:default;"{% endif %}>↑</button>
+            <button onclick="moveLeague('{{ lg }}', 1)"
+                    style="font-size:.78rem;padding:4px 8px;border-radius:6px;cursor:pointer;
+                           background:#0d1b28;color:#7a9ab5;border:1px solid #1e2d3d;"
+                    {% if loop.last %}disabled style="opacity:.35;cursor:default;"{% endif %}>↓</button>
+            <span style="font-size:.72rem;color:#4a6a8a;margin-left:6px;white-space:nowrap;">дней:</span>
+            <input type="number" min="1" max="20" value="{{ pred_days_limits[lg] }}"
+                   id="pred-days-{{ lg }}"
+                   style="width:48px;font-size:.78rem;padding:3px 6px;border-radius:5px;
+                          background:#0d1b28;border:1px solid #2a3a5a;color:#c0c8d0;
+                          outline:none;text-align:center;"
+                   onfocus="this.style.borderColor='#5a7a9a'"
+                   onblur="this.style.borderColor='#2a3a5a'">
+            <button onclick="savePredDays('{{ lg }}')"
+                    style="font-size:.72rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                           background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
+                ОК
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    <div id="leagueMsg" style="font-size:.82rem;margin-top:8px;"></div>
+</div>
+
+<div class="admin-card" style="border-color:#1a2a1a;">
+    <h6 style="color:#5a8a5a;">🌍 Русские названия команд</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Применить переводы из словаря <code>teams_ru.py</code> ко всем командам в базе данных.
+        После этого отобразится список команд без перевода.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-action" style="background:#0a1a0a;color:#5db85d;border-color:#1a5a1a;"
+                id="applyTeamsRuBtn" onclick="applyTeamsRu()">
+            Применить из словаря
+        </button>
+        <button class="btn-action" style="background:#0a100a;color:#9d6fff;border-color:#2a1a5a;"
+                id="translateTeamsRuBtn" onclick="translateTeamsRu()">
+            🤖 Перевести через Groq
+        </button>
+    </div>
+    <div class="spinner" id="teamsRuSpinner"></div>
+    <div id="teamsRuMsg" style="font-size:.82rem;margin-top:10px;"></div>
+    <div id="teamsRuMissing" style="margin-top:12px;display:none;">
+        <div style="font-size:.72rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">
+            Без перевода — добавь в teams_ru.py:
+        </div>
+        <div id="teamsRuMissingList"
+             style="font-size:.78rem;color:#6a5a3a;line-height:1.9;
+                    background:#0d1208;border:1px solid #1a2a0a;border-radius:7px;
+                    padding:10px 14px;max-height:240px;overflow-y:auto;"></div>
+    </div>
+</div>
+
 <div class="admin-card">
     <h6>Тема оформления</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">Выбери цветовую схему для всех пользователей.</p>
@@ -187,6 +269,101 @@
     </div>
 </div>
 
+<div class="admin-card" style="border-color:#1a3a2a;">
+    <h6 style="color:#5db85d;">✏️ Результаты матчей</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Задай счёт вручную — API не перезапишет. Убери счёт — API снова обновит автоматически.
+        Управляй очками за каждый прогноз.
+    </p>
+    {% set _lg_names = {'UCL': '🏆 ЛЧ', 'PL': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ', 'WC': '🌍 ЧМ'} %}
+    {% set _has_any = namespace(v=false) %}
+    {% for lg in league_order %}{% if edit_matches_by_league[lg] %}{% set _has_any.v = true %}{% endif %}{% endfor %}
+    {% if _has_any.v %}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;" id="edit-tabs">
+        {% for lg in league_order %}
+        {% if edit_matches_by_league[lg] %}
+        <button onclick="switchEditTab('{{ lg }}')" id="edit-tab-{{ lg }}"
+                style="font-size:.78rem;padding:5px 14px;border-radius:7px;cursor:pointer;
+                       background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;transition:.15s;">
+            {{ _lg_names[lg] }} ({{ edit_matches_by_league[lg]|length }})
+        </button>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% for lg in league_order %}
+    {% if edit_matches_by_league[lg] %}
+    <div id="edit-panel-{{ lg }}" style="display:none;">
+        {% for m in edit_matches_by_league[lg] %}
+        <div style="padding:8px 0 6px;border-bottom:1px solid #1e2d3d;" id="edit-match-{{ m.id }}">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:.7rem;color:#4a6a8a;min-width:105px;flex-shrink:0;">
+                    {{ (m.kickoff_time | minsk).strftime('%d.%m %H:%M') if m.kickoff_time else '—' }}
+                </span>
+                <span style="font-size:.83rem;color:#c0c8d0;flex:1;text-align:right;min-width:80px;">
+                    {{ m.home_team.display_name }}
+                </span>
+                <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+                    <input type="number" min="0" max="99"
+                           value="{{ m.score.home_score if m.score else '' }}"
+                           id="sh-{{ m.id }}" placeholder="?"
+                           style="width:36px;text-align:center;background:#0d1b28;border:1px solid #2a3a5a;
+                                  color:#c0c8d0;border-radius:5px;padding:3px 2px;font-size:.88rem;outline:none;"
+                           onfocus="this.style.borderColor='#5a7a9a'" onblur="this.style.borderColor='#2a3a5a'">
+                    <span style="color:#4a6a8a;font-weight:bold;">:</span>
+                    <input type="number" min="0" max="99"
+                           value="{{ m.score.away_score if m.score else '' }}"
+                           id="sa-{{ m.id }}" placeholder="?"
+                           style="width:36px;text-align:center;background:#0d1b28;border:1px solid #2a3a5a;
+                                  color:#c0c8d0;border-radius:5px;padding:3px 2px;font-size:.88rem;outline:none;"
+                           onfocus="this.style.borderColor='#5a7a9a'" onblur="this.style.borderColor='#2a3a5a'">
+                </div>
+                <span style="font-size:.83rem;color:#c0c8d0;flex:1;min-width:80px;">
+                    {{ m.away_team.display_name }}
+                </span>
+                <span style="font-size:.68rem;padding:2px 6px;border-radius:5px;flex-shrink:0;
+                      background:{% if m.status == 'finished' %}#1a2e1a{% elif m.status == 'live' %}#2a1a00{% else %}#1a1a2e{% endif %};
+                      color:{% if m.status == 'finished' %}#5db85d{% elif m.status == 'live' %}#e09a40{% else %}#5a5a9a{% endif %};">
+                    {{ m.status }}
+                </span>
+                {% if m.score and m.score.manual_lock %}
+                <span style="font-size:.68rem;padding:2px 6px;border-radius:5px;background:#2a1a00;
+                             color:#e09a40;border:1px solid #5a3a00;flex-shrink:0;">🔒 SA</span>
+                {% endif %}
+                <button onclick="saveMatchScore({{ m.id }})"
+                        style="font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                               background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;flex-shrink:0;">
+                    Сохранить
+                </button>
+                <button id="clear-btn-{{ m.id }}"
+                        onclick="clearMatchScore({{ m.id }})"
+                        style="font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                               background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;flex-shrink:0;
+                               display:{% if m.score %}inline-block{% else %}none{% endif %};">
+                    Убрать
+                </button>
+                <button onclick="togglePredPanel({{ m.id }})"
+                        id="preds-btn-{{ m.id }}"
+                        style="font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                               background:#0d1b28;color:#7a9ab5;border:1px solid #2a3a5a;flex-shrink:0;">
+                    Ставки
+                </button>
+            </div>
+            <div id="match-msg-{{ m.id }}" style="font-size:.76rem;margin-top:3px;padding-left:111px;"></div>
+            <div id="preds-panel-{{ m.id }}" style="display:none;margin-top:8px;padding-left:10px;">
+                <div id="preds-content-{{ m.id }}"
+                     style="font-size:.8rem;color:#7a9ab5;">Загрузка…</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    <p style="font-size:.83rem;color:#4a6a8a;">Нет избранных матчей. Выбери матчи для ставок в панели Админа.</p>
+    {% endif %}
+    <div id="editResultsMsg" style="font-size:.82rem;margin-top:8px;"></div>
+</div>
+
 <div class="admin-card" style="border-color:#5a1a1a;">
     <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
     <p class="text-secondary mb-2" style="font-size:.85rem;">
@@ -213,6 +390,200 @@
 </div>
 
 <script>
+// ── Match results editor ─────────────────────────────────────────────────────
+let _editTabActive = null;
+let _predsLoaded = {};
+
+function switchEditTab(lg) {
+    document.querySelectorAll('[id^="edit-panel-"]').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('[id^="edit-tab-"]').forEach(el => {
+        el.style.background = '#0a1a2a'; el.style.color = '#7a9ab5'; el.style.borderColor = '#1a3a5a';
+    });
+    const panel = document.getElementById(`edit-panel-${lg}`);
+    const tab = document.getElementById(`edit-tab-${lg}`);
+    if (panel) panel.style.display = 'block';
+    if (tab) { tab.style.background = '#0a2a10'; tab.style.color = '#5db85d'; tab.style.borderColor = '#1a5a2a'; }
+    _editTabActive = lg;
+}
+
+(function() {
+    const firstTab = document.querySelector('[id^="edit-tab-"]');
+    if (firstTab) {
+        const lg = firstTab.id.replace('edit-tab-', '');
+        switchEditTab(lg);
+    }
+})();
+
+async function saveMatchScore(matchId) {
+    const h = document.getElementById(`sh-${matchId}`).value;
+    const a = document.getElementById(`sa-${matchId}`).value;
+    const msg = document.getElementById(`match-msg-${matchId}`);
+    if (h === '' || a === '') { msg.innerHTML = '<span class="error-msg">Введи оба значения счёта.</span>'; return; }
+    try {
+        const resp = await fetch(`/api/admin/match/${matchId}/score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ home_score: parseInt(h), away_score: parseInt(a) })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Счёт сохранён. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 900);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>'; }
+}
+
+async function clearMatchScore(matchId) {
+    if (!confirm('Убрать счёт матча? API снова будет обновлять его автоматически.')) return;
+    const msg = document.getElementById(`match-msg-${matchId}`);
+    try {
+        const resp = await fetch(`/api/admin/match/${matchId}/score/clear`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Счёт убран. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 900);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>'; }
+}
+
+async function togglePredPanel(matchId) {
+    const panel = document.getElementById(`preds-panel-${matchId}`);
+    const btn = document.getElementById(`preds-btn-${matchId}`);
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.style.background = '#0a2a20'; btn.style.color = '#3db88d'; btn.style.borderColor = '#1a5a3a';
+        if (!_predsLoaded[matchId]) {
+            _predsLoaded[matchId] = true;
+            await loadPredictions(matchId);
+        }
+    } else {
+        panel.style.display = 'none';
+        btn.style.background = '#0d1b28'; btn.style.color = '#7a9ab5'; btn.style.borderColor = '#2a3a5a';
+    }
+}
+
+async function loadPredictions(matchId) {
+    const content = document.getElementById(`preds-content-${matchId}`);
+    try {
+        const resp = await fetch(`/api/admin/match/${matchId}/predictions`);
+        const data = await resp.json();
+        if (!resp.ok) { content.innerHTML = `<span class="error-msg">${data.error}</span>`; return; }
+        if (!data.predictions.length) {
+            content.innerHTML = '<span style="color:#4a6a8a;">Прогнозов нет.</span>'; return;
+        }
+        const reasonLabel = { exact: 'точно', winner: 'исход', none: 'мимо', manual: 'SA' };
+        const rows = data.predictions.map(p => {
+            const pts = p.points !== null ? p.points : '—';
+            const rsn = p.reason ? (reasonLabel[p.reason] || p.reason) : '—';
+            const lockBadge = p.manual_lock
+                ? `<span style="font-size:.65rem;padding:1px 5px;border-radius:4px;background:#2a1a00;color:#e09a40;border:1px solid #5a3a00;">🔒</span>`
+                : '';
+            const ptsColor = p.points === 3 ? '#5db85d' : p.points === 1 ? '#e09a40' : '#6a6a8a';
+            const unlockBtn = p.manual_lock
+                ? `<button onclick="unlockPoints(${p.id},${matchId})"
+                           style="font-size:.68rem;padding:2px 7px;border-radius:4px;cursor:pointer;
+                                  background:#0a1a0a;color:#9a9ae0;border:1px solid #2a2a5a;">
+                       Разблокировать
+                   </button>`
+                : (p.points !== null
+                    ? `<button onclick="lockPoints(${p.id},${matchId})"
+                               style="font-size:.68rem;padding:2px 7px;border-radius:4px;cursor:pointer;
+                                      background:#1a1200;color:#e09a40;border:1px solid #4a3010;">
+                           Заблокировать
+                       </button>`
+                    : '');
+            return `<tr id="pred-row-${p.id}">
+                <td style="padding:4px 8px 4px 0;color:#c0c8d0;">${p.user_name}</td>
+                <td style="padding:4px 8px;color:#7a9ab5;text-align:center;">${p.home_score}:${p.away_score}</td>
+                <td style="padding:4px 6px;text-align:center;">
+                    <select id="pts-sel-${p.id}"
+                            style="background:#0d1b28;border:1px solid #2a3a5a;color:#c0c8d0;
+                                   border-radius:5px;padding:2px 4px;font-size:.8rem;outline:none;">
+                        <option value="0" ${p.points===0?'selected':''}>0</option>
+                        <option value="1" ${p.points===1?'selected':''}>1</option>
+                        <option value="3" ${p.points===3?'selected':''}>3</option>
+                    </select>
+                </td>
+                <td style="padding:4px 6px;color:${ptsColor};text-align:center;">${rsn} ${lockBadge}</td>
+                <td style="padding:4px 0 4px 6px;white-space:nowrap;">
+                    <button onclick="savePoints(${p.id},${matchId})"
+                            style="font-size:.68rem;padding:2px 7px;border-radius:4px;cursor:pointer;
+                                   background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;">
+                        Сохранить
+                    </button>
+                    ${unlockBtn}
+                    <span id="pred-msg-${p.id}" style="font-size:.68rem;margin-left:4px;"></span>
+                </td>
+            </tr>`;
+        }).join('');
+        content.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.8rem;">
+            <thead><tr style="color:#4a6a8a;font-size:.68rem;">
+                <th style="padding:2px 8px 6px 0;text-align:left;">Игрок</th>
+                <th style="padding:2px 8px 6px;text-align:center;">Ставка</th>
+                <th style="padding:2px 6px 6px;text-align:center;">Очки</th>
+                <th style="padding:2px 6px 6px;text-align:center;">Причина</th>
+                <th style="padding:2px 0 6px 6px;"></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    } catch { content.innerHTML = '<span class="error-msg">Ошибка загрузки.</span>'; }
+}
+
+async function savePoints(predId, matchId) {
+    const pts = parseInt(document.getElementById(`pts-sel-${predId}`).value);
+    const msg = document.getElementById(`pred-msg-${predId}`);
+    try {
+        const resp = await fetch(`/api/admin/prediction/${predId}/points`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ points: pts })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">✓</span>';
+            _predsLoaded[matchId] = false;
+            setTimeout(async () => { msg.innerHTML = ''; await loadPredictions(matchId); }, 600);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">!</span>'; }
+}
+
+async function lockPoints(predId, matchId) {
+    const msg = document.getElementById(`pred-msg-${predId}`);
+    try {
+        const resp = await fetch(`/api/admin/prediction/${predId}/points/lock`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">✓</span>';
+            _predsLoaded[matchId] = false;
+            setTimeout(async () => { msg.innerHTML = ''; await loadPredictions(matchId); }, 600);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">!</span>'; }
+}
+
+async function unlockPoints(predId, matchId) {
+    const msg = document.getElementById(`pred-msg-${predId}`);
+    try {
+        const resp = await fetch(`/api/admin/prediction/${predId}/points/unlock`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">✓</span>';
+            _predsLoaded[matchId] = false;
+            setTimeout(async () => { msg.innerHTML = ''; await loadPredictions(matchId); }, 600);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">!</span>'; }
+}
+
+// ── Users / admin ────────────────────────────────────────────────────────────
 async function createUser() {
     const username = document.getElementById('new-username').value.trim();
     const password = document.getElementById('new-password').value.trim();
@@ -453,6 +824,149 @@ async function toggleBettingLock(lock) {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
     } finally {
         btn.disabled = false;
+    }
+}
+
+async function translateTeamsRu() {
+    const btn = document.getElementById('translateTeamsRuBtn');
+    btn.disabled = true;
+    document.getElementById('applyTeamsRuBtn').disabled = true;
+    document.getElementById('teamsRuSpinner').style.display = 'block';
+    document.getElementById('teamsRuMsg').innerHTML =
+        '<span style="color:#7a9ab5;">Отправляем запрос в Groq, подождите…</span>';
+    document.getElementById('teamsRuMissing').style.display = 'none';
+    try {
+        const resp = await fetch('/api/admin/translate-teams-ru', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            if (data.updated === 0 && data.failed.length === 0) {
+                document.getElementById('teamsRuMsg').innerHTML =
+                    '<span class="success-msg">Все команды уже переведены ✓</span>';
+            } else {
+                document.getElementById('teamsRuMsg').innerHTML =
+                    `<span class="success-msg">Groq перевёл: ${data.updated} команд.</span>`;
+                if (data.failed.length > 0) {
+                    document.getElementById('teamsRuMissing').style.display = 'block';
+                    document.getElementById('teamsRuMissingList').innerHTML =
+                        data.failed.map(n => `<div>${n}</div>`).join('');
+                }
+            }
+        } else {
+            document.getElementById('teamsRuMsg').innerHTML =
+                `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        document.getElementById('teamsRuMsg').innerHTML =
+            '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        document.getElementById('teamsRuSpinner').style.display = 'none';
+        btn.disabled = false;
+        document.getElementById('applyTeamsRuBtn').disabled = false;
+    }
+}
+
+async function applyTeamsRu() {
+    const btn = document.getElementById('applyTeamsRuBtn');
+    btn.disabled = true;
+    document.getElementById('teamsRuSpinner').style.display = 'block';
+    document.getElementById('teamsRuMsg').innerHTML = '';
+    document.getElementById('teamsRuMissing').style.display = 'none';
+    try {
+        const resp = await fetch('/api/admin/apply-teams-ru', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            document.getElementById('teamsRuMsg').innerHTML =
+                `<span class="success-msg">Обновлено: ${data.updated} команд.</span>`;
+            if (data.missing.length > 0) {
+                document.getElementById('teamsRuMissing').style.display = 'block';
+                document.getElementById('teamsRuMissingList').innerHTML =
+                    data.missing.map(n => `<div>${n}</div>`).join('');
+            } else {
+                document.getElementById('teamsRuMsg').innerHTML +=
+                    ' <span style="color:#5db85d;">Все команды переведены ✓</span>';
+            }
+        } else {
+            document.getElementById('teamsRuMsg').innerHTML =
+                `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        document.getElementById('teamsRuMsg').innerHTML =
+            '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        document.getElementById('teamsRuSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function savePredDays(league) {
+    const days = parseInt(document.getElementById(`pred-days-${league}`).value);
+    const msg = document.getElementById('leagueMsg');
+    if (!days || days < 1 || days > 20) {
+        msg.innerHTML = '<span class="error-msg">Введи число от 1 до 20.</span>';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/pred-days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league, days })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function toggleLeague(league, enable) {
+    const msg = document.getElementById('leagueMsg');
+    try {
+        const resp = await fetch('/api/settings/league-enabled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league, enabled: enable })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Сохранено. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 800);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function moveLeague(league, direction) {
+    const rows = [...document.querySelectorAll('#leagues-list > div[id^="league-row-"]')];
+    const order = rows.map(r => r.id.replace('league-row-', ''));
+    const idx = order.indexOf(league);
+    if (idx === -1) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= order.length) return;
+    [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+    const msg = document.getElementById('leagueMsg');
+    try {
+        const resp = await fetch('/api/settings/league-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Порядок сохранён. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 800);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
     }
 }
 

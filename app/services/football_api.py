@@ -16,6 +16,15 @@ STAGE_MAP = {
     "FINAL":          ("ЛЧ Финал",          400),
 }
 
+WC_STAGE_MAP = {
+    "GROUP_STAGE":    ("ЧМ Групповой этап", 0),
+    "ROUND_OF_16":    ("ЧМ 1/8 финала",     100),
+    "QUARTER_FINALS": ("ЧМ 1/4 финала",     200),
+    "SEMI_FINALS":    ("ЧМ 1/2 финала",     300),
+    "THIRD_PLACE":    ("ЧМ За 3-е место",   350),
+    "FINAL":          ("ЧМ Финал",          400),
+}
+
 STATUS_MAP = {
     "FINISHED":  "finished",
     "IN_PLAY":   "live",
@@ -78,9 +87,99 @@ def _save_pl_matches(raw_matches, season):
                 existing.status = status
                 if hs is not None:
                     if existing.score:
-                        existing.score.home_score = hs
-                        existing.score.away_score = as_
-                        existing.score.updated_at = datetime.utcnow()
+                        if not existing.score.manual_lock:
+                            existing.score.home_score = hs
+                            existing.score.away_score = as_
+                            existing.score.updated_at = datetime.utcnow()
+                    else:
+                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                db.session.flush()
+                if status == "finished":
+                    update_points_for_match(existing)
+                updated += 1
+            else:
+                match = Match(
+                    tour_id=tour.id,
+                    external_id=ext_id,
+                    home_team_id=home_team.id,
+                    away_team_id=away_team.id,
+                    kickoff_time=kickoff,
+                    status=status,
+                )
+                db.session.add(match)
+                db.session.flush()
+                if hs is not None:
+                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+                added += 1
+
+    db.session.commit()
+    return added, updated
+
+
+def fetch_and_save_wc_matches():
+    api_key = os.environ.get("FOOTBALL_API_KEY", "")
+    if not api_key:
+        raise ValueError("FOOTBALL_API_KEY not set")
+
+    url = "https://api.football-data.org/v4/competitions/WC/matches"
+    req = urllib.request.Request(url, headers={"X-Auth-Token": api_key})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+
+    season = data.get("competition", {}).get("currentSeason", {}).get("startDate", "2026")[:4]
+    season_str = f"{season}"
+
+    return _save_wc_matches(data.get("matches", []), season_str)
+
+
+def _get_or_create_tour_wc(stage, matchday, season):
+    name_base, round_base = WC_STAGE_MAP.get(stage, (f"ЧМ {stage}", 500))
+    round_number = round_base + (matchday or 0)
+    name = f"{name_base} - Тур {matchday}" if stage == "GROUP_STAGE" and matchday else name_base
+
+    tour = Tour.query.filter_by(league="WC", round_number=round_number, season=season).first()
+    if not tour:
+        tour = Tour(name=name, season=season, round_number=round_number,
+                    league="WC", status="active")
+        db.session.add(tour)
+        db.session.flush()
+    return tour
+
+
+def _save_wc_matches(raw_matches, season):
+    added = updated = 0
+
+    groups = defaultdict(list)
+    for m in raw_matches:
+        groups[(m["stage"], m.get("matchday"))].append(m)
+
+    for (stage, matchday), matches in groups.items():
+        tour = _get_or_create_tour_wc(stage, matchday, season)
+
+        for m in matches:
+            if not m["homeTeam"].get("name") or not m["awayTeam"].get("name"):
+                continue
+
+            home_team = _get_or_create_team(m["homeTeam"])
+            away_team = _get_or_create_team(m["awayTeam"])
+            if not home_team or not away_team:
+                continue
+
+            ext_id = m["id"]
+            status = STATUS_MAP.get(m["status"], "scheduled")
+            kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
+            hs = m["score"]["fullTime"].get("home")
+            as_ = m["score"]["fullTime"].get("away")
+
+            existing = Match.query.filter_by(external_id=ext_id).first()
+            if existing:
+                existing.status = status
+                if hs is not None:
+                    if existing.score:
+                        if not existing.score.manual_lock:
+                            existing.score.home_score = hs
+                            existing.score.away_score = as_
+                            existing.score.updated_at = datetime.utcnow()
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
                 db.session.flush()
@@ -192,9 +291,10 @@ def _save_matches(raw_matches, season):
                 existing.status = status
                 if hs is not None:
                     if existing.score:
-                        existing.score.home_score = hs
-                        existing.score.away_score = as_
-                        existing.score.updated_at = datetime.utcnow()
+                        if not existing.score.manual_lock:
+                            existing.score.home_score = hs
+                            existing.score.away_score = as_
+                            existing.score.updated_at = datetime.utcnow()
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
                 db.session.flush()

@@ -27,6 +27,8 @@ def update_points_for_match(match, commit=True):
     count = 0
 
     for pred in Prediction.query.filter_by(match_id=match.id).all():
+        if pred.result and pred.result.manual_lock:
+            continue
         points, reason = calc_points(pred.home_score, pred.away_score, real_home, real_away)
 
         if pred.result:

@@ -59,6 +59,7 @@ class Score(db.Model):
     home_score = db.Column(db.Integer, nullable=False, default=0)
     away_score = db.Column(db.Integer, nullable=False, default=0)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    manual_lock = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class User(db.Model):
@@ -113,8 +114,9 @@ class PredictionPoints(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     prediction_id = db.Column(db.Integer, db.ForeignKey("predictions.id"), nullable=False, unique=True)
     points = db.Column(db.Integer, nullable=False, default=0)  # 0, 1, or 3
-    reason = db.Column(db.String(10), nullable=False)          # "exact", "winner", "none"
+    reason = db.Column(db.String(10), nullable=False)          # "exact", "winner", "none", "manual"
     calculated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    manual_lock = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class ChatMessage(db.Model):
