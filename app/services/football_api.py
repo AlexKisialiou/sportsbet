@@ -50,6 +50,16 @@ def fetch_and_save_pl_matches():
     return _save_pl_matches(data.get("matches", []), season_str)
 
 
+def _regular_time_score(score_data):
+    """Return (home, away) from regularTime if available, else fullTime."""
+    rt = score_data.get("regularTime") or {}
+    rt_home, rt_away = rt.get("home"), rt.get("away")
+    if rt_home is not None and rt_away is not None:
+        return rt_home, rt_away
+    ft = score_data.get("fullTime") or {}
+    return ft.get("home"), ft.get("away")
+
+
 def _save_pl_matches(raw_matches, season):
     added = updated = 0
 
@@ -79,8 +89,7 @@ def _save_pl_matches(raw_matches, season):
             ext_id = m["id"]
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
-            hs = m["score"]["fullTime"].get("home")
-            as_ = m["score"]["fullTime"].get("away")
+            hs, as_ = _regular_time_score(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
@@ -168,8 +177,7 @@ def _save_wc_matches(raw_matches, season):
             ext_id = m["id"]
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
-            hs = m["score"]["fullTime"].get("home")
-            as_ = m["score"]["fullTime"].get("away")
+            hs, as_ = _regular_time_score(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
@@ -283,8 +291,7 @@ def _save_matches(raw_matches, season):
             ext_id = m["id"]
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
-            hs = m["score"]["fullTime"].get("home")
-            as_ = m["score"]["fullTime"].get("away")
+            hs, as_ = _regular_time_score(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
