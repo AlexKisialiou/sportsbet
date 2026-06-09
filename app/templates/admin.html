@@ -19,12 +19,15 @@
 {% block content %}
 <h5 class="fw-bold text-white mb-4">Админ панель</h5>
 
+{% set _atabs = {'UCL': ('ucl', '🏆 Лига Чемпионов'), 'PL': ('pl', '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ'), 'WC': ('wc', '🌍 ЧМ 2026')} %}
 <div class="league-tabs" style="margin-bottom:20px;">
-    <button class="tab-btn" data-tab="ucl" onclick="switchAdminTab('ucl')">🏆 Лига Чемпионов</button>
-    <button class="tab-btn" data-tab="pl" onclick="switchAdminTab('pl')">🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ</button>
+    {% for lg in league_order %}{% if league_enabled[lg] %}{% set tid, lbl = _atabs[lg] %}
+    <button class="tab-btn" data-tab="{{ tid }}" onclick="switchAdminTab('{{ tid }}')">{{ lbl }}</button>
+    {% endif %}{% endfor %}
 </div>
 
 <!-- ── UCL Tab ── -->
+{% if league_enabled['UCL'] %}
 <div class="tab-pane" id="admin-tab-ucl">
 
     <div class="admin-card">
@@ -77,8 +80,10 @@
     </div>
 
 </div><!-- #admin-tab-ucl -->
+{% endif %}
 
 <!-- ── PL Tab ── -->
+{% if league_enabled['PL'] %}
 <div class="tab-pane" id="admin-tab-pl">
 
     <div class="admin-card">
@@ -132,24 +137,88 @@
     </div>
 
 </div><!-- #admin-tab-pl -->
+{% endif %}
+
+<!-- ── WC Tab ── -->
+{% if league_enabled['WC'] %}
+<div class="tab-pane" id="admin-tab-wc">
+
+    <div class="admin-card">
+        <h6>Загрузить матчи</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Загрузить актуальные матчи Чемпионата Мира 2026 из football-data.org API.<br>
+            Новые матчи добавятся, существующие обновятся.
+        </p>
+        <button class="btn-action" style="background:#1a1a2a;color:#7a9ae0;border-color:#2a2a6a;"
+                id="fetchWcBtn" onclick="loadWcMatches()">
+            Загрузить матчи ЧМ
+        </button>
+        <div class="spinner" id="wcSpinner"></div>
+        <div class="result-msg" id="wcMsg"></div>
+    </div>
+
+    <div class="admin-card">
+        <h6>Матчи для ставок</h6>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Отметь матчи, которые должны показываться пользователям для предикта.
+        </p>
+        {% if wc_scheduled %}
+        <form id="featuredFormWc">
+            {% set ns = namespace(cur_date='') %}
+            {% for m in wc_scheduled %}
+                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                {% if mdate != ns.cur_date %}
+                    {% set ns.cur_date = mdate %}
+                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                {% endif %}
+                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                    <input type="checkbox" name="featured" value="{{ m.id }}"
+                           {% if m.featured %}checked{% endif %}
+                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
+                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                    </span>
+                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
+                    </span>
+                </label>
+            {% endfor %}
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button type="button" class="btn-action" onclick="saveFeatured('wc')">Сохранить выбор</button>
+                <span id="featuredMsgWc" style="font-size:.85rem;"></span>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи ЧМ выше.</p>
+        {% endif %}
+    </div>
+
+</div><!-- #admin-tab-wc -->
+{% endif %}
 
 <script>
 function switchAdminTab(tab) {
     document.querySelectorAll('.tab-pane[id^="admin-tab-"]').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('admin-tab-' + tab).classList.add('active');
-    document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add('active');
+    const pane = document.getElementById('admin-tab-' + tab);
+    const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+    if (!pane || !btn) return;
+    pane.classList.add('active');
+    btn.classList.add('active');
     sessionStorage.setItem('activeAdminTab', tab);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const saved = sessionStorage.getItem('activeAdminTab') || 'ucl';
-    switchAdminTab(saved);
+    const saved = sessionStorage.getItem('activeAdminTab');
+    const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
+    switchAdminTab(saved && document.getElementById('admin-tab-' + saved) ? saved : firstTab);
 });
 
 async function saveFeatured(league) {
-    const formId = league === 'ucl' ? 'featuredFormUcl' : 'featuredFormPl';
-    const msgId  = league === 'ucl' ? 'featuredMsgUcl' : 'featuredMsgPl';
+    const formIds = { ucl: 'featuredFormUcl', pl: 'featuredFormPl', wc: 'featuredFormWc' };
+    const msgIds  = { ucl: 'featuredMsgUcl',  pl: 'featuredMsgPl',  wc: 'featuredMsgWc'  };
+    const formId = formIds[league] || 'featuredFormUcl';
+    const msgId  = msgIds[league]  || 'featuredMsgUcl';
     const checked = [...document.querySelectorAll(`#${formId} input[name="featured"]:checked`)]
         .map(el => parseInt(el.value));
     const msg = document.getElementById(msgId);
@@ -212,6 +281,33 @@ async function loadPlMatches() {
         document.getElementById('plMsg').innerHTML = `<span class="error-msg">Ошибка запроса.</span>`;
     } finally {
         document.getElementById('plSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function loadWcMatches() {
+    const btn = document.getElementById('fetchWcBtn');
+    btn.disabled = true;
+    document.getElementById('wcSpinner').style.display = 'block';
+    document.getElementById('wcMsg').innerHTML = '';
+    try {
+        const resp = await fetch('/api/wc-matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('wcMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        } else {
+            document.getElementById('wcMsg').innerHTML =
+                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
+        }
+    } catch {
+        document.getElementById('wcMsg').innerHTML = `<span class="error-msg">Ошибка запроса.</span>`;
+    } finally {
+        document.getElementById('wcSpinner').style.display = 'none';
         btn.disabled = false;
     }
 }

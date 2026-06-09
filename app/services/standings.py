@@ -14,7 +14,7 @@ def maybe_generate_standings(league, app):
             from ..models import Match, Tour, Setting, Commentary, db
             from .points import get_leaderboard
             from .groq_api import (generate_bender_standings,
-                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL)
+                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
 
             featured = (Match.query.join(Tour)
                         .filter(Tour.league == league, Match.featured == True)
@@ -55,8 +55,10 @@ def maybe_generate_standings(league, app):
             db.session.commit()
 
             # Build standings text
-            league_name = "ЛЧ" if league == "UCL" else "АПЛ"
-            label_key = STANDINGS_LABEL_UCL if league == "UCL" else STANDINGS_LABEL_PL
+            league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ"}
+            label_keys = {"UCL": STANDINGS_LABEL_UCL, "PL": STANDINGS_LABEL_PL, "WC": STANDINGS_LABEL_WC}
+            league_name = league_names.get(league, league)
+            label_key = label_keys.get(league, f"__standings_{league.lower()}__")
 
             lb = get_leaderboard(league=league)
             lines = [f"Турнирная таблица ({league_name}):"]

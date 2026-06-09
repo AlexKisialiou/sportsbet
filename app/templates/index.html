@@ -214,27 +214,31 @@
 {% block content %}
 <div class="page-content-pad" style="padding-top:8px;">
 
+{% set _lmeta = {
+    'UCL': {'tab_id': 'ucl', 'label': '🏆 Лига Чемпионов', 'data': ucl, 'first_match_iso': ucl_first_match_iso},
+    'PL':  {'tab_id': 'pl',  'label': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ',          'data': pl,  'first_match_iso': pl_first_match_iso},
+    'WC':  {'tab_id': 'wc',  'label': '🌍 ЧМ 2026',       'data': wc,  'first_match_iso': wc_first_match_iso}
+} %}
+
 <!-- Tab switcher -->
 <div class="league-tabs">
-    <button class="tab-btn" data-tab="ucl">🏆 Лига Чемпионов</button>
-    <button class="tab-btn" data-tab="pl">🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ</button>
+    {% for lg in league_order %}{% if league_enabled[lg] %}
+    <button class="tab-btn" data-tab="{{ _lmeta[lg].tab_id }}">{{ _lmeta[lg].label }}</button>
+    {% endif %}{% endfor %}
 </div>
 
-<!-- UCL Tab -->
-<div class="tab-pane" id="tab-ucl">
-    {{ render_tab('ucl', ucl, locked=betting_locked, first_match_iso=ucl_first_match_iso) }}
+{% for lg in league_order %}{% if league_enabled[lg] %}
+{% set meta = _lmeta[lg] %}
+<div class="tab-pane" id="tab-{{ meta.tab_id }}">
+    {{ render_tab(meta.tab_id, meta.data, locked=betting_locked, first_match_iso=meta.first_match_iso) }}
 </div>
-
-<!-- PL Tab -->
-<div class="tab-pane" id="tab-pl">
-    {{ render_tab('pl', pl, locked=betting_locked, first_match_iso=pl_first_match_iso) }}
-</div>
+{% endif %}{% endfor %}
 
 </div><!-- .page-content-pad -->
 
 <div id="bender-backdrop" class="bender-backdrop" onclick="benderCloseAll()"></div>
 
-{% if ucl_standings %}
+{% if ucl_standings and league_enabled['UCL'] %}
 <div id="bender-standings-ucl" class="bender-panel bender-panel-gold">
     <div class="bender-panel-hdr">
         <span class="bender-panel-hdr-title">📊 Бендер об очках · ЛЧ</span>
@@ -246,7 +250,7 @@
 </div>
 {% endif %}
 
-{% if pl_standings %}
+{% if pl_standings and league_enabled['PL'] %}
 <div id="bender-standings-pl" class="bender-panel bender-panel-gold">
     <div class="bender-panel-hdr">
         <span class="bender-panel-hdr-title">📊 Бендер об очках · АПЛ</span>
@@ -258,7 +262,7 @@
 </div>
 {% endif %}
 
-{% if ucl_commentaries %}
+{% if ucl_commentaries and league_enabled['UCL'] %}
 <div id="bender-match-ucl" class="bender-panel bender-panel-green">
     <div class="bender-panel-hdr">
         <span class="bender-panel-hdr-title">📋 Прогноз · ЛЧ</span>
@@ -275,7 +279,7 @@
 </div>
 {% endif %}
 
-{% if pl_commentaries %}
+{% if pl_commentaries and league_enabled['PL'] %}
 <div id="bender-match-pl" class="bender-panel bender-panel-green">
     <div class="bender-panel-hdr">
         <span class="bender-panel-hdr-title">📋 Прогноз · АПЛ</span>
@@ -292,24 +296,59 @@
 </div>
 {% endif %}
 
+{% if wc_standings and league_enabled['WC'] %}
+<div id="bender-standings-wc" class="bender-panel bender-panel-gold">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📊 Бендер об очках · ЧМ</span>
+        <button class="bender-close-btn" onclick="benderToggle('standings-wc')">×</button>
+    </div>
+    <div class="bender-panel-body" style="padding:14px 16px;">
+        <div style="font-size:.83rem;color:#b89840;line-height:1.7;">{{ wc_standings.text }}</div>
+    </div>
+</div>
+{% endif %}
+
+{% if wc_commentaries and league_enabled['WC'] %}
+<div id="bender-match-wc" class="bender-panel bender-panel-green">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📋 Прогноз · ЧМ</span>
+        <button class="bender-close-btn" onclick="benderToggle('match-wc')">×</button>
+    </div>
+    <div class="bender-panel-body">
+        {% for c in wc_commentaries %}
+        <div style="padding:12px 16px;border-bottom:{% if not loop.last %}1px solid #0d1a0d{% else %}none{% endif %};">
+            <div style="font-size:.68rem;color:#306030;font-weight:700;margin-bottom:5px;letter-spacing:.04em;">{{ c.match_label.split(':', 1)[1] if ':' in c.match_label else c.match_label }}</div>
+            <div style="font-size:.82rem;color:#90b890;line-height:1.6;">{{ c.text }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <div class="bender-tray">
     <div style="display:flex;gap:8px;pointer-events:none;">
-        {% if ucl_standings %}
+        {% if ucl_standings and league_enabled['UCL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-ucl')">📊 ЛЧ</button>
         {% endif %}
-        {% if pl_standings %}
+        {% if pl_standings and league_enabled['PL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-pl')">📊 АПЛ</button>
         {% endif %}
-        {% if not ucl_standings and not pl_standings %}
+        {% if wc_standings and league_enabled['WC'] %}
+        <button class="bender-chip chip-gold" onclick="benderToggle('standings-wc')">📊 ЧМ</button>
+        {% endif %}
+        {% if (not ucl_standings or not league_enabled['UCL']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
         <div class="bender-chip-spacer"></div>
         {% endif %}
     </div>
     <div style="display:flex;gap:8px;pointer-events:none;">
-        {% if ucl_commentaries %}
+        {% if ucl_commentaries and league_enabled['UCL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-ucl')">📋 ЛЧ</button>
         {% endif %}
-        {% if pl_commentaries %}
+        {% if pl_commentaries and league_enabled['PL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-pl')">📋 АПЛ</button>
+        {% endif %}
+        {% if wc_commentaries and league_enabled['WC'] %}
+        <button class="bender-chip chip-green" onclick="benderToggle('match-wc')">📋 ЧМ</button>
         {% endif %}
     </div>
 </div>
@@ -317,8 +356,9 @@
 <script>
 const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
 const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
+const WC_FIRST_MATCH  = {{ wc_first_match_iso  | tojson }};
 let _bettingLocked = {{ 'true' if betting_locked else 'false' }};
-const _lockedTabs = new Set({{ (['ucl', 'pl'] if betting_locked else []) | tojson }});
+const _lockedTabs = new Set({{ (['ucl', 'pl', 'wc'] if betting_locked else []) | tojson }});
 
 function lockTab(tabId) {
     if (_lockedTabs.has(tabId)) return;
@@ -337,8 +377,7 @@ function lockTab(tabId) {
 
 function lockBetting() {
     _bettingLocked = true;
-    lockTab('ucl');
-    lockTab('pl');
+    document.querySelectorAll('.tab-btn').forEach(btn => lockTab(btn.dataset.tab));
 }
 
 function formatCountdown(ms) {
@@ -486,10 +525,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
-    const saved = sessionStorage.getItem('activeLeagueTab') || 'ucl';
-    switchTab(saved);
+    const saved = sessionStorage.getItem('activeLeagueTab');
+    const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
+    switchTab(saved && document.getElementById('tab-' + saved) ? saved : firstTab);
     startCountdown('ucl', UCL_FIRST_MATCH);
     startCountdown('pl', PL_FIRST_MATCH);
+    startCountdown('wc', WC_FIRST_MATCH);
 });
 </script>
 {% endblock %}
