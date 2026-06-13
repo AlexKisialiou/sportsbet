@@ -137,6 +137,27 @@ class Setting(db.Model):
     value = db.Column(db.String(255), nullable=False, default="")
 
 
+class PromptHint(db.Model):
+    __tablename__ = "prompt_hints"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tournament = db.Column(db.String(50), nullable=False, index=True)
+    hint_type = db.Column(db.String(50), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    active = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+
+
+class ReleaseNote(db.Model):
+    __tablename__ = "release_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    version = db.Column(db.String(20), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    deployed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    active = db.Column(db.Boolean, default=True, nullable=False)
+
+
 class ActivityLog(db.Model):
     __tablename__ = "activity_log"
 

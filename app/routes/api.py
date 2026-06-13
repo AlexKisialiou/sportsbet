@@ -1,6 +1,6 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request, current_app
-from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting
+from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
 from ..services.points import update_points_for_match, calc_points
 from ..auth import get_current_user, login_required, admin_required, superuser_required
@@ -190,13 +190,13 @@ def set_featured_matches():
                 bender = User.query.filter_by(username=BENDER_USERNAME).first()
                 bender_id = bender.id if bender else None
 
-                competition_names = {"UCL": "Лига Чемпионов УЕФА", "PL": "Английская Премьер-лига", "WC": "Чемпионат Мира по футболу"}
-                competition = competition_names.get(league, league)
+                from ..seed import LEAGUE_TO_TOURNAMENT
+                tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
 
                 def call_groq(item):
                     match_id, home, away, label = item
                     try:
-                        result = generate_bender_pick(home, away, competition)
+                        result = generate_bender_pick(home, away, tournament=tournament)
                         return (match_id, label, result)
                     except Exception as e:
                         print(f"[groq] bender skipped for {label}: {e}")
@@ -269,6 +269,7 @@ def simulate_results():
         from datetime import date as date_type
         from sqlalchemy import func as sqlfunc
 
+        from ..seed import LEAGUE_TO_TOURNAMENT
         for league, label_key, league_name in [
             ("UCL", STANDINGS_LABEL_UCL, "ЛЧ"),
             ("PL", STANDINGS_LABEL_PL, "АПЛ"),
@@ -301,7 +302,7 @@ def simulate_results():
                         standings_lines.append(f"  {row['user'].display_name}: не ставил")
 
             standings_text = "\n".join(standings_lines)
-            text = generate_bender_standings(standings_text)
+            text = generate_bender_standings(standings_text, tournament=LEAGUE_TO_TOURNAMENT.get(league, league))
             if text:
                 Commentary.query.filter_by(match_label=label_key).delete()
                 db.session.add(Commentary(match_label=label_key, text=text))
@@ -345,6 +346,23 @@ def set_betting_lock():
     log_action(actor.id if actor else None, "betting_lock",
                "Ставки заблокированы" if locked else "Ставки разблокированы")
     return jsonify({"ok": True, "locked": locked})
+
+
+@api_bp.route("/settings/reveal-live-predictions", methods=["POST"])
+@admin_required
+def set_reveal_live_predictions():
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    if enabled is None:
+        return jsonify({"error": "enabled required"}), 400
+    s = Setting.query.get("reveal_live_predictions") or Setting(key="reveal_live_predictions")
+    s.value = "1" if enabled else "0"
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "reveal_live_predictions",
+               "Ставки во время матча: показываются" if enabled else "Ставки во время матча: скрыты")
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @api_bp.route("/settings/league-enabled", methods=["POST"])
@@ -613,6 +631,76 @@ def delete_user(user_id):
     return jsonify({"ok": True})
 
 
+@api_bp.route("/admin/release-notes", methods=["GET"])
+@superuser_required
+def list_release_notes():
+    notes = ReleaseNote.query.order_by(ReleaseNote.deployed_at.desc()).all()
+    return jsonify([{
+        "id": n.id, "version": n.version, "content": n.content,
+        "deployed_at": n.deployed_at.strftime("%Y-%m-%dT%H:%M"),
+        "active": n.active,
+    } for n in notes])
+
+
+@api_bp.route("/admin/release-notes", methods=["POST"])
+@superuser_required
+def create_release_note():
+    data = request.get_json(silent=True) or {}
+    version = (data.get("version") or "").strip()
+    content = (data.get("content") or "").strip()
+    deployed_at_str = (data.get("deployed_at") or "").strip()
+    if not version or not content:
+        return jsonify({"error": "version и content обязательны"}), 400
+    try:
+        deployed_at = datetime.strptime(deployed_at_str, "%Y-%m-%dT%H:%M") if deployed_at_str else datetime.utcnow()
+    except ValueError:
+        return jsonify({"error": "Неверный формат даты (ожидается YYYY-MM-DDTHH:MM)"}), 400
+    note = ReleaseNote(version=version, content=content, deployed_at=deployed_at, active=True)
+    db.session.add(note)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "release_note_created", f"Создана заметка релиза: {version}")
+    return jsonify({"ok": True, "id": note.id})
+
+
+@api_bp.route("/admin/release-notes/<int:note_id>", methods=["POST"])
+@superuser_required
+def update_release_note(note_id):
+    note = ReleaseNote.query.get(note_id)
+    if not note:
+        return jsonify({"error": "Не найдено"}), 404
+    data = request.get_json(silent=True) or {}
+    if "version" in data:
+        note.version = (data["version"] or "").strip()
+    if "content" in data:
+        note.content = (data["content"] or "").strip()
+    if "active" in data:
+        note.active = bool(data["active"])
+    if "deployed_at" in data:
+        try:
+            note.deployed_at = datetime.strptime(data["deployed_at"], "%Y-%m-%dT%H:%M")
+        except ValueError:
+            return jsonify({"error": "Неверный формат даты"}), 400
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "release_note_updated", f"Обновлена заметка релиза: {note.version}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/release-notes/<int:note_id>/delete", methods=["POST"])
+@superuser_required
+def delete_release_note(note_id):
+    note = ReleaseNote.query.get(note_id)
+    if not note:
+        return jsonify({"error": "Не найдено"}), 404
+    version = note.version
+    db.session.delete(note)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "release_note_deleted", f"Удалена заметка релиза: {version}")
+    return jsonify({"ok": True})
+
+
 @api_bp.route("/admin/match/<int:match_id>/score", methods=["POST"])
 @superuser_required
 @limiter.limit("30 per minute")
@@ -780,5 +868,37 @@ def reset_db():
     seed()
     log_action(actor_id, "db_reset", "Полный сброс базы данных")
     return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/prompt-hints", methods=["GET"])
+@superuser_required
+def list_prompt_hints():
+    from ..models import PromptHint
+    tournament = request.args.get("tournament", "WC2026")
+    hints = PromptHint.query.filter_by(tournament=tournament).order_by(PromptHint.sort_order).all()
+    return jsonify([{
+        "id": h.id, "tournament": h.tournament, "hint_type": h.hint_type,
+        "content": h.content, "active": h.active, "sort_order": h.sort_order,
+    } for h in hints])
+
+
+@api_bp.route("/admin/prompt-hints/<int:hint_id>", methods=["POST"])
+@superuser_required
+@limiter.limit("30 per minute")
+def update_prompt_hint(hint_id):
+    from ..models import PromptHint
+    hint = PromptHint.query.get(hint_id)
+    if not hint:
+        return jsonify({"error": "Хинт не найден"}), 404
+    data = request.get_json(silent=True) or {}
+    if "content" in data:
+        hint.content = (data["content"] or "").strip()
+    if "active" in data:
+        hint.active = bool(data["active"])
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "prompt_hint_updated",
+               f"{hint.tournament}/{hint.hint_type}: active={hint.active}")
+    return jsonify({"ok": True, "id": hint.id, "active": hint.active})
 
 

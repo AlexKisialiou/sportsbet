@@ -264,7 +264,7 @@ a { text-decoration: none; }
 .lb-name { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .lb-pts { width: 46px; text-align: right; font-weight: 800; color: #fff; flex-shrink: 0; }
 .lb-day { width: 44px; text-align: right; font-size: .8rem; font-weight: 600; flex-shrink: 0; }
-.lb-col-label { color: var(--text-dim); font-size: .66rem; }
+.lb-col-label { color: #8a8aaa; font-size: .66rem; }
 
 /* ── Predictions table ── */
 .pred-table-wrap {
@@ -375,7 +375,7 @@ a { text-decoration: none; }
 }
 .pred-exact  { color: #00c87a; font-weight: 700; }
 .pred-winner { color: var(--accent); font-weight: 600; }
-.pred-miss   { color: var(--text-dim); }
+.pred-miss   { color: #8a8aaa; }
 
 /* ── Bottom padding for Bender tray ── */
 .page-content-pad { padding-bottom: 76px; }
@@ -409,6 +409,12 @@ a { text-decoration: none; }
     color: #60b860;
     box-shadow: 0 2px 12px rgba(96,184,96,.12);
 }
+.bender-chip.chip-blue {
+    background: #03080f;
+    border-color: #0a2a3a;
+    color: #4ab0e0;
+    box-shadow: 0 2px 12px rgba(74,176,224,.15);
+}
 .bender-chip-spacer { pointer-events: none; flex: 1; }
 
 /* ── Bender panels ── */
@@ -422,6 +428,7 @@ a { text-decoration: none; }
 .bender-panel.open { display: flex; }
 .bender-panel-gold  { background: #0c0900; border: 1px solid #3a2a00; border-bottom: none; }
 .bender-panel-green { background: #050f05; border: 1px solid #183018; border-bottom: none; }
+.bender-panel-blue  { background: #03080f; border: 1px solid #0a2a3a; border-bottom: none; }
 
 .bender-panel-hdr {
     display: flex; align-items: center; gap: 8px;
@@ -430,14 +437,17 @@ a { text-decoration: none; }
 }
 .bender-panel-gold  .bender-panel-hdr { background: #100b00; border-color: #3a2a00; }
 .bender-panel-green .bender-panel-hdr { background: #060e06; border-color: #183018; }
+.bender-panel-blue  .bender-panel-hdr { background: #050c14; border-color: #0a2a3a; }
 
 .bender-panel-hdr-title { flex: 1; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .bender-panel-gold  .bender-panel-hdr-title { color: #c89c28; }
 .bender-panel-green .bender-panel-hdr-title { color: #50a050; }
+.bender-panel-blue  .bender-panel-hdr-title { color: #3a9ac8; }
 
 .bender-close-btn { background: none; border: none; font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 2px; }
 .bender-panel-gold  .bender-close-btn { color: #5a4010; }
 .bender-panel-green .bender-close-btn { color: #205020; }
+.bender-panel-blue  .bender-close-btn { color: #0a3a50; }
 .bender-panel-body { overflow-y: auto; flex: 1; }
 
 /* ── Mobile backdrop ── */
@@ -457,10 +467,14 @@ a { text-decoration: none; }
     }
     .bender-panel-gold  { border-color: #3a2a00; }
     .bender-panel-green { border-color: #183018; }
+    .bender-panel-blue  { border-color: #0a2a3a; }
     #bender-standings-ucl,
-    #bender-standings-pl  { left: 20px; }
+    #bender-standings-pl,
+    #bender-standings-wc  { left: 20px; }
     #bender-match-ucl,
-    #bender-match-pl      { right: 20px; }
+    #bender-match-pl,
+    #bender-match-wc      { right: 20px; }
+    #bender-release { left: 50%; transform: translateX(-50%); }
 }
 
 /* ── Navbar inner layout ── */

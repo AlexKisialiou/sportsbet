@@ -129,8 +129,9 @@ def create_app():
             db.session.rollback()
             print(f"[migration] users skipped: {e}")
 
-        from .seed import run as seed
+        from .seed import run as seed, seed_prompt_hints
         seed()
+        seed_prompt_hints()
         from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
         from .services.standings import maybe_generate_standings
         try:

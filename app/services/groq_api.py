@@ -10,20 +10,44 @@ def _client():
     return Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
-def generate_bender_pick(home_team, away_team, competition="Лига Чемпионов УЕФА"):
+def _load_prompt(tournament, hint_type):
+    """Load prompt template from DB. Returns None if not found or inactive."""
+    try:
+        from ..models import PromptHint
+        hint = PromptHint.query.filter_by(
+            tournament=tournament, hint_type=hint_type, active=True
+        ).first()
+        return hint.content if hint else None
+    except Exception:
+        return None
+
+
+def generate_bender_pick(home_team, away_team, tournament="UCL"):
     """Returns (home_score, away_score, text)."""
     if not os.environ.get("GROQ_API_KEY"):
         return None
 
-    prompt = (
-        f"Матч {competition}: {home_team} (хозяева) — {away_team} (гости).\n\n"
-        "Ты — профессиональный футбольный аналитик. Напиши на русском языке краткий аналитический прогноз "
-        "(3–4 предложения): оцени текущую форму команд, ключевые преимущества и слабые стороны каждой, "
-        "тактические особенности матча, обоснуй наиболее вероятный исход и счёт.\n\n"
-        "Строго выдай только две строки:\n"
-        "АНАЛИЗ: <3-4 предложения аналитики>\n"
-        "СЧЁТ: X:Y"
-    )
+    template = _load_prompt(tournament, "prompt")
+    if template:
+        prompt = template.format(home_team=home_team, away_team=away_team)
+        print(f"[bender] {tournament} промпт из БД: {home_team} vs {away_team}")
+        try:
+            from .activity import log_action
+            log_action(None, "prompt_hint_applied",
+                       f"{tournament} промпт → {home_team} vs {away_team}")
+        except Exception:
+            pass
+    else:
+        print(f"[bender] {tournament}: промпт не найден в БД, используется fallback")
+        prompt = (
+            f"Матч {tournament}: {home_team} — {away_team}.\n\n"
+            "Ты — профессиональный футбольный аналитик. Напиши на русском языке краткий "
+            "аналитический прогноз (3–4 предложения): оцени форму команд, преимущества "
+            "и слабые стороны, тактику, обоснуй исход и счёт.\n\n"
+            "Строго выдай только две строки:\n"
+            "АНАЛИЗ: <3-4 предложения аналитики>\n"
+            "СЧЁТ: X:Y"
+        )
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
@@ -85,21 +109,22 @@ def translate_team_names(team_names):
     return result
 
 
-def generate_bender_standings(standings_text):
-    """
-    Returns a funny Бендер comment about current standings and last game day results.
-    standings_text — pre-formatted string with table and last day data.
-    """
+def generate_bender_standings(standings_text, tournament="UCL"):
+    """Returns a Бендер comment about current standings."""
     if not os.environ.get("GROQ_API_KEY"):
         return None
 
-    prompt = (
-        "Ты — Бендер Родригез из «Футурамы». Вот текущие результаты турнира по ставкам на футбол:\n\n"
-        f"{standings_text}\n\n"
-        "Напиши на русском языке короткий (3-4 предложения) смешной комментарий в характере Бендера: "
-        "кто молодец, кто лузер, что думаешь о расстановке сил и о себе. "
-        "Упомяни конкретные имена и цифры. Без markdown."
-    )
+    template = _load_prompt(tournament, "standings")
+    if template:
+        prompt = template.format(standings_text=standings_text)
+    else:
+        prompt = (
+            "Ты — Бендер Родригез из «Футурамы». Вот текущие результаты турнира по ставкам на футбол:\n\n"
+            f"{standings_text}\n\n"
+            "Напиши на русском языке короткий (3-4 предложения) смешной комментарий в характере Бендера: "
+            "кто молодец, кто лузер, что думаешь о расстановке сил и о себе. "
+            "Упомяни конкретные имена и цифры. Без markdown."
+        )
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],

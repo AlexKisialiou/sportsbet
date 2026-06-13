@@ -30,6 +30,8 @@ ACTION_LABELS = {
     'pred_days_changed':    'Глубина прогнозов изменена',
     'teams_ru_applied':     'Русские названия команд',
     'teams_ru_translated':  'Перевод через Groq',
+    'prompt_hint_updated':  'Хинт для Бендера изменён',
+    'prompt_hint_applied':  'Хинт добавлен в промпт Бендера',
 }
 
 

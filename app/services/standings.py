@@ -15,6 +15,7 @@ def maybe_generate_standings(league, app):
             from .points import get_leaderboard
             from .groq_api import (generate_bender_standings,
                                    STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
+            from ..seed import LEAGUE_TO_TOURNAMENT
 
             featured = (Match.query.join(Tour)
                         .filter(Tour.league == league, Match.featured == True)
@@ -94,7 +95,8 @@ def maybe_generate_standings(league, app):
                         lines.append(f"  {row['user'].display_name}: не ставил")
 
             try:
-                text = generate_bender_standings("\n".join(lines))
+                text = generate_bender_standings("\n".join(lines),
+                                                tournament=LEAGUE_TO_TOURNAMENT.get(league, league))
                 if text:
                     Commentary.query.filter_by(match_label=label_key).delete()
                     db.session.add(Commentary(match_label=label_key, text=text))

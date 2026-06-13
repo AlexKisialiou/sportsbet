@@ -248,6 +248,59 @@
 </div>
 
 
+<div class="admin-card" style="border-color:#2a1a3a;">
+    <h6 style="color:#cc88ff;">🔴 Ставки на идущие матчи</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Открыть ставки на live-матчи — все игроки увидят чужие прогнозы.
+    </p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+        <span id="reveal-status" style="font-size:.88rem;color:{% if reveal_live %}#cc88ff{% else %}#5a5a9a{% endif %};">
+            {% if reveal_live %}👁 Ставки показываются{% else %}🙈 Ставки скрыты{% endif %}
+        </span>
+        <button onclick="toggleRevealLive({{ 'false' if reveal_live else 'true' }})"
+                id="reveal-btn"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:{% if reveal_live %}#1a0a2a{% else %}#0a0a1a{% endif %};
+                       color:{% if reveal_live %}#cc88ff{% else %}#6a6a9a{% endif %};
+                       border:1px solid {% if reveal_live %}#6a2a9a{% else %}#2a2a5a{% endif %};">
+            {% if reveal_live %}Скрыть{% else %}Показать игрокам{% endif %}
+        </button>
+        <span id="revealMsg" style="font-size:.82rem;"></span>
+    </div>
+    {% if live_matches %}
+    <div id="live-matches-list">
+        {% for m in live_matches %}
+        <div style="padding:8px 0 6px;border-top:1px solid #1e2d3d;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:.7rem;color:#4a6a8a;min-width:105px;flex-shrink:0;">
+                    {{ (m.kickoff_time | minsk).strftime('%d.%m %H:%M') if m.kickoff_time else '—' }}
+                </span>
+                <span style="font-size:.83rem;color:#c0c8d0;flex:1;text-align:right;min-width:80px;">
+                    {{ m.home_team.display_name }}
+                </span>
+                <span style="font-size:.88rem;color:#e09a40;font-weight:bold;flex-shrink:0;">vs</span>
+                <span style="font-size:.83rem;color:#c0c8d0;flex:1;min-width:80px;">
+                    {{ m.away_team.display_name }}
+                </span>
+                <span style="font-size:.65rem;padding:2px 6px;border-radius:5px;background:#2a1a00;color:#e09a40;flex-shrink:0;">🔴 live</span>
+                <button onclick="toggleLivePredPanel({{ m.id }})"
+                        id="live-preds-btn-{{ m.id }}"
+                        style="font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                               background:#0d1b28;color:#7a9ab5;border:1px solid #2a3a5a;flex-shrink:0;">
+                    Ставки
+                </button>
+            </div>
+            <div id="live-preds-panel-{{ m.id }}" style="display:none;margin-top:8px;padding-left:10px;">
+                <div id="live-preds-content-{{ m.id }}" style="font-size:.8rem;color:#7a9ab5;">Загрузка…</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="font-size:.83rem;color:#4a6a8a;">Нет избранных матчей со статусом live.</p>
+    {% endif %}
+</div>
+
 <div class="admin-card" style="border-color:#1a2a3a;">
     <h6 style="color:#7a9ab5;">🔒 Приём ставок</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">
@@ -364,6 +417,147 @@
     <div id="editResultsMsg" style="font-size:.82rem;margin-top:8px;"></div>
 </div>
 
+<div class="admin-card" style="border-color:#1a3a2a;">
+    <h6 style="color:#5a9a7a;">🤖 Промпт Бендера</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Полный текст промпта, который уходит в Groq при генерации прогнозов.
+        Используй <code>{home_team}</code> и <code>{away_team}</code> — они заменятся на названия команд.
+    </p>
+    {% if prompt_templates %}
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;" id="prompt-tabs">
+        {% for t in prompt_templates %}
+        <button id="prompt-tab-{{ t.tournament }}"
+                onclick="switchPromptTab('{{ t.tournament }}')"
+                style="font-size:.78rem;padding:5px 14px;border-radius:6px;cursor:pointer;
+                       background:#0a1a10;color:#5a9a7a;border:1px solid #1a4a2a;">
+            {{ t.label }}
+        </button>
+        {% endfor %}
+    </div>
+    {% for t in prompt_templates %}
+    <div id="prompt-panel-{{ t.tournament }}" style="display:none;">
+
+        {% if t.prompt %}
+        <div style="margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                <span style="font-size:.72rem;color:#5a9a7a;background:#0a2a1a;padding:2px 9px;
+                             border-radius:10px;border:1px solid #1a4a2a;letter-spacing:.04em;">
+                    ПРОГНОЗ МАТЧА
+                </span>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.8rem;color:#7a9a8a;margin:0;">
+                    <input type="checkbox" id="hint-active-{{ t.prompt.id }}"
+                           {% if t.prompt.active %}checked{% endif %}
+                           onchange="toggleHintActive({{ t.prompt.id }})"
+                           style="accent-color:#3a8a5a;">
+                    Активен
+                </label>
+                <span id="hint-msg-{{ t.prompt.id }}" style="font-size:.75rem;margin-left:auto;"></span>
+            </div>
+            <textarea id="hint-content-{{ t.prompt.id }}" rows="12"
+                      style="width:100%;background:#0a1a10;border:1px solid #1a3a2a;color:#90b890;
+                             border-radius:6px;padding:10px 12px;font-size:.79rem;line-height:1.6;
+                             resize:vertical;outline:none;font-family:monospace;">{{ t.prompt.content }}</textarea>
+            <div style="margin-top:6px;text-align:right;">
+                <button onclick="saveHint({{ t.prompt.id }})"
+                        style="font-size:.8rem;padding:5px 16px;border-radius:6px;cursor:pointer;
+                               background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;">
+                    Сохранить
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if t.standings %}
+        <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                <span style="font-size:.72rem;color:#b89840;background:#1a1400;padding:2px 9px;
+                             border-radius:10px;border:1px solid #4a3a10;letter-spacing:.04em;">
+                    АНАЛИЗ ИТОГОВ
+                </span>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.8rem;color:#7a9a8a;margin:0;">
+                    <input type="checkbox" id="hint-active-{{ t.standings.id }}"
+                           {% if t.standings.active %}checked{% endif %}
+                           onchange="toggleHintActive({{ t.standings.id }})"
+                           style="accent-color:#b89840;">
+                    Активен
+                </label>
+                <span id="hint-msg-{{ t.standings.id }}" style="font-size:.75rem;margin-left:auto;"></span>
+            </div>
+            <p style="font-size:.75rem;color:#6a5a3a;margin-bottom:6px;">
+                Используй <code>{standings_text}</code> — подставляется таблица очков и итоги игрового дня.
+            </p>
+            <textarea id="hint-content-{{ t.standings.id }}" rows="8"
+                      style="width:100%;background:#100e00;border:1px solid #3a2a10;color:#c8a850;
+                             border-radius:6px;padding:10px 12px;font-size:.79rem;line-height:1.6;
+                             resize:vertical;outline:none;font-family:monospace;">{{ t.standings.content }}</textarea>
+            <div style="margin-top:6px;text-align:right;">
+                <button onclick="saveHint({{ t.standings.id }})"
+                        style="font-size:.8rem;padding:5px 16px;border-radius:6px;cursor:pointer;
+                               background:#1a1000;color:#e09a40;border:1px solid #4a3010;">
+                    Сохранить
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="font-size:.83rem;color:#4a6a5a;">Промпты не загружены. Перезапусти сервер.</p>
+    {% endif %}
+</div>
+
+<div class="admin-card" style="border-color:#0a2a3a;">
+    <h6 style="color:#3a9ac8;">🆕 Что нового</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Сообщение показывается игрокам 3 дня с момента деплоя. Хранится в таблице release_notes.
+    </p>
+
+    <div style="margin-bottom:20px;">
+        <div style="font-size:.75rem;color:#3a9ac8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Создать новое сообщение</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <input id="rn-version" type="text" placeholder="Версия (напр. v1.4)"
+                   style="background:#0a1828;border:1px solid #0a2a3a;color:#c0c8d0;border-radius:6px;padding:6px 10px;font-size:.85rem;width:160px;">
+            <input id="rn-deployed-at" type="datetime-local"
+                   style="background:#0a1828;border:1px solid #0a2a3a;color:#c0c8d0;border-radius:6px;padding:6px 10px;font-size:.85rem;">
+        </div>
+        <textarea id="rn-content" rows="5" placeholder="Список улучшений на русском (каждое с новой строки)"
+                  style="width:100%;background:#0a1828;border:1px solid #0a2a3a;color:#c0c8d0;border-radius:6px;padding:8px 10px;font-size:.85rem;resize:vertical;margin-bottom:8px;"></textarea>
+        <button class="btn-action" style="background:#03080f;color:#4ab0e0;border-color:#0a2a3a;"
+                onclick="createReleaseNote()">Сохранить</button>
+        <div class="result-msg" id="rnCreateMsg"></div>
+    </div>
+
+    {% if release_notes %}
+    <div style="font-size:.75rem;color:#3a9ac8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">История</div>
+    {% for n in release_notes %}
+    <div id="rn-row-{{ n.id }}" style="background:#060d14;border:1px solid #0a2033;border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:.8rem;font-weight:700;color:#4ab0e0;">{{ n.version }}</span>
+            <span style="font-size:.72rem;color:#3a5a7a;">{{ n.deployed_at | minsk | string | truncate(16, True, '') }}</span>
+            <span id="rn-active-badge-{{ n.id }}" style="font-size:.7rem;padding:1px 7px;border-radius:8px;
+                  background:{% if n.active %}#0a2010{% else %}#1a0a0a{% endif %};
+                  color:{% if n.active %}#4ab860{% else %}#7a3a3a{% endif %};">
+                {{ 'активно' if n.active else 'отключено' }}
+            </span>
+            <button onclick="toggleReleaseNoteActive({{ n.id }}, {{ 'false' if n.active else 'true' }})"
+                    style="font-size:.72rem;background:#0a1828;color:#7a9ab5;border:1px solid #1a3a5a;border-radius:6px;padding:2px 8px;cursor:pointer;">
+                {{ 'Выкл' if n.active else 'Вкл' }}
+            </button>
+            <button onclick="deleteReleaseNote({{ n.id }}, '{{ n.version | e }}')"
+                    style="font-size:.72rem;background:#1a0a0a;color:#e05555;border:1px solid #3a1a1a;border-radius:6px;padding:2px 8px;cursor:pointer;margin-left:auto;">
+                Удалить
+            </button>
+        </div>
+        <div style="font-size:.8rem;color:#4a7a9a;white-space:pre-wrap;line-height:1.6;">{{ n.content }}</div>
+        <div class="result-msg" id="rn-msg-{{ n.id }}"></div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="font-size:.83rem;color:#3a5a7a;">Нет заметок о релизах.</p>
+    {% endif %}
+</div>
+
 <div class="admin-card" style="border-color:#5a1a1a;">
     <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
     <p class="text-secondary mb-2" style="font-size:.85rem;">
@@ -390,6 +584,98 @@
 </div>
 
 <script>
+// ── Reveal live predictions ──────────────────────────────────────────────────
+let _livePredLoaded = {};
+
+async function toggleRevealLive(enable) {
+    const btn = document.getElementById('reveal-btn');
+    const status = document.getElementById('reveal-status');
+    const msg = document.getElementById('revealMsg');
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/settings/reveal-live-predictions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (enable) {
+                status.textContent = '👁 Ставки показываются';
+                status.style.color = '#cc88ff';
+                btn.textContent = 'Скрыть';
+                btn.style.background = '#1a0a2a'; btn.style.color = '#cc88ff'; btn.style.borderColor = '#6a2a9a';
+                btn.onclick = () => toggleRevealLive(false);
+                document.querySelectorAll('[id^="live-preds-panel-"]').forEach(p => {
+                    const matchId = p.id.replace('live-preds-panel-', '');
+                    if (!_livePredLoaded[matchId]) {
+                        p.style.display = 'block';
+                        const lb = document.getElementById(`live-preds-btn-${matchId}`);
+                        if (lb) { lb.style.background = '#0a2a20'; lb.style.color = '#3db88d'; lb.style.borderColor = '#1a5a3a'; }
+                        _livePredLoaded[matchId] = true;
+                        loadLivePredictions(matchId);
+                    }
+                });
+            } else {
+                status.textContent = '🙈 Ставки скрыты';
+                status.style.color = '#5a5a9a';
+                btn.textContent = 'Показать игрокам';
+                btn.style.background = '#0a0a1a'; btn.style.color = '#6a6a9a'; btn.style.borderColor = '#2a2a5a';
+                btn.onclick = () => toggleRevealLive(true);
+            }
+            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function toggleLivePredPanel(matchId) {
+    const panel = document.getElementById(`live-preds-panel-${matchId}`);
+    const btn = document.getElementById(`live-preds-btn-${matchId}`);
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.style.background = '#0a2a20'; btn.style.color = '#3db88d'; btn.style.borderColor = '#1a5a3a';
+        if (!_livePredLoaded[matchId]) {
+            _livePredLoaded[matchId] = true;
+            await loadLivePredictions(matchId);
+        }
+    } else {
+        panel.style.display = 'none';
+        btn.style.background = '#0d1b28'; btn.style.color = '#7a9ab5'; btn.style.borderColor = '#2a3a5a';
+    }
+}
+
+async function loadLivePredictions(matchId) {
+    const content = document.getElementById(`live-preds-content-${matchId}`);
+    try {
+        const resp = await fetch(`/api/admin/match/${matchId}/predictions`);
+        const data = await resp.json();
+        if (!resp.ok) { content.innerHTML = `<span class="error-msg">${data.error}</span>`; return; }
+        if (!data.predictions.length) {
+            content.innerHTML = '<span style="color:#4a6a8a;">Прогнозов нет.</span>'; return;
+        }
+        const rows = data.predictions.map(p =>
+            `<tr>
+                <td style="padding:4px 12px 4px 0;color:#c0c8d0;">${p.user_name}</td>
+                <td style="padding:4px 0;color:#9ab5cc;text-align:center;">${p.home_score}:${p.away_score}</td>
+            </tr>`
+        ).join('');
+        content.innerHTML = `<table style="border-collapse:collapse;font-size:.82rem;">
+            <thead><tr style="color:#4a6a8a;font-size:.68rem;">
+                <th style="padding:2px 12px 6px 0;text-align:left;">Игрок</th>
+                <th style="padding:2px 0 6px;text-align:center;">Ставка</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    } catch { content.innerHTML = '<span class="error-msg">Ошибка загрузки.</span>'; }
+}
+
 // ── Match results editor ─────────────────────────────────────────────────────
 let _editTabActive = null;
 let _predsLoaded = {};
@@ -967,6 +1253,131 @@ async function moveLeague(league, direction) {
         }
     } catch {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+function switchPromptTab(tournament) {
+    document.querySelectorAll('[id^="prompt-panel-"]').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('[id^="prompt-tab-"]').forEach(el => {
+        el.style.background = '#0a1a10'; el.style.color = '#5a9a7a'; el.style.borderColor = '#1a4a2a';
+    });
+    const panel = document.getElementById(`prompt-panel-${tournament}`);
+    const tab = document.getElementById(`prompt-tab-${tournament}`);
+    if (panel) panel.style.display = 'block';
+    if (tab) { tab.style.background = '#0a2a10'; tab.style.color = '#5db85d'; tab.style.borderColor = '#1a5a2a'; }
+}
+
+(function() {
+    const first = document.querySelector('[id^="prompt-tab-"]');
+    if (first) switchPromptTab(first.id.replace('prompt-tab-', ''));
+})();
+
+async function saveHint(hintId) {
+    const content = document.getElementById(`hint-content-${hintId}`).value;
+    const active = document.getElementById(`hint-active-${hintId}`).checked;
+    const msg = document.getElementById(`hint-msg-${hintId}`);
+    try {
+        const resp = await fetch(`/api/admin/prompt-hints/${hintId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, active })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Сохранено ✓</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function toggleHintActive(hintId) {
+    const active = document.getElementById(`hint-active-${hintId}`).checked;
+    const msg = document.getElementById(`hint-msg-${hintId}`);
+    try {
+        const resp = await fetch(`/api/admin/prompt-hints/${hintId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">${data.active ? 'Активен' : 'Отключён'}</span>`;
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+// ── Release notes ─────────────────────────────────────────────────────────────
+async function createReleaseNote() {
+    const version = document.getElementById('rn-version').value.trim();
+    const content = document.getElementById('rn-content').value.trim();
+    const deployedAt = document.getElementById('rn-deployed-at').value;
+    const msg = document.getElementById('rnCreateMsg');
+    if (!version || !content) {
+        msg.innerHTML = '<span class="error-msg">Версия и содержание обязательны.</span>';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/admin/release-notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, content, deployed_at: deployedAt || null })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Сохранено. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 900);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function toggleReleaseNoteActive(noteId, active) {
+    const msg = document.getElementById(`rn-msg-${noteId}`);
+    try {
+        const resp = await fetch(`/api/admin/release-notes/${noteId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = '<span class="success-msg">Сохранено. Перезагрузка…</span>';
+            setTimeout(() => location.reload(), 700);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка.</span>';
+    }
+}
+
+async function deleteReleaseNote(noteId, version) {
+    if (!confirm(`Удалить заметку релиза «${version}»?`)) return;
+    const msg = document.getElementById(`rn-msg-${noteId}`);
+    try {
+        const resp = await fetch(`/api/admin/release-notes/${noteId}/delete`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            const row = document.getElementById(`rn-row-${noteId}`);
+            if (row) row.remove();
+            msg && (msg.innerHTML = '');
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка.</span>';
     }
 }
 

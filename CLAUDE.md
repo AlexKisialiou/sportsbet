@@ -82,6 +82,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `Commentary` | `match_label`, `text`; Bender's AI comments; `"__standings__"` label for leaderboard commentary |
 | `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC` |
 | `ActivityLog` | `user_id` (FK nullable), `action`, `details`, `ip_address`, `created_at`; records all user/admin actions |
+| `PromptHint` | `tournament` (e.g. `"WC2026"`, `"UCL"`, `"PL"`), `hint_type` (`"prompt"` or `"standings"`), `content` (full prompt template), `active` (bool), `sort_order`; stores editable Groq prompts per tournament |
 
 ### Routes
 | Blueprint | Route | Description |
@@ -109,6 +110,8 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/admin/prediction/<id>/points` | Manually set points (0/1/3) for a prediction; sets `manual_lock=True` (superuser) |
 | `api` | `POST /api/admin/prediction/<id>/points/lock` | Lock existing prediction points without changing value (superuser) |
 | `api` | `POST /api/admin/prediction/<id>/points/unlock` | Unlock prediction points; recalculates from current match score (superuser) |
+| `api` | `GET /api/admin/prompt-hints?tournament=WC2026` | List prompt templates for a tournament (superuser) |
+| `api` | `POST /api/admin/prompt-hints/<id>` | Update prompt template content and/or active flag (superuser) |
 | `api` | `POST /api/reset-scores` | Delete all Predictions + PredictionPoints (superuser, confirm=`"RESET"`) |
 | `api` | `POST /api/reset-db` | Full DB drop+recreate+seed (superuser, confirm=`"RESET"`) |
 | `api` | `POST /api/user/create` | Create new user (superuser only) |
@@ -126,6 +129,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - **🏆 Управление лигами** — per-league: enable/disable toggle, ↑/↓ reorder buttons, days input (1–20, default 4) for predictions table depth; order stored in `league_order`, enabled in `league_enabled_UCL/PL/WC`, depth in `pred_days_UCL/PL/WC`
 - **🌍 Русские названия команд** — «Применить из словаря» syncs `TEAMS_RU` to DB; «Перевести через Groq» sends untranslated teams to `llama-3.1-8b-instant` in batches of 30, parses response by index, saves `name_ru`
 - **✏️ Результаты матчей** — per-league tabs showing all featured matches; inline score inputs with «Сохранить» (sets score + `manual_lock=True` on Score and all prediction points) / «Убрать» (deletes Score, status→scheduled, API resumes); «Ставки» expands per-match predictions table with per-user points selector (0/1/3), «Заблокировать» / «Разблокировать» per row; locked rows show 🔒 SA badge; route passes `edit_matches_by_league` dict
+- **🤖 Промпт Бендера** — per-tournament tabs (only enabled leagues shown); each tab has two editable textareas: «ПРОГНОЗ МАТЧА» (`hint_type="prompt"`, uses `{home_team}` / `{away_team}`) and «АНАЛИЗ ИТОГОВ» (`hint_type="standings"`, uses `{standings_text}`); active checkbox + save per prompt; changes persist to `PromptHint` table immediately
 - **🔒 Приём ставок** — manual lock/unlock button; shows current state; calls `POST /api/settings/betting-lock`
 - **📋 Лог активности** — link to activity log page
 
@@ -159,9 +163,9 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 ### Services
 - **`app/services/football_api.py`** — `fetch_and_save_cl_matches()`: UCL from `competitions/CL/matches`. `fetch_and_save_pl_matches()`: EPL from `competitions/PL/matches`, tours named "АПЛ Тур N" with `league="PL"`. `fetch_and_save_wc_matches()`: World Cup from `competitions/WC/matches`, uses `WC_STAGE_MAP` with `league="WC"`. All three upsert Teams/Tours/Matches/Scores and call `update_points_for_match()` on finished matches. **Score update is skipped if `Score.manual_lock=True`.**
 - **`app/services/points.py`** — `calc_points()`: 3 pts exact, 1 pt correct winner/draw, 0 otherwise. `update_points_for_match()`: upserts `PredictionPoints`; **skips predictions where `PredictionPoints.manual_lock=True`**. `get_leaderboard(last_days=N)`: users sorted by total with per-day breakdown.
-- **`app/services/groq_api.py`** — `generate_bender_pick(home, away, competition)` → analytical football forecast, parses `АНАЛИЗ:` / `СЧЁТ: X:Y`; `competition` defaults to "Лига Чемпионов УЕФА". `generate_bender_standings(text)` → Bender-persona leaderboard comment. `translate_team_names(names)` → sends numbered list to `llama-3.1-8b-instant`, returns `{english: russian}` dict parsed by index (not by name, to avoid model renaming). `STANDINGS_LABEL_UCL/PL/WC` constants for Commentary labels. Bender picks use `llama-3.3-70b-versatile`; standings + translation use `llama-3.1-8b-instant`.
+- **`app/services/groq_api.py`** — `generate_bender_pick(home, away, tournament)` → loads full prompt template from `PromptHint` table by `(tournament, hint_type="prompt")`, substitutes `{home_team}`/`{away_team}`, parses `АНАЛИЗ:` / `СЧЁТ: X:Y`; falls back to generic prompt if DB record missing. `generate_bender_standings(text, tournament)` → loads `hint_type="standings"` template, substitutes `{standings_text}`. `_load_prompt(tournament, hint_type)` → DB lookup helper. `translate_team_names(names)` → sends numbered list to `llama-3.1-8b-instant`, returns `{english: russian}` dict. `STANDINGS_LABEL_UCL/PL/WC` constants for Commentary labels. Bender picks use `llama-3.3-70b-versatile`; standings + translation use `llama-3.1-8b-instant`.
 - **`app/services/activity.py`** — `log_action(user_id, action, details)`: writes to `ActivityLog`, captures IP from request context, never raises (own try/except). `ACTION_LABELS` dict maps action codes to Russian display names.
-- **`app/services/standings.py`** — `maybe_generate_standings(league, app)`: called after every fetch (startup + API) for UCL, PL, WC. Runs in background thread. Groups featured matches by Minsk date; finds latest day where ALL are `finished`; checks `Setting[standings_day_{league}]` for idempotency; if new complete day found, generates Bender standings commentary via `generate_bender_standings()` and saves to `Commentary`.
+- **`app/services/standings.py`** — `maybe_generate_standings(league, app)`: called after every fetch (startup + API) for UCL, PL, WC. Runs in background thread. Groups featured matches by Minsk date; finds latest day where ALL are `finished`; checks `Setting[standings_day_{league}]` for idempotency; if new complete day found, calls `generate_bender_standings(text, tournament=LEAGUE_TO_TOURNAMENT[league])` and saves to `Commentary`.
 
 ### Auth (`app/auth.py`)
 `login_required`, `admin_required`, `superuser_required` decorators. `get_current_user()` reads `session["user_id"]`.
@@ -171,6 +175,13 @@ All displayed times use Europe/Minsk (UTC+3, no DST). Implemented as `+timedelta
 
 ### Seed (`app/seed.py`)
 Always creates the Bender bot user (`is_bot=True`). Creates up to 4 real users from env vars only if no non-bot users exist yet. USER2/USER3 are optional.
+
+`seed_prompt_hints()` — called on every startup after `seed.run()`. Ensures one `PromptHint` row per `(tournament, hint_type)` pair defined in `PROMPT_TEMPLATES`. Removes legacy `general`/`weather` hint rows. Never overwrites existing rows (idempotent).
+
+Key constants exported from `seed.py`:
+- `TOURNAMENT_LABELS` — `{"WC2026": "ЧМ 2026", "UCL": "ЛЧ", "PL": "АПЛ"}`
+- `LEAGUE_TO_TOURNAMENT` — `{"UCL": "UCL", "PL": "PL", "WC": "WC2026"}` — maps `Tour.league` values to tournament IDs used in `PromptHint`
+- `PROMPT_TEMPLATES` — default prompt content per tournament; used only for initial seeding, not at runtime
 
 ### Russian Team Names
 `app/data/teams_ru.py` — `TEAMS_RU` dict mapping English → Russian names for ~50 clubs. Applied to `team.name_ru` on team creation via `_get_or_create_team()`. Can be re-synced anytime via superadmin «Применить из словаря». Missing teams (not in dict, no name_ru) can be auto-translated via superadmin «Перевести через Groq» — only processes teams where `name_ru` is NULL or empty.

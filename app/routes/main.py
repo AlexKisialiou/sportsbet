@@ -1,7 +1,7 @@
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
 from sqlalchemy import func
-from ..models import db, Match, Tour, Prediction, User, Commentary, ActivityLog, Setting
+from ..models import db, Match, Tour, Prediction, User, Commentary, ActivityLog, Setting, ReleaseNote
 from ..services.points import get_leaderboard
 from ..services.activity import ACTION_LABELS
 from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
@@ -92,6 +92,18 @@ def index():
                 for p in Prediction.query.filter(Prediction.match_id.in_(match_ids)).all():
                     pred_map[(p.match_id, p.user_id)] = p
 
+        live_matches = (
+            Match.query.join(Tour)
+            .filter(Tour.league == league, Match.status == "live", Match.featured == True)
+            .order_by(Match.kickoff_time.asc())
+            .all()
+        )
+        live_pred_map = {}
+        if live_matches:
+            live_ids = [m.id for m in live_matches]
+            for p in Prediction.query.filter(Prediction.match_id.in_(live_ids)).all():
+                live_pred_map[(p.match_id, p.user_id)] = p
+
         scheduled_total = len(scheduled)
         unfilled_count = sum(1 for m in scheduled if m.id not in predictions)
 
@@ -113,6 +125,8 @@ def index():
             "scheduled_matches": scheduled,
             "finished_recent": finished_recent,
             "pred_map": pred_map,
+            "live_matches": live_matches,
+            "live_pred_map": live_pred_map,
             "scheduled_total": scheduled_total,
             "unfilled_count": unfilled_count,
             "user_fill_status": user_fill_status,
@@ -126,6 +140,9 @@ def index():
 
     lock_s = Setting.query.get("betting_locked")
     betting_locked = lock_s is not None and lock_s.value == "1"
+
+    reveal_s = Setting.query.get("reveal_live_predictions")
+    reveal_live = reveal_s is not None and reveal_s.value == "1"
 
     def _first_kickoff(matches):
         t = None
@@ -151,6 +168,12 @@ def index():
     pl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_PL).first()
     wc_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_WC).first()
 
+    now = datetime.utcnow()
+    release_note = ReleaseNote.query.filter_by(active=True).filter(
+        ReleaseNote.deployed_at <= now,
+        ReleaseNote.deployed_at >= now - timedelta(days=3),
+    ).order_by(ReleaseNote.deployed_at.desc()).first()
+
     return render_template("index.html",
                            ucl=ucl_data,
                            pl=pl_data,
@@ -164,11 +187,13 @@ def index():
                            pl_standings=pl_standings,
                            wc_standings=wc_standings,
                            betting_locked=betting_locked,
+                           reveal_live=reveal_live,
                            ucl_first_match_iso=ucl_first_match_iso,
                            pl_first_match_iso=pl_first_match_iso,
                            wc_first_match_iso=wc_first_match_iso,
                            league_order=league_order,
-                           league_enabled=league_enabled)
+                           league_enabled=league_enabled,
+                           release_note=release_note)
 
 
 @main_bp.route("/admin")
@@ -237,12 +262,45 @@ def superadmin():
     for m in edit_matches:
         edit_matches_by_league[m.tour.league].append(m)
 
+    live_matches = (
+        Match.query.join(Tour)
+        .filter(Tour.league.in_(["UCL", "PL", "WC"]), Match.status == "live", Match.featured == True)
+        .order_by(Match.kickoff_time.asc())
+        .all()
+    )
+    reveal_s = Setting.query.get("reveal_live_predictions")
+    reveal_live = reveal_s is not None and reveal_s.value == "1"
+
+    from ..models import PromptHint
+    from ..seed import PROMPT_TEMPLATES, TOURNAMENT_LABELS, LEAGUE_TO_TOURNAMENT
+    _tournament_to_league = {v: k for k, v in LEAGUE_TO_TOURNAMENT.items()}
+    prompt_templates = []
+    for tournament_id in PROMPT_TEMPLATES:
+        league_code = _tournament_to_league.get(tournament_id, tournament_id)
+        if not league_enabled.get(league_code, True):
+            continue
+        label = TOURNAMENT_LABELS.get(tournament_id, tournament_id)
+        rows = {h.hint_type: h for h in
+                PromptHint.query.filter_by(tournament=tournament_id).all()}
+        prompt_templates.append({
+            "tournament": tournament_id,
+            "label": label,
+            "prompt": rows.get("prompt"),
+            "standings": rows.get("standings"),
+        })
+
+    release_notes = ReleaseNote.query.order_by(ReleaseNote.deployed_at.desc()).all()
+
     return render_template("superadmin.html", current_theme=current_theme, users=users,
                            current_user=current, all_scheduled=all_scheduled,
                            betting_locked=betting_locked,
                            league_order=league_order, league_enabled=league_enabled,
                            pred_days_limits=pred_days_limits,
-                           edit_matches_by_league=edit_matches_by_league)
+                           edit_matches_by_league=edit_matches_by_league,
+                           live_matches=live_matches,
+                           reveal_live=reveal_live,
+                           prompt_templates=prompt_templates,
+                           release_notes=release_notes)
 
 
 @main_bp.route("/activity-log")

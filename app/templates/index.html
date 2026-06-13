@@ -2,7 +2,7 @@
 {% from '_macros.html' import user_avatar, role_badge %}
 {% block title %}{{ APP_NAME }}{% endblock %}
 
-{% macro render_tab(tab_id, data, locked=false, first_match_iso=none) %}
+{% macro render_tab(tab_id, data, locked=false, first_match_iso=none, reveal_live=false) %}
 {% if first_match_iso or locked %}
 <div class="betting-bar{% if locked %} locked{% endif %}" id="betting-bar-{{ tab_id }}">
     <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До закрытия ставок:{% endif %}</span>
@@ -47,9 +47,9 @@
                 <span class="lb-pts">{{ row.total }}</span>
                 {% for d in row.days %}
                 {% if not d.has_pred %}
-                <span class="lb-day" style="color:#1e2840;">—</span>
+                <span class="lb-day" style="color:#8a8aaa;">0</span>
                 {% elif d.pts == 0 %}
-                <span class="lb-day" style="color:#3a2a2a;">0</span>
+                <span class="lb-day" style="color:#8a8aaa;">0</span>
                 {% else %}
                 <span class="lb-day" style="color:#00c87a;">+{{ d.pts }}</span>
                 {% endif %}
@@ -143,6 +143,54 @@
 
 </div><!-- .main-grid -->
 
+<!-- ══ Идут сейчас ══ -->
+{% if reveal_live and data.live_matches %}
+<div style="margin-bottom:32px;">
+    <div class="col-section-title">🔴 Идут сейчас</div>
+    {% for match in data.live_matches %}
+        <div class="pred-match-card">
+            <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
+                <div class="team-wrap team-wrap-home">
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                    {% if match.home_team.crest %}
+                    <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
+                    {% endif %}
+                </div>
+                <div class="score-block" style="min-width:60px;">
+                    {% if match.score %}
+                    <div class="score" style="font-size:1rem;">{{ match.score.home_score }}:{{ match.score.away_score }}</div>
+                    {% else %}
+                    <div class="score" style="font-size:1rem;">— : —</div>
+                    {% endif %}
+                    <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;">Идёт</span></div>
+                </div>
+                <div class="team-wrap team-wrap-away">
+                    {% if match.away_team.crest %}
+                    <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
+                    {% endif %}
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                </div>
+            </div>
+            <div class="pred-chips-row">
+                {% for row in data.leaderboard %}
+                {% set u = row.user %}
+                {% set pred = data.live_pred_map.get((match.id, u.id)) %}
+                <div class="pred-chip">
+                    {{ user_avatar(u) }}
+                    <span class="pred-chip-name">{{ u.display_name }}</span>
+                    {% if pred %}
+                    <span class="pred-chip-score" style="color:#9ab5cc;">{{ pred.home_score }}:{{ pred.away_score }}</span>
+                    {% else %}
+                    <span class="pred-chip-score" style="color:#1c1c38;">—</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- ══ Предикты ══ -->
 {% if data.finished_recent %}
 {% set months = ['','января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'] %}
@@ -194,13 +242,14 @@
                             <span class="pred-chip-pts" style="color:var(--accent);">+1</span>
                             {% else %}
                             <span class="pred-chip-score pred-miss">{{ pred.home_score }}:{{ pred.away_score }}</span>
-                            <span class="pred-chip-pts" style="color:var(--text-dim);">0</span>
+                            <span class="pred-chip-pts" style="color:#8a8aaa;">0</span>
                             {% endif %}
                         {% else %}
                         <span class="pred-chip-score" style="color:#5a6080;">{{ pred.home_score }}:{{ pred.away_score }}</span>
                         {% endif %}
                     {% else %}
-                    <span class="pred-chip-score" style="color:#1c1c38;">—</span>
+                    <span class="pred-chip-score pred-miss">—</span>
+                    <span class="pred-chip-pts" style="color:#8a8aaa;">0</span>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -230,13 +279,25 @@
 {% for lg in league_order %}{% if league_enabled[lg] %}
 {% set meta = _lmeta[lg] %}
 <div class="tab-pane" id="tab-{{ meta.tab_id }}">
-    {{ render_tab(meta.tab_id, meta.data, locked=betting_locked, first_match_iso=meta.first_match_iso) }}
+    {{ render_tab(meta.tab_id, meta.data, locked=betting_locked, first_match_iso=meta.first_match_iso, reveal_live=reveal_live) }}
 </div>
 {% endif %}{% endfor %}
 
 </div><!-- .page-content-pad -->
 
 <div id="bender-backdrop" class="bender-backdrop" onclick="benderCloseAll()"></div>
+
+{% if release_note %}
+<div id="bender-release" class="bender-panel bender-panel-blue">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">🆕 Что нового · {{ release_note.version }}</span>
+        <button class="bender-close-btn" onclick="benderToggle('release')">×</button>
+    </div>
+    <div class="bender-panel-body" style="padding:14px 16px;">
+        <div style="font-size:.83rem;color:#6ab8e0;line-height:1.8;white-space:pre-wrap;">{{ release_note.content }}</div>
+    </div>
+</div>
+{% endif %}
 
 {% if ucl_standings and league_enabled['UCL'] %}
 <div id="bender-standings-ucl" class="bender-panel bender-panel-gold">
@@ -338,6 +399,11 @@
         {% endif %}
         {% if (not ucl_standings or not league_enabled['UCL']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
         <div class="bender-chip-spacer"></div>
+        {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;pointer-events:none;">
+        {% if release_note %}
+        <button class="bender-chip chip-blue" onclick="benderToggle('release')">🆕 {{ release_note.version }}</button>
         {% endif %}
     </div>
     <div style="display:flex;gap:8px;pointer-events:none;">
@@ -520,6 +586,16 @@ window.addEventListener('resize', () => {
     clearTimeout(_resizeTimer);
     _resizeTimer = setTimeout(adjustPredTables, 120);
 });
+
+{% if release_note %}
+(function() {
+    const key = 'release_seen_{{ release_note.version | replace(" ", "_") }}';
+    if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        setTimeout(() => benderToggle('release'), 400);
+    }
+})();
+{% endif %}
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {

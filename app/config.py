@@ -1,5 +1,5 @@
 APP_NAME = "Mamkiny Gamers United"
-APP_VERSION = "v1.2"
+APP_VERSION = "v1.5"
 
 # Points system
 POINTS_EXACT = 3
