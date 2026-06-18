@@ -8,7 +8,7 @@ load_dotenv()
 
 IS_PRODUCTION = bool(os.environ.get("RENDER"))
 APP_ENV = os.environ.get("APP_ENV", "production")
-DB_SCHEMA = "bet"
+DB_SCHEMA = "bet_develop" if APP_ENV == "sandbox" else "bet"
 
 
 def create_app():

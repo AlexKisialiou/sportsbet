@@ -35,7 +35,7 @@ Schema `bet` is created automatically on startup; all tables live there (not in 
 | `ADMIN_USERNAME/PASSWORD/такNICKNAME` | Seeded admin user credentials |
 | `USER1_*/USER2_*/USER3_*`             | Seeded regular user credentials (USERNAME/PASSWORD/NICKNAME) |
 | `RENDER`                              | Set automatically by Render; enables production mode (HTTPS cookies, HSTS, ProxyFix) |
-| `APP_ENV`                             | `sandbox` → shows orange SANDBOX badge in navbar. Both prod and sandbox use schema `bet`, but against their own separate `DATABASE_URL`. Set on the Render sandbox service and in local `.env`. |
+| `APP_ENV`                             | `sandbox` → uses PostgreSQL schema `bet_develop` + shows orange SANDBOX badge in navbar. Omit (or `production`) → schema `bet`. Both services share the same `DATABASE_URL`. |
 
 Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 
@@ -57,7 +57,7 @@ Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 12. `after_request` sets security headers; 429 handler returns JSON for `/api/*`, HTML otherwise
 
 ### PostgreSQL Schema (`_init_schema`)
-- `DB_SCHEMA = "bet"` constant in `__init__.py` — same in both prod and sandbox (each has its own DB)
+- `DB_SCHEMA` derived from `APP_ENV`: `"sandbox"` → `"bet_develop"`, otherwise `"bet"`; both services share one PostgreSQL instance
 - `_init_schema` creates the schema, then moves any tables still in `public` using `ALTER TABLE public."tbl" SET SCHEMA bet` with per-table `SAVEPOINT`/`ROLLBACK TO SAVEPOINT` for safety
 - All `sa_inspect` column reflection uses `schema=DB_SCHEMA` (or `None` for SQLite)
 - SQLite dev environment is unaffected — all schema logic is gated by `is_postgres`
