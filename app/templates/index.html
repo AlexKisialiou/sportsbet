@@ -151,7 +151,7 @@
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
                 <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
-                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -168,7 +168,7 @@
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
-                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.display_name }}</span>
                 </div>
             </div>
             <div class="pred-chips-row">
@@ -207,7 +207,7 @@
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
                 <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
-                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -222,7 +222,7 @@
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
-                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.display_name }}</span>
                 </div>
             </div>
             <div class="pred-chips-row">
