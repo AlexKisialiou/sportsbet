@@ -35,6 +35,7 @@ Schema `bet` is created automatically on startup; all tables live there (not in 
 | `ADMIN_USERNAME/PASSWORD/такNICKNAME` | Seeded admin user credentials |
 | `USER1_*/USER2_*/USER3_*`             | Seeded regular user credentials (USERNAME/PASSWORD/NICKNAME) |
 | `RENDER`                              | Set automatically by Render; enables production mode (HTTPS cookies, HSTS, ProxyFix) |
+| `APP_ENV`                             | `sandbox` → uses schema `bet_develop` and shows orange SANDBOX badge in navbar. Omit or set to `production` for prod schema `bet`. Set in `.env` on develop branch. |
 
 Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 
@@ -56,7 +57,7 @@ Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 12. `after_request` sets security headers; 429 handler returns JSON for `/api/*`, HTML otherwise
 
 ### PostgreSQL Schema (`_init_schema`)
-- `DB_SCHEMA = "bet"` constant in `__init__.py`
+- `APP_ENV` env var controls schema: `"sandbox"` → `DB_SCHEMA = "bet_develop"`, otherwise `"bet"`
 - `_init_schema` creates the schema, then moves any tables still in `public` using `ALTER TABLE public."tbl" SET SCHEMA bet` with per-table `SAVEPOINT`/`ROLLBACK TO SAVEPOINT` for safety
 - All `sa_inspect` column reflection uses `schema=DB_SCHEMA` (or `None` for SQLite)
 - SQLite dev environment is unaffected — all schema logic is gated by `is_postgres`

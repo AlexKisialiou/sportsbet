@@ -17,6 +17,9 @@
             <div style="display:flex;align-items:center;gap:8px;">
                 <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
                 <span class="app-version">{{ APP_VERSION }}</span>
+                {% if APP_ENV == 'sandbox' %}
+                <span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#2a1a00;color:#f0a030;border:1px solid #7a4a00;letter-spacing:.05em;">SANDBOX</span>
+                {% endif %}
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;">
                 {% if current_user and current_user.is_superuser %}

@@ -7,7 +7,8 @@ from .models import db
 load_dotenv()
 
 IS_PRODUCTION = bool(os.environ.get("RENDER"))
-DB_SCHEMA = "bet"
+APP_ENV = os.environ.get("APP_ENV", "production")
+DB_SCHEMA = "bet_develop" if APP_ENV == "sandbox" else "bet"
 
 
 def create_app():
@@ -182,6 +183,7 @@ def create_app():
             APP_NAME=app_config.APP_NAME,
             APP_VERSION=app_config.APP_VERSION,
             current_theme=theme,
+            APP_ENV=APP_ENV,
         )
 
     # Security headers on every response
