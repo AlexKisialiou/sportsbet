@@ -250,23 +250,6 @@
 
 <div class="admin-card" style="border-color:#2a1a3a;">
     <h6 style="color:#cc88ff;">🔴 Ставки на идущие матчи</h6>
-    <p class="text-secondary mb-3" style="font-size:.85rem;">
-        Открыть ставки на live-матчи — все игроки увидят чужие прогнозы.
-    </p>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
-        <span id="reveal-status" style="font-size:.88rem;color:{% if reveal_live %}#cc88ff{% else %}#5a5a9a{% endif %};">
-            {% if reveal_live %}👁 Ставки показываются{% else %}🙈 Ставки скрыты{% endif %}
-        </span>
-        <button onclick="toggleRevealLive({{ 'false' if reveal_live else 'true' }})"
-                id="reveal-btn"
-                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
-                       background:{% if reveal_live %}#1a0a2a{% else %}#0a0a1a{% endif %};
-                       color:{% if reveal_live %}#cc88ff{% else %}#6a6a9a{% endif %};
-                       border:1px solid {% if reveal_live %}#6a2a9a{% else %}#2a2a5a{% endif %};">
-            {% if reveal_live %}Скрыть{% else %}Показать игрокам{% endif %}
-        </button>
-        <span id="revealMsg" style="font-size:.82rem;"></span>
-    </div>
     {% if live_matches %}
     <div id="live-matches-list">
         {% for m in live_matches %}
@@ -319,6 +302,73 @@
             {% if betting_locked %}Разблокировать{% else %}Заблокировать{% endif %}
         </button>
         <span id="lockMsg" style="font-size:.82rem;"></span>
+    </div>
+</div>
+
+<div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#7ab5a0;">⏱ Автообновление матчей</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Автоматически обновлять данные матчей из football-data.org по расписанию.
+    </p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <span id="autofetch-status" style="font-size:.88rem;color:{% if auto_fetch_enabled %}#5db85d{% else %}#888{% endif %};">
+            {% if auto_fetch_enabled %}✓ Включено{% else %}○ Выключено{% endif %}
+        </span>
+        <button onclick="toggleAutoFetch({{ 'false' if auto_fetch_enabled else 'true' }})"
+                id="autofetch-btn"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:{% if auto_fetch_enabled %}#2a0a0a{% else %}#0a2a10{% endif %};
+                       color:{% if auto_fetch_enabled %}#e05555{% else %}#5db85d{% endif %};
+                       border:1px solid {% if auto_fetch_enabled %}#5a1a1a{% else %}#1a5a2a{% endif %};">
+            {% if auto_fetch_enabled %}Выключить{% else %}Включить{% endif %}
+        </button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
+        <label style="font-size:.85rem;color:#aaa;">Интервал (мин):</label>
+        <input type="number" id="autofetch-interval" value="{{ auto_fetch_interval }}" min="5" max="120"
+               style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid #2a3a4a;background:#0d1117;color:#ccc;font-size:.85rem;">
+        <button onclick="saveAutoFetchInterval()"
+                style="font-size:.82rem;padding:5px 14px;border-radius:7px;cursor:pointer;
+                       background:#0a1a2a;color:#7ab5d0;border:1px solid #1a3a5a;">
+            Сохранить
+        </button>
+    </div>
+    <div id="autofetchMsg" style="font-size:.82rem;margin-top:8px;"></div>
+</div>
+
+<div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#7a9ab5;">🔍 Форма команды в подсказке</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Сколько последних матчей показывать при наведении на команду. 0 — все матчи.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="number" id="teamFormCountInput" min="0" max="50" value="{{ team_form_count }}"
+               style="width:70px;padding:5px 10px;border-radius:6px;background:#0d1b28;
+                      border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
+        <button onclick="saveTeamFormCount()"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
+            Сохранить
+        </button>
+        <span id="teamFormMsg" style="font-size:.82rem;display:none;"></span>
+    </div>
+</div>
+
+<div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#7a9ab5;">💬 Комментарии к матчам</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Максимальная длина комментария пользователя к прошедшему матчу. По умолчанию: 10.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="number" id="commentMaxLenInput" min="1" max="500" value="{{ comment_max_length }}"
+               style="width:70px;padding:5px 10px;border-radius:6px;background:#0d1b28;
+                      border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
+        <button onclick="saveCommentMaxLen()"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
+            Сохранить
+        </button>
+        <span id="commentMaxLenMsg" style="font-size:.82rem;display:none;"></span>
     </div>
 </div>
 
@@ -584,56 +634,7 @@
 </div>
 
 <script>
-// ── Reveal live predictions ──────────────────────────────────────────────────
 let _livePredLoaded = {};
-
-async function toggleRevealLive(enable) {
-    const btn = document.getElementById('reveal-btn');
-    const status = document.getElementById('reveal-status');
-    const msg = document.getElementById('revealMsg');
-    btn.disabled = true;
-    try {
-        const resp = await fetch('/api/settings/reveal-live-predictions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: enable })
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            if (enable) {
-                status.textContent = '👁 Ставки показываются';
-                status.style.color = '#cc88ff';
-                btn.textContent = 'Скрыть';
-                btn.style.background = '#1a0a2a'; btn.style.color = '#cc88ff'; btn.style.borderColor = '#6a2a9a';
-                btn.onclick = () => toggleRevealLive(false);
-                document.querySelectorAll('[id^="live-preds-panel-"]').forEach(p => {
-                    const matchId = p.id.replace('live-preds-panel-', '');
-                    if (!_livePredLoaded[matchId]) {
-                        p.style.display = 'block';
-                        const lb = document.getElementById(`live-preds-btn-${matchId}`);
-                        if (lb) { lb.style.background = '#0a2a20'; lb.style.color = '#3db88d'; lb.style.borderColor = '#1a5a3a'; }
-                        _livePredLoaded[matchId] = true;
-                        loadLivePredictions(matchId);
-                    }
-                });
-            } else {
-                status.textContent = '🙈 Ставки скрыты';
-                status.style.color = '#5a5a9a';
-                btn.textContent = 'Показать игрокам';
-                btn.style.background = '#0a0a1a'; btn.style.color = '#6a6a9a'; btn.style.borderColor = '#2a2a5a';
-                btn.onclick = () => toggleRevealLive(true);
-            }
-            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
-            setTimeout(() => msg.innerHTML = '', 2000);
-        } else {
-            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
-        }
-    } catch {
-        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
-    } finally {
-        btn.disabled = false;
-    }
-}
 
 async function toggleLivePredPanel(matchId) {
     const panel = document.getElementById(`live-preds-panel-${matchId}`);
@@ -1110,6 +1111,117 @@ async function toggleBettingLock(lock) {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
     } finally {
         btn.disabled = false;
+    }
+}
+
+async function toggleAutoFetch(enable) {
+    const btn = document.getElementById('autofetch-btn');
+    const status = document.getElementById('autofetch-status');
+    const msg = document.getElementById('autofetchMsg');
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/settings/auto-fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (enable) {
+                status.textContent = '✓ Включено'; status.style.color = '#5db85d';
+                btn.textContent = 'Выключить';
+                btn.style.background = '#2a0a0a'; btn.style.color = '#e05555'; btn.style.borderColor = '#5a1a1a';
+                btn.onclick = () => toggleAutoFetch(false);
+            } else {
+                status.textContent = '○ Выключено'; status.style.color = '#888';
+                btn.textContent = 'Включить';
+                btn.style.background = '#0a2a10'; btn.style.color = '#5db85d'; btn.style.borderColor = '#1a5a2a';
+                btn.onclick = () => toggleAutoFetch(true);
+            }
+            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function saveAutoFetchInterval() {
+    const val = parseInt(document.getElementById('autofetch-interval').value);
+    const msg = document.getElementById('autofetchMsg');
+    if (isNaN(val) || val < 5 || val > 120) {
+        msg.innerHTML = '<span class="error-msg">Интервал: 5–120 мин</span>';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/auto-fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval: val })
+        });
+        const data = await resp.json();
+        msg.innerHTML = data.ok
+            ? '<span class="success-msg">Сохранено.</span>'
+            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        setTimeout(() => msg.innerHTML = '', 2000);
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    }
+}
+
+async function saveCommentMaxLen() {
+    const val = parseInt(document.getElementById('commentMaxLenInput').value);
+    const msg = document.getElementById('commentMaxLenMsg');
+    if (isNaN(val) || val < 1 || val > 500) {
+        msg.innerHTML = '<span class="error-msg">Введи число от 1 до 500</span>';
+        msg.style.display = '';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/comment-max-length', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({length: val})
+        });
+        const data = await resp.json();
+        msg.innerHTML = data.ok
+            ? `<span class="success-msg">✓ Сохранено (${data.length})</span>`
+            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        msg.style.display = '';
+        setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
+        msg.style.display = '';
+    }
+}
+
+async function saveTeamFormCount() {
+    const val = parseInt(document.getElementById('teamFormCountInput').value);
+    const msg = document.getElementById('teamFormMsg');
+    if (isNaN(val) || val < 0 || val > 50) {
+        msg.innerHTML = '<span class="error-msg">Введи число от 0 до 50</span>';
+        msg.style.display = '';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/team-form-count', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: val })
+        });
+        const data = await resp.json();
+        msg.innerHTML = data.ok
+            ? '<span class="success-msg">✓ Сохранено</span>'
+            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        msg.style.display = '';
+        setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
+        msg.style.display = '';
     }
 }
 

@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
-from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote
+from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
 from ..services.points import update_points_for_match, calc_points
 from ..auth import get_current_user, login_required, admin_required, superuser_required
@@ -16,12 +16,12 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 @limiter.limit("5 per minute")
 def cl_matches():
     try:
-        added, updated = fetch_and_save_cl_matches()
+        added, updated, existing = fetch_and_save_cl_matches()
         maybe_generate_standings("UCL", current_app._get_current_object())
         actor = get_current_user()
         log_action(actor.id if actor else None, "cl_matches_loaded",
                    f"ЛЧ матчи загружены: +{added} новых, {updated} обновлено")
-        return jsonify({"added": added, "updated": updated})
+        return jsonify({"added": added, "updated": updated, "existing": existing})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -49,12 +49,12 @@ def pl_matches():
                     Match.query.filter(Match.tour_id.in_(pl_tour_ids)).delete(synchronize_session=False)
                 Tour.query.filter_by(league="PL").delete()
                 db.session.commit()
-        added, updated = fetch_and_save_pl_matches()
+        added, updated, existing = fetch_and_save_pl_matches()
         maybe_generate_standings("PL", current_app._get_current_object())
         actor = get_current_user()
         log_action(actor.id if actor else None, "pl_matches_loaded",
                    f"АПЛ матчи загружены: +{added} новых, {updated} обновлено")
-        return jsonify({"added": added, "updated": updated})
+        return jsonify({"added": added, "updated": updated, "existing": existing})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -82,12 +82,12 @@ def wc_matches():
                     Match.query.filter(Match.tour_id.in_(wc_tour_ids)).delete(synchronize_session=False)
                 Tour.query.filter_by(league="WC").delete()
                 db.session.commit()
-        added, updated = fetch_and_save_wc_matches()
+        added, updated, existing = fetch_and_save_wc_matches()
         maybe_generate_standings("WC", current_app._get_current_object())
         actor = get_current_user()
         log_action(actor.id if actor else None, "wc_matches_loaded",
                    f"ЧМ матчи загружены: +{added} новых, {updated} обновлено")
-        return jsonify({"added": added, "updated": updated})
+        return jsonify({"added": added, "updated": updated, "existing": existing})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -902,3 +902,197 @@ def update_prompt_hint(hint_id):
     return jsonify({"ok": True, "id": hint.id, "active": hint.active})
 
 
+@api_bp.route("/settings/auto-fetch", methods=["POST"])
+@superuser_required
+def set_auto_fetch():
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    interval = data.get("interval")
+
+    if enabled is None and interval is None:
+        return jsonify({"error": "enabled or interval required"}), 400
+
+    enabled_s = Setting.query.get("auto_fetch_enabled") or Setting(key="auto_fetch_enabled", value="0")
+    interval_s = Setting.query.get("auto_fetch_interval_min") or Setting(key="auto_fetch_interval_min", value="15")
+
+    if enabled is not None:
+        enabled_s.value = "1" if enabled else "0"
+        db.session.add(enabled_s)
+
+    if interval is not None:
+        try:
+            interval = max(5, min(int(interval), 120))
+        except (ValueError, TypeError):
+            return jsonify({"error": "interval must be 5–120"}), 400
+        interval_s.value = str(interval)
+        db.session.add(interval_s)
+
+    db.session.commit()
+
+    from ..scheduler import update_auto_fetch
+    final_enabled = enabled_s.value == "1"
+    try:
+        final_interval = max(5, min(int(interval_s.value), 120))
+    except (ValueError, TypeError):
+        final_interval = 15
+    update_auto_fetch(final_enabled, final_interval)
+
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "auto_fetch_changed",
+               f"Автообновление: {'вкл' if final_enabled else 'выкл'}, интервал {final_interval} мин")
+    return jsonify({"ok": True, "enabled": final_enabled, "interval": final_interval})
+
+
+@api_bp.route("/team/<int:team_id>/recent-matches", methods=["GET"])
+@login_required
+def team_recent_matches(team_id):
+    league = (request.args.get("league") or "UCL").upper()
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "invalid league"}), 400
+
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "not found"}), 404
+
+    count_s = Setting.query.get("team_form_matches_count")
+    try:
+        limit = int(count_s.value) if count_s else 0
+    except (ValueError, TypeError):
+        limit = 0
+
+    q = (
+        Match.query
+        .join(Tour)
+        .filter(
+            Tour.league == league,
+            Match.status == "finished",
+            db.or_(Match.home_team_id == team_id, Match.away_team_id == team_id)
+        )
+        .order_by(Match.kickoff_time.desc())
+    )
+    if limit > 0:
+        q = q.limit(limit)
+    matches = q.all()
+
+    result = []
+    for m in matches:
+        score = Score.query.filter_by(match_id=m.id).first()
+        if not score:
+            continue
+        is_home = m.home_team_id == team_id
+        opponent = m.away_team if is_home else m.home_team
+        team_goals = score.home_score if is_home else score.away_score
+        opp_goals = score.away_score if is_home else score.home_score
+        if team_goals > opp_goals:
+            res = "W"
+        elif team_goals == opp_goals:
+            res = "D"
+        else:
+            res = "L"
+        dt = (m.kickoff_time + timedelta(hours=3)).strftime("%d.%m") if m.kickoff_time else "—"
+        result.append({
+            "date": dt,
+            "opponent": opponent.display_name,
+            "opponent_crest": opponent.crest or "",
+            "score": f"{team_goals}:{opp_goals}",
+            "is_home": is_home,
+            "result": res,
+        })
+
+    return jsonify({
+        "ok": True,
+        "team_name": team.display_name,
+        "team_crest": team.crest or "",
+        "matches": result,
+    })
+
+
+@api_bp.route("/settings/team-form-count", methods=["POST"])
+@superuser_required
+def set_team_form_count():
+    data = request.get_json(silent=True) or {}
+    count = data.get("count")
+    if count is None:
+        return jsonify({"error": "count required"}), 400
+    try:
+        count = int(count)
+        if count < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"error": "count must be >= 0"}), 400
+    s = Setting.query.get("team_form_matches_count") or Setting(key="team_form_matches_count")
+    s.value = str(count)
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "team_form_count_changed",
+               f"Подсказка форма команды: {count if count > 0 else 'все'} матчей")
+    return jsonify({"ok": True, "count": count})
+
+
+@api_bp.route("/match/<int:match_id>/comment", methods=["POST"])
+@login_required
+@limiter.limit("30 per minute")
+def save_match_comment(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+    if match.status != "finished":
+        return jsonify({"error": "Матч ещё не завершён"}), 400
+
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "Пустой комментарий"}), 400
+
+    max_len_s = Setting.query.get("comment_max_length")
+    try:
+        max_len = max(1, int(max_len_s.value)) if max_len_s else 10
+    except (ValueError, TypeError):
+        max_len = 10
+
+    if len(text) > max_len:
+        return jsonify({"error": f"Слишком длинный (макс. {max_len})"}), 400
+
+    comment = MatchComment.query.filter_by(match_id=match_id, user_id=user.id).first()
+    if comment:
+        comment.text = text
+        comment.updated_at = datetime.utcnow()
+    else:
+        comment = MatchComment(match_id=match_id, user_id=user.id, text=text)
+        db.session.add(comment)
+    db.session.commit()
+    log_action(user.id, "comment_set", f"Матч #{match_id}: {text[:50]}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/match/<int:match_id>/comment", methods=["DELETE"])
+@login_required
+@limiter.limit("30 per minute")
+def delete_match_comment(match_id):
+    user = get_current_user()
+    comment = MatchComment.query.filter_by(match_id=match_id, user_id=user.id).first()
+    if not comment:
+        return jsonify({"error": "Комментарий не найден"}), 404
+    db.session.delete(comment)
+    db.session.commit()
+    log_action(user.id, "comment_deleted", f"Матч #{match_id}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/settings/comment-max-length", methods=["POST"])
+@superuser_required
+@limiter.limit("10 per minute")
+def set_comment_max_length():
+    data = request.get_json(silent=True) or {}
+    try:
+        val = max(1, min(int(data.get("length", 10)), 500))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Неверное значение"}), 400
+    s = Setting.query.get("comment_max_length") or Setting(key="comment_max_length")
+    s.value = str(val)
+    db.session.add(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "comment_max_length_changed",
+               f"Макс. длина комментария: {val}")
+    return jsonify({"ok": True, "length": val})

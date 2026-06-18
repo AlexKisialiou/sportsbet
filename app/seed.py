@@ -111,4 +111,7 @@ def seed_prompt_hints():
                     active=True,
                     sort_order=0 if hint_type == "prompt" else 1,
                 ))
+            elif not existing.active:
+                existing.active = True
+                print(f"[seed] prompt_hint {tournament}/{hint_type} was inactive — activated")
     db.session.commit()

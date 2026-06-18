@@ -158,6 +158,21 @@ class ReleaseNote(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
 
 
+class MatchComment(db.Model):
+    __tablename__ = "match_comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    text = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint("match_id", "user_id"),)
+
+    user = db.relationship("User")
+
+
 class ActivityLog(db.Model):
     __tablename__ = "activity_log"
 

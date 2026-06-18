@@ -18,7 +18,8 @@ def _load_prompt(tournament, hint_type):
             tournament=tournament, hint_type=hint_type, active=True
         ).first()
         return hint.content if hint else None
-    except Exception:
+    except Exception as e:
+        print(f"[bender] _load_prompt({tournament}, {hint_type}) error: {e}")
         return None
 
 

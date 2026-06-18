@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% from '_macros.html' import user_avatar %}
+{% block title %}Статистика — {{ APP_NAME }}{% endblock %}
+
+{% block extra_styles %}
+<style>
+.stats-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 0 8px;
+    flex-wrap: wrap;
+}
+.stats-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: .03em;
+}
+.league-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+.league-tab {
+    padding: 5px 16px;
+    border-radius: 20px;
+    font-size: .8rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all .15s;
+    background: var(--surface);
+}
+.league-tab:hover { border-color: var(--accent); color: var(--accent); }
+.league-tab.active {
+    background: rgba(var(--accent-rgb), .15);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.stats-section-title {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-sub);
+}
+.stats-table-wrap {
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-deep) 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+.stats-th {
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 8px 14px;
+    text-align: right;
+    background: var(--surface-deep);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.stats-th:first-child, .stats-th:nth-child(2) { text-align: left; }
+.stats-table { width: 100%; border-collapse: collapse; }
+.stats-table tr:hover td { background: rgba(var(--accent-rgb), .04); }
+.stats-td {
+    padding: 9px 14px;
+    font-size: .85rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border-sub);
+    text-align: right;
+    white-space: nowrap;
+}
+.stats-td:first-child { text-align: center; width: 36px; }
+.stats-pts { font-weight: 700; color: #fff; }
+.stats-exact { color: #00c87a; font-weight: 600; }
+.stats-winner { color: var(--accent); }
+.stats-miss { color: var(--text-dim); }
+.pct-bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.pct-bar { width: 44px; height: 4px; background: var(--surface-hi); border-radius: 2px; overflow: hidden; }
+.pct-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+.stats-pct { font-size: .78rem; color: var(--text-muted); }
+/* Chart card */
+.chart-wrap {
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-deep) 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 20px 16px;
+    margin-bottom: 32px;
+    position: relative;
+}
+.chart-empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: .85rem;
+    padding: 32px 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stats-header">
+    <a href="/" style="font-size:.8rem;color:var(--text-muted);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;">← Назад</a>
+    <span class="stats-title">📊 Статистика</span>
+</div>
+
+<!-- League tabs -->
+<div class="league-tabs">
+    <a href="/stats" class="league-tab {% if not active_league %}active{% endif %}">Все</a>
+    {% set league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ 2026"} %}
+    {% for lg in ["UCL", "PL", "WC"] %}
+    {% if lg in enabled_leagues %}
+    <a href="/stats?league={{ lg }}" class="league-tab {% if active_league == lg %}active{% endif %}">{{ league_names[lg] }}</a>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<!-- ── Общая статистика ── -->
+<div class="stats-section-title">Общая статистика</div>
+<div class="stats-table-wrap">
+<table class="stats-table">
+    <thead>
+        <tr>
+            <th class="stats-th">#</th>
+            <th class="stats-th" style="text-align:left;">Игрок</th>
+            <th class="stats-th">Очки</th>
+            <th class="stats-th">Точных ⚽</th>
+            <th class="stats-th">Результат ✓</th>
+            <th class="stats-th">Промахов</th>
+            <th class="stats-th">Всего</th>
+            <th class="stats-th">Точность</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for s in overall_stats %}
+    <tr>
+        <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+        <td class="stats-td" style="text-align:left;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                {{ user_avatar(s.user) }}
+                <span>{{ s.user.display_name }}</span>
+            </div>
+        </td>
+        <td class="stats-td stats-pts">{{ s.points }}</td>
+        <td class="stats-td stats-exact">{{ s.exact }}</td>
+        <td class="stats-td stats-winner">{{ s.winner }}</td>
+        <td class="stats-td stats-miss">{{ s.none }}</td>
+        <td class="stats-td" style="color:var(--text-muted);">{{ s.total }}</td>
+        <td class="stats-td">
+            <div class="pct-bar-wrap">
+                <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ s.accuracy }}%;"></div></div>
+                <span class="stats-pct">{{ s.accuracy }}%</span>
+            </div>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="8" class="stats-td" style="text-align:center;color:var(--text-dim);padding:24px;">Нет данных</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<!-- ── График по турам ── -->
+<div class="stats-section-title">Динамика очков по турам</div>
+<div class="chart-wrap">
+{% if chart_labels %}
+    <canvas id="pointsChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+{% if chart_labels %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const labels = {{ chart_labels | tojson }};
+    const datasets = {{ chart_datasets | tojson }};
+
+    const chartDatasets = datasets.map(d => ({
+        label: d.label,
+        data: d.data,
+        borderColor: d.color,
+        backgroundColor: d.color + '22',
+        pointBackgroundColor: d.color,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
+        tension: 0.25,
+        fill: false,
+    }));
+
+    new Chart(document.getElementById('pointsChart'), {
+        type: 'line',
+        data: { labels, datasets: chartDatasets },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#a0a0c0',
+                        font: { size: 12 },
+                        boxWidth: 14,
+                        padding: 16,
+                    }
+                },
+                tooltip: {
+                    backgroundColor: '#0e1220',
+                    borderColor: '#2a2a4a',
+                    borderWidth: 1,
+                    titleColor: '#c0c0e0',
+                    bodyColor: '#a0a0c0',
+                    padding: 10,
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#6a6a9a', font: { size: 11 }, maxRotation: 35 },
+                    grid: { color: '#1a1a2e' },
+                },
+                y: {
+                    ticks: { color: '#6a6a9a', font: { size: 11 }, stepSize: 1 },
+                    grid: { color: '#1a1a2e' },
+                    beginAtZero: true,
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

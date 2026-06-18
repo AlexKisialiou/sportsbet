@@ -85,7 +85,7 @@
 
     <!-- ── Right: Ставки ── -->
     <div class="col-matches">
-        <div class="col-section-title">Ставки</div>
+        <div class="col-section-title">Прогнозы</div>
 
         {% if data.scheduled_matches %}
             {% set ns = namespace(current_stage='') %}
@@ -98,7 +98,7 @@
                 {% set pred = predictions.get(match.id) %}
                 <div class="match-card" data-match-id="{{ match.id }}" style="flex-direction:column;align-items:stretch;">
                     <div style="display:flex;align-items:center;">
-                        <div class="team-wrap team-wrap-home">
+                        <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
                             <span class="team-name">{{ match.home_team.display_name }}</span>
                             {% if match.home_team.crest %}
                             <img src="{{ match.home_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
@@ -109,7 +109,7 @@
                             <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
                             <div class="match-date">{{ (match.kickoff_time | minsk).strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
                         </div>
-                        <div class="team-wrap team-wrap-away">
+                        <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                             {% if match.away_team.crest %}
                             <img src="{{ match.away_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
                             {% endif %}
@@ -150,7 +150,7 @@
     {% for match in data.live_matches %}
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
-                <div class="team-wrap team-wrap-home">
+                <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
                     <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
@@ -164,7 +164,7 @@
                     {% endif %}
                     <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;">Идёт</span></div>
                 </div>
-                <div class="team-wrap team-wrap-away">
+                <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -195,7 +195,7 @@
 {% if data.finished_recent %}
 {% set months = ['','января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'] %}
 <div style="margin-bottom:32px;">
-    <div class="col-section-title">Предикты</div>
+    <div class="col-section-title">Прошедшие матчи</div>
     {% set ns2 = namespace(cur_date='') %}
     {% for match in data.finished_recent %}
         {% set mdate = (match.kickoff_time | minsk).strftime('%d.%m') if match.kickoff_time else '' %}
@@ -206,7 +206,7 @@
         {% endif %}
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
-                <div class="team-wrap team-wrap-home">
+                <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
                     <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
@@ -218,7 +218,7 @@
                     {% endif %}
                     <div><span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span></div>
                 </div>
-                <div class="team-wrap team-wrap-away">
+                <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -254,6 +254,30 @@
                 </div>
                 {% endfor %}
             </div>
+            {% set cmts = data.comment_map.get(match.id, {}) %}
+            {% if cmts or (current_user and not current_user.is_bot) %}
+            <div class="match-comments-section">
+                {% for uid, cmt in cmts.items() %}
+                <div class="match-comment">
+                    {{ user_avatar(cmt.user) }}
+                    <span class="mc-author">{{ cmt.user.display_name }}:</span>
+                    <span class="mc-text">{{ cmt.text }}</span>
+                    {% if current_user and cmt.user_id == current_user.id %}
+                    <button class="mc-del" onclick="deleteComment({{ match.id }})">×</button>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% if current_user and not current_user.is_bot and not cmts.get(current_user.id) %}
+                <div class="match-comment-input">
+                    <input class="mc-inp" type="text" id="mc-inp-{{ match.id }}"
+                           maxlength="{{ comment_max_length }}"
+                           placeholder="Комментарий…"
+                           onkeydown="if(event.key==='Enter')saveComment({{ match.id }},{{ comment_max_length }})">
+                    <button class="mc-send" onclick="saveComment({{ match.id }},{{ comment_max_length }})">→</button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     {% endfor %}
 </div>
@@ -284,6 +308,14 @@
 {% endif %}{% endfor %}
 
 </div><!-- .page-content-pad -->
+
+<div id="team-tooltip" style="display:none;">
+    <div class="tt-header">
+        <img id="tt-crest" style="width:18px;height:18px;object-fit:contain;" src="" alt="" onerror="this.style.display='none'">
+        <span id="tt-name"></span>
+    </div>
+    <div id="tt-matches"></div>
+</div>
 
 <div id="bender-backdrop" class="bender-backdrop" onclick="benderCloseAll()"></div>
 
@@ -423,6 +455,7 @@
 const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
 const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
 const WC_FIRST_MATCH  = {{ wc_first_match_iso  | tojson }};
+const TEAM_FORM_DATA  = {{ team_form_data | tojson }};
 let _bettingLocked = {{ 'true' if betting_locked else 'false' }};
 const _lockedTabs = new Set({{ (['ucl', 'pl', 'wc'] if betting_locked else []) | tojson }});
 
@@ -597,6 +630,25 @@ window.addEventListener('resize', () => {
 })();
 {% endif %}
 
+async function saveComment(matchId, maxLen) {
+    const inp = document.getElementById(`mc-inp-${matchId}`);
+    if (!inp) return;
+    const text = inp.value.trim();
+    if (!text) return;
+    if (text.length > maxLen) { inp.style.borderColor = '#e05555'; return; }
+    const resp = await fetch(`/api/match/${matchId}/comment`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text})
+    });
+    if (resp.ok) location.reload();
+}
+
+async function deleteComment(matchId) {
+    const resp = await fetch(`/api/match/${matchId}/comment`, {method: 'DELETE'});
+    if (resp.ok) location.reload();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -608,5 +660,93 @@ document.addEventListener('DOMContentLoaded', () => {
     startCountdown('pl', PL_FIRST_MATCH);
     startCountdown('wc', WC_FIRST_MATCH);
 });
+
+(function() {
+    const ttEl = document.getElementById('team-tooltip');
+    const ttName = document.getElementById('tt-name');
+    const ttCrest = document.getElementById('tt-crest');
+    const ttMatches = document.getElementById('tt-matches');
+    let timer = null;
+
+    function positionTooltip(anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const w = ttEl.offsetWidth || 240;
+        const h = ttEl.offsetHeight || 160;
+        let left = rect.right + 10;
+        let top = rect.top - 4;
+        if (left + w > window.innerWidth - 8) left = rect.left - w - 10;
+        if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+        if (left < 8) left = 8;
+        if (top < 8) top = 8;
+        ttEl.style.left = left + 'px';
+        ttEl.style.top = top + 'px';
+    }
+
+    function renderTooltip(data, anchor) {
+        ttName.textContent = data.team_name;
+        if (data.team_crest) { ttCrest.src = data.team_crest; ttCrest.style.display = ''; }
+        else ttCrest.style.display = 'none';
+
+        if (!data.matches || data.matches.length === 0) {
+            ttMatches.innerHTML = '<div class="tt-empty">Матчей не найдено</div>';
+        } else {
+            ttMatches.innerHTML = data.matches.map(m => {
+                const rc = m.result === 'W' ? 'tt-w' : (m.result === 'D' ? 'tt-d' : 'tt-l');
+                const ha = m.is_home ? 'Д' : 'Г';
+                const crestHtml = m.opponent_crest
+                    ? `<img src="${m.opponent_crest}" style="width:13px;height:13px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">`
+                    : '';
+                return `<div class="tt-row">
+                    <span class="tt-date">${m.date}</span>
+                    <span class="tt-ha">${ha}</span>
+                    ${crestHtml}
+                    <span class="tt-opp">${m.opponent}</span>
+                    <span class="tt-score">${m.score}</span>
+                    <span class="${rc}">${m.result}</span>
+                </div>`;
+            }).join('');
+        }
+
+        ttEl.style.display = 'block';
+        requestAnimationFrame(() => positionTooltip(anchor));
+    }
+
+    function showTooltip(anchor) {
+        const key = `${anchor.dataset.teamId}_${anchor.dataset.league}`;
+        const data = TEAM_FORM_DATA[key];
+        if (data) renderTooltip(data, anchor);
+    }
+
+    document.addEventListener('mouseover', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => showTooltip(el), 180);
+    });
+
+    document.addEventListener('mouseout', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => { ttEl.style.display = 'none'; }, 120);
+    });
+
+    let activeTouch = null;
+    document.addEventListener('touchstart', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) {
+            if (ttEl.style.display !== 'none') { ttEl.style.display = 'none'; activeTouch = null; }
+            return;
+        }
+        e.preventDefault();
+        if (activeTouch === el && ttEl.style.display !== 'none') {
+            ttEl.style.display = 'none';
+            activeTouch = null;
+        } else {
+            activeTouch = el;
+            showTooltip(el);
+        }
+    }, { passive: false });
+})();
 </script>
 {% endblock %}

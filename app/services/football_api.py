@@ -61,7 +61,7 @@ def _regular_time_score(score_data):
 
 
 def _save_pl_matches(raw_matches, season):
-    added = updated = 0
+    added = updated = existing_count = 0
 
     groups = defaultdict(list)
     for m in raw_matches:
@@ -93,19 +93,25 @@ def _save_pl_matches(raw_matches, season):
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
-                existing.status = status
+                existing_count += 1
+                changed = existing.status != status
                 if hs is not None:
                     if existing.score:
                         if not existing.score.manual_lock:
-                            existing.score.home_score = hs
-                            existing.score.away_score = as_
-                            existing.score.updated_at = datetime.utcnow()
+                            if existing.score.home_score != hs or existing.score.away_score != as_:
+                                existing.score.home_score = hs
+                                existing.score.away_score = as_
+                                existing.score.updated_at = datetime.utcnow()
+                                changed = True
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        changed = True
+                existing.status = status
                 db.session.flush()
                 if status == "finished":
                     update_points_for_match(existing)
-                updated += 1
+                if changed:
+                    updated += 1
             else:
                 match = Match(
                     tour_id=tour.id,
@@ -122,7 +128,7 @@ def _save_pl_matches(raw_matches, season):
                 added += 1
 
     db.session.commit()
-    return added, updated
+    return added, updated, existing_count
 
 
 def fetch_and_save_wc_matches():
@@ -156,7 +162,7 @@ def _get_or_create_tour_wc(stage, matchday, season):
 
 
 def _save_wc_matches(raw_matches, season):
-    added = updated = 0
+    added = updated = existing_count = 0
 
     groups = defaultdict(list)
     for m in raw_matches:
@@ -181,19 +187,25 @@ def _save_wc_matches(raw_matches, season):
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
-                existing.status = status
+                existing_count += 1
+                changed = existing.status != status
                 if hs is not None:
                     if existing.score:
                         if not existing.score.manual_lock:
-                            existing.score.home_score = hs
-                            existing.score.away_score = as_
-                            existing.score.updated_at = datetime.utcnow()
+                            if existing.score.home_score != hs or existing.score.away_score != as_:
+                                existing.score.home_score = hs
+                                existing.score.away_score = as_
+                                existing.score.updated_at = datetime.utcnow()
+                                changed = True
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        changed = True
+                existing.status = status
                 db.session.flush()
                 if status == "finished":
                     update_points_for_match(existing)
-                updated += 1
+                if changed:
+                    updated += 1
             else:
                 match = Match(
                     tour_id=tour.id,
@@ -210,7 +222,7 @@ def _save_wc_matches(raw_matches, season):
                 added += 1
 
     db.session.commit()
-    return added, updated
+    return added, updated, existing_count
 
 
 def fetch_and_save_cl_matches():
@@ -270,7 +282,7 @@ def _get_or_create_tour(stage, matchday, season):
 
 
 def _save_matches(raw_matches, season):
-    added = updated = 0
+    added = updated = existing_count = 0
 
     groups = defaultdict(list)
     for m in raw_matches:
@@ -295,19 +307,25 @@ def _save_matches(raw_matches, season):
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
-                existing.status = status
+                existing_count += 1
+                changed = existing.status != status
                 if hs is not None:
                     if existing.score:
                         if not existing.score.manual_lock:
-                            existing.score.home_score = hs
-                            existing.score.away_score = as_
-                            existing.score.updated_at = datetime.utcnow()
+                            if existing.score.home_score != hs or existing.score.away_score != as_:
+                                existing.score.home_score = hs
+                                existing.score.away_score = as_
+                                existing.score.updated_at = datetime.utcnow()
+                                changed = True
                     else:
                         db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        changed = True
+                existing.status = status
                 db.session.flush()
                 if status == "finished":
                     update_points_for_match(existing)
-                updated += 1
+                if changed:
+                    updated += 1
             else:
                 match = Match(
                     tour_id=tour.id,
@@ -324,4 +342,4 @@ def _save_matches(raw_matches, season):
                 added += 1
 
     db.session.commit()
-    return added, updated
+    return added, updated, existing_count

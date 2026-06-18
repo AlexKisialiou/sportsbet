@@ -1,7 +1,7 @@
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
-from sqlalchemy import func
-from ..models import db, Match, Tour, Prediction, User, Commentary, ActivityLog, Setting, ReleaseNote
+from sqlalchemy import func, case as sa_case
+from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment
 from ..services.points import get_leaderboard
 from ..services.activity import ACTION_LABELS
 from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
@@ -23,6 +23,60 @@ def _get_league_config():
         s = Setting.query.get(f"league_enabled_{lg}")
         enabled[lg] = s is None or s.value != "0"
     return order, enabled
+
+
+def _build_team_form_data(league, team_ids, limit):
+    team_ids = set(team_ids)
+    if not team_ids:
+        return {}
+    matches = (
+        Match.query.join(Tour)
+        .filter(
+            Tour.league == league,
+            Match.status == "finished",
+            db.or_(Match.home_team_id.in_(team_ids), Match.away_team_id.in_(team_ids))
+        )
+        .order_by(Match.kickoff_time.desc())
+        .all()
+    )
+    match_ids = [m.id for m in matches]
+    scores = {s.match_id: s for s in Score.query.filter(Score.match_id.in_(match_ids)).all()} if match_ids else {}
+    team_lists = {tid: [] for tid in team_ids}
+    for m in matches:
+        score = scores.get(m.id)
+        if not score:
+            continue
+        for tid, is_home in ((m.home_team_id, True), (m.away_team_id, False)):
+            if tid not in team_ids:
+                continue
+            lst = team_lists[tid]
+            if limit > 0 and len(lst) >= limit:
+                continue
+            opponent = m.away_team if is_home else m.home_team
+            tg = score.home_score if is_home else score.away_score
+            og = score.away_score if is_home else score.home_score
+            res = "W" if tg > og else ("D" if tg == og else "L")
+            dt = (m.kickoff_time + timedelta(hours=3)).strftime("%d.%m") if m.kickoff_time else "—"
+            lst.append({
+                "date": dt,
+                "opponent": opponent.display_name,
+                "opponent_crest": opponent.crest or "",
+                "score": f"{tg}:{og}",
+                "is_home": is_home,
+                "result": res,
+            })
+    teams_map = {t.id: t for t in Team.query.filter(Team.id.in_(team_ids)).all()}
+    result = {}
+    for tid in team_ids:
+        team = teams_map.get(tid)
+        if not team:
+            continue
+        result[f"{tid}_{league}"] = {
+            "team_name": team.display_name,
+            "team_crest": team.crest or "",
+            "matches": team_lists[tid],
+        }
+    return result
 
 
 def _parse_days(rows):
@@ -74,6 +128,7 @@ def index():
 
         finished_recent = []
         pred_map = {}
+        comment_map = {}
         if pred_days:
             finished_recent = (
                 Match.query.join(Tour)
@@ -91,6 +146,8 @@ def index():
             if match_ids:
                 for p in Prediction.query.filter(Prediction.match_id.in_(match_ids)).all():
                     pred_map[(p.match_id, p.user_id)] = p
+                for c in MatchComment.query.filter(MatchComment.match_id.in_(match_ids)).all():
+                    comment_map.setdefault(c.match_id, {})[c.user_id] = c
 
         live_matches = (
             Match.query.join(Tour)
@@ -125,6 +182,7 @@ def index():
             "scheduled_matches": scheduled,
             "finished_recent": finished_recent,
             "pred_map": pred_map,
+            "comment_map": comment_map,
             "live_matches": live_matches,
             "live_pred_map": live_pred_map,
             "scheduled_total": scheduled_total,
@@ -141,8 +199,7 @@ def index():
     lock_s = Setting.query.get("betting_locked")
     betting_locked = lock_s is not None and lock_s.value == "1"
 
-    reveal_s = Setting.query.get("reveal_live_predictions")
-    reveal_live = reveal_s is not None and reveal_s.value == "1"
+    reveal_live = True
 
     def _first_kickoff(matches):
         t = None
@@ -167,6 +224,29 @@ def index():
     ucl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_UCL).first()
     pl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_PL).first()
     wc_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_WC).first()
+
+    form_count_s = Setting.query.get("team_form_matches_count")
+    try:
+        form_limit = int(form_count_s.value) if form_count_s else 0
+    except (ValueError, TypeError):
+        form_limit = 0
+    team_form_data = {}
+    for _league, _data in (("UCL", ucl_data), ("PL", pl_data), ("WC", wc_data)):
+        if not league_enabled.get(_league):
+            continue
+        ids = set()
+        for _ms in (_data["scheduled_matches"], _data["finished_recent"], _data["live_matches"]):
+            for m in _ms:
+                ids.add(m.home_team_id)
+                ids.add(m.away_team_id)
+        if ids:
+            team_form_data.update(_build_team_form_data(_league, ids, form_limit))
+
+    cml_s = Setting.query.get("comment_max_length")
+    try:
+        comment_max_length = max(1, int(cml_s.value)) if cml_s else 10
+    except (ValueError, TypeError):
+        comment_max_length = 10
 
     now = datetime.utcnow()
     release_note = ReleaseNote.query.filter_by(active=True).filter(
@@ -193,7 +273,9 @@ def index():
                            wc_first_match_iso=wc_first_match_iso,
                            league_order=league_order,
                            league_enabled=league_enabled,
-                           release_note=release_note)
+                           release_note=release_note,
+                           team_form_data=team_form_data,
+                           comment_max_length=comment_max_length)
 
 
 @main_bp.route("/admin")
@@ -291,6 +373,26 @@ def superadmin():
 
     release_notes = ReleaseNote.query.order_by(ReleaseNote.deployed_at.desc()).all()
 
+    af_enabled_s = Setting.query.get("auto_fetch_enabled")
+    auto_fetch_enabled = af_enabled_s is not None and af_enabled_s.value == "1"
+    af_interval_s = Setting.query.get("auto_fetch_interval_min")
+    try:
+        auto_fetch_interval = max(5, min(int(af_interval_s.value), 120)) if af_interval_s else 15
+    except (ValueError, TypeError):
+        auto_fetch_interval = 15
+
+    tfc_s = Setting.query.get("team_form_matches_count")
+    try:
+        team_form_count = max(0, int(tfc_s.value)) if tfc_s else 0
+    except (ValueError, TypeError):
+        team_form_count = 0
+
+    cml_s = Setting.query.get("comment_max_length")
+    try:
+        sa_comment_max_length = max(1, int(cml_s.value)) if cml_s else 10
+    except (ValueError, TypeError):
+        sa_comment_max_length = 10
+
     return render_template("superadmin.html", current_theme=current_theme, users=users,
                            current_user=current, all_scheduled=all_scheduled,
                            betting_locked=betting_locked,
@@ -300,7 +402,11 @@ def superadmin():
                            live_matches=live_matches,
                            reveal_live=reveal_live,
                            prompt_templates=prompt_templates,
-                           release_notes=release_notes)
+                           release_notes=release_notes,
+                           auto_fetch_enabled=auto_fetch_enabled,
+                           auto_fetch_interval=auto_fetch_interval,
+                           team_form_count=team_form_count,
+                           comment_max_length=sa_comment_max_length)
 
 
 @main_bp.route("/activity-log")
@@ -334,3 +440,115 @@ def activity_log():
                            date_from=date_from_str,
                            date_to=date_to_str,
                            filter_user_id=filter_user_id)
+
+
+@main_bp.route("/stats")
+@admin_required
+def stats():
+    league_filter = request.args.get("league")  # None | "UCL" | "PL" | "WC"
+
+    users = User.query.filter_by(is_bot=False).order_by(User.id).all()
+
+    # ── Общая статистика ──────────────────────────────────────────
+    base_q = (
+        db.session.query(
+            Prediction.user_id,
+            func.coalesce(func.sum(PredictionPoints.points), 0).label("total_points"),
+            func.sum(sa_case((PredictionPoints.reason == "exact",  1), else_=0)).label("exact_count"),
+            func.sum(sa_case((PredictionPoints.reason == "winner", 1), else_=0)).label("winner_count"),
+            func.sum(sa_case((PredictionPoints.reason == "none",   1), else_=0)).label("none_count"),
+            func.count(Prediction.id).label("total_preds"),
+        )
+        .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+        .join(Match, Prediction.match_id == Match.id)
+        .join(Tour, Match.tour_id == Tour.id)
+        .filter(Match.status == "finished")
+    )
+    if league_filter:
+        base_q = base_q.filter(Tour.league == league_filter)
+    rows = base_q.group_by(Prediction.user_id).all()
+
+    overall_map = {r.user_id: r for r in rows}
+    overall_stats = []
+    for u in users:
+        r = overall_map.get(u.id)
+        total  = r.total_preds   if r else 0
+        exact  = r.exact_count   if r else 0
+        winner = r.winner_count  if r else 0
+        none_c = r.none_count    if r else 0
+        pts    = int(r.total_points) if r else 0
+        accuracy = round((exact + winner) / total * 100) if total else 0
+        overall_stats.append({
+            "user": u, "points": pts, "exact": exact,
+            "winner": winner, "none": none_c,
+            "total": total, "accuracy": accuracy,
+        })
+    overall_stats.sort(key=lambda x: x["points"], reverse=True)
+
+    # ── График: туры в хронологическом порядке ───────────────────
+    tour_order_q = (
+        db.session.query(
+            Tour.id,
+            Tour.name,
+            func.min(Match.kickoff_time).label("first_kickoff"),
+        )
+        .join(Match, Tour.id == Match.tour_id)
+        .filter(Match.status == "finished", Match.featured == True)
+    )
+    if league_filter:
+        tour_order_q = tour_order_q.filter(Tour.league == league_filter)
+    tour_order_rows = (
+        tour_order_q.group_by(Tour.id, Tour.name)
+        .order_by(func.min(Match.kickoff_time))
+        .all()
+    )
+
+    chart_pts_q = (
+        db.session.query(
+            Tour.id,
+            Prediction.user_id,
+            func.sum(PredictionPoints.points).label("pts"),
+        )
+        .join(Match, Tour.id == Match.tour_id)
+        .join(Prediction, Match.id == Prediction.match_id)
+        .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+        .filter(Match.status == "finished", Match.featured == True)
+    )
+    if league_filter:
+        chart_pts_q = chart_pts_q.filter(Tour.league == league_filter)
+    chart_pts_rows = chart_pts_q.group_by(Tour.id, Prediction.user_id).all()
+
+    tour_pts_map = {}
+    for r in chart_pts_rows:
+        tour_pts_map.setdefault(r.id, {})[r.user_id] = int(r.pts)
+
+    chart_labels = [r.name for r in tour_order_rows]
+    chart_datasets = []
+    for u in users:
+        cumulative = 0
+        data = []
+        for t in tour_order_rows:
+            cumulative += tour_pts_map.get(t.id, {}).get(u.id, 0)
+            data.append(cumulative)
+        chart_datasets.append({
+            "label": u.display_name,
+            "color": u.avatar_color or "#7c7caa",
+            "data": data,
+        })
+
+    # Вкладки лиг
+    _le = {
+        "UCL": Setting.query.get("league_enabled_UCL"),
+        "PL":  Setting.query.get("league_enabled_PL"),
+        "WC":  Setting.query.get("league_enabled_WC"),
+    }
+    enabled_leagues = [lg for lg in ["WC", "UCL", "PL"]
+                       if not _le[lg] or _le[lg].value != "0"]
+
+    return render_template("stats.html",
+                           users=users,
+                           overall_stats=overall_stats,
+                           chart_labels=chart_labels,
+                           chart_datasets=chart_datasets,
+                           active_league=league_filter,
+                           enabled_leagues=enabled_leagues)

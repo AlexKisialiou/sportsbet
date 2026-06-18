@@ -32,6 +32,12 @@ ACTION_LABELS = {
     'teams_ru_translated':  'Перевод через Groq',
     'prompt_hint_updated':  'Хинт для Бендера изменён',
     'prompt_hint_applied':  'Хинт добавлен в промпт Бендера',
+    'team_form_count_changed': 'Подсказка форма команды',
+    'auto_fetch_changed':   'Автообновление матчей',
+    'reveal_live_predictions': 'Ставки во время матча',
+    'comment_set':             'Комментарий к матчу',
+    'comment_deleted':         'Удаление комментария',
+    'comment_max_length_changed': 'Макс. длина комментария',
 }
 
 

@@ -134,24 +134,22 @@ def create_app():
         seed_prompt_hints()
         from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
         from .services.standings import maybe_generate_standings
-        try:
-            added, updated = fetch_and_save_cl_matches()
-            print(f"[startup] CL matches: +{added} added, {updated} updated")
-            maybe_generate_standings("UCL", app)
-        except Exception as e:
-            print(f"[startup] CL fetch skipped: {e}")
-        try:
-            added, updated = fetch_and_save_pl_matches()
-            print(f"[startup] PL matches: +{added} added, {updated} updated")
-            maybe_generate_standings("PL", app)
-        except Exception as e:
-            print(f"[startup] PL fetch skipped: {e}")
-        try:
-            added, updated = fetch_and_save_wc_matches()
-            print(f"[startup] WC matches: +{added} added, {updated} updated")
-            maybe_generate_standings("WC", app)
-        except Exception as e:
-            print(f"[startup] WC fetch skipped: {e}")
+        from .models import Setting as _Setting
+        for _fn, _league, _label in [
+            (fetch_and_save_cl_matches, "UCL", "CL"),
+            (fetch_and_save_pl_matches, "PL",  "PL"),
+            (fetch_and_save_wc_matches, "WC",  "WC"),
+        ]:
+            _s = _Setting.query.get(f"league_enabled_{_league}")
+            if _s is not None and _s.value == "0":
+                print(f"[startup] {_label} matches: skipped (disabled)")
+                continue
+            try:
+                added, updated, existing = _fn()
+                print(f"[startup] {_label} matches: {existing} existing, +{added} new, {updated} changed")
+                maybe_generate_standings(_league, app)
+            except Exception as e:
+                print(f"[startup] {_label} fetch skipped: {e}")
 
     from .routes.main import main_bp
     from .routes.api import api_bp
@@ -205,6 +203,9 @@ def create_app():
         if flask_request.path.startswith("/api/"):
             return jsonify({"error": "Слишком много запросов. Подожди немного."}), 429
         return render_template("429.html"), 429
+
+    from .scheduler import init_scheduler
+    init_scheduler(app)
 
     return app
 
