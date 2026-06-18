@@ -49,10 +49,11 @@ Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 5. `db.create_all()` — creates missing tables directly in `sportsbet`
 6. Applies inline column migrations via raw `ALTER TABLE` + `try/except` (no Alembic)
 7. Calls `seed.run()` — ensures bot user and real users exist
-8. Calls `fetch_and_save_cl_matches()`, `fetch_and_save_pl_matches()`, `fetch_and_save_wc_matches()` — refreshes UCL+PL+WC data on every startup; triggers `maybe_generate_standings()` for each league after fetch
-9. Registers three blueprints: `main_bp`, `api_bp`, `auth_bp`
-10. Context processor injects: `current_user`, `APP_NAME`, `APP_VERSION`, `current_theme`
-11. `after_request` sets security headers; 429 handler returns JSON for `/api/*`, HTML otherwise
+8. Calls `fetch_and_save_cl_matches()`, `fetch_and_save_pl_matches()`, `fetch_and_save_wc_matches()` — refreshes UCL+PL+WC data on every startup (skips disabled leagues); triggers `maybe_generate_standings()` for each league after fetch
+9. Calls `init_scheduler(app)` — starts APScheduler for periodic auto-fetch if enabled in settings
+10. Registers three blueprints: `main_bp`, `api_bp`, `auth_bp`
+11. Context processor injects: `current_user`, `APP_NAME`, `APP_VERSION`, `current_theme`
+12. `after_request` sets security headers; 429 handler returns JSON for `/api/*`, HTML otherwise
 
 ### PostgreSQL Schema (`_init_schema`)
 - `DB_SCHEMA = "bet"` constant in `__init__.py`
@@ -80,9 +81,12 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `Prediction` | `user_id`, `match_id`, `home_score`, `away_score`; unique on `(user_id, match_id)` |
 | `PredictionPoints` | 1:1 with Prediction; `points` (0/1/3), `reason` (`"exact"`/`"winner"`/`"none"`/`"manual"`), `manual_lock` (bool) — if True, recalculation is skipped |
 | `Commentary` | `match_label`, `text`; Bender's AI comments; `"__standings__"` label for leaderboard commentary |
-| `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC` |
+| `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC`, `auto_fetch_enabled`, `auto_fetch_interval_min`, `team_form_matches_count`, `comment_max_length` |
 | `ActivityLog` | `user_id` (FK nullable), `action`, `details`, `ip_address`, `created_at`; records all user/admin actions |
 | `PromptHint` | `tournament` (e.g. `"WC2026"`, `"UCL"`, `"PL"`), `hint_type` (`"prompt"` or `"standings"`), `content` (full prompt template), `active` (bool), `sort_order`; stores editable Groq prompts per tournament |
+| `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; unique on `(match_id, user_id)`; user's comment on a finished match |
+| `ReleaseNote` | for future changelog display |
+| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500) |
 
 ### Routes
 | Blueprint | Route | Description |
@@ -91,6 +95,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `main` | `GET /admin` | Admin panel (admin required) |
 | `main` | `GET /superadmin` | Superadmin panel: user management, activity log link, PL test matches |
 | `main` | `GET /activity-log` | Activity log viewer (superuser only); filter by date range and user |
+| `main` | `GET /stats` | Predictions analytics page (admin required); per-league stats |
 | `api` | `POST /api/cl-matches` | Fetch fresh UCL data from football-data.org |
 | `api` | `POST /api/pl-matches` | Fetch EPL data (admin); optional `clear: true` to wipe existing PL data first |
 | `api` | `POST /api/wc-matches` | Fetch World Cup 2026 data (admin); optional `clear: true` to wipe existing WC data first |
@@ -119,6 +124,12 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/user/<id>/reset-password` | Reset password to username (superuser; cannot reset superuser) |
 | `api` | `POST /api/user/<id>/set-admin` | Grant/revoke admin flag (superuser) |
 | `api` | `POST /api/user/<id>/set-note` | Set private superadmin note on user (superuser) |
+| `api` | `POST /api/settings/auto-fetch` | Toggle auto-fetch and/or set interval; body `{"enabled":true,"interval":15}` (superuser) |
+| `api` | `POST /api/settings/team-form-count` | Set how many recent matches to show in team tooltip; body `{"count":5}` (superuser) |
+| `api` | `POST /api/settings/comment-max-length` | Set max comment length 1–500; body `{"length":280}` (superuser) |
+| `api` | `GET /api/team/<id>/recent-matches?league=UCL` | Get recent finished matches for a team (login required); respects `team_form_matches_count` setting |
+| `api` | `POST /api/match/<id>/comment` | Upsert user's comment on a match (login required); body `{"text":"..."}` |
+| `api` | `DELETE /api/match/<id>/comment` | Delete user's own comment on a match (login required) |
 | `auth` | `GET/POST /login` | Session login; bot users blocked |
 | `auth` | `GET /logout` | Clear session |
 | `auth` | `GET/POST /profile` | Edit nickname, avatar emoji+color (login required) |
@@ -131,6 +142,9 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - **✏️ Результаты матчей** — per-league tabs showing all featured matches; inline score inputs with «Сохранить» (sets score + `manual_lock=True` on Score and all prediction points) / «Убрать» (deletes Score, status→scheduled, API resumes); «Ставки» expands per-match predictions table with per-user points selector (0/1/3), «Заблокировать» / «Разблокировать» per row; locked rows show 🔒 SA badge; route passes `edit_matches_by_league` dict
 - **🤖 Промпт Бендера** — per-tournament tabs (only enabled leagues shown); each tab has two editable textareas: «ПРОГНОЗ МАТЧА» (`hint_type="prompt"`, uses `{home_team}` / `{away_team}`) and «АНАЛИЗ ИТОГОВ» (`hint_type="standings"`, uses `{standings_text}`); active checkbox + save per prompt; changes persist to `PromptHint` table immediately
 - **🔒 Приём ставок** — manual lock/unlock button; shows current state; calls `POST /api/settings/betting-lock`
+- **⏱ Автообновление** — toggle auto-fetch on/off + interval input (5–120 min); calls `POST /api/settings/auto-fetch`; reschedules APScheduler job live
+- **📊 Форма команд** — input for how many recent matches to show in tooltip (0 = all); calls `POST /api/settings/team-form-count`
+- **💬 Комментарии** — max comment length input (1–500); calls `POST /api/settings/comment-max-length`
 - **📋 Лог активности** — link to activity log page
 
 ### Activity Log (`/activity-log`)
@@ -159,6 +173,15 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 - Floating bottom tray: 📊 Бендер об очках (gold chip per league), 📋 Прогноз (green chip per league); hidden for disabled leagues
 - All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
 - JS: `switchTab()` falls back to first enabled tab if saved sessionStorage tab is disabled; `lockBetting()` uses `querySelectorAll('.tab-btn')` dynamically
+
+### Scheduler (`app/scheduler.py`)
+`BackgroundScheduler` (APScheduler, daemon=True) for periodic auto-fetch.
+- `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled
+- `update_auto_fetch(enabled, interval)` — called live from `POST /api/settings/auto-fetch`; adds/removes the APScheduler job without restart
+- `_auto_fetch_job()` — runs all three fetch functions, skips disabled leagues, logs to stdout
+
+### Team Form Tooltip
+`_build_team_form_data(league, team_ids, limit)` in `main.py` — precomputes last N finished matches per team for all teams on the page; result injected as `TEAM_FORM_DATA` JSON into `index.html`. On desktop: tooltip appears on `mouseover` after 180ms delay. On mobile: tap shows tooltip, second tap or tap elsewhere hides it (`touchstart` handler with `e.preventDefault()`).
 
 ### Services
 - **`app/services/football_api.py`** — `fetch_and_save_cl_matches()`: UCL from `competitions/CL/matches`. `fetch_and_save_pl_matches()`: EPL from `competitions/PL/matches`, tours named "АПЛ Тур N" with `league="PL"`. `fetch_and_save_wc_matches()`: World Cup from `competitions/WC/matches`, uses `WC_STAGE_MAP` with `league="WC"`. All three upsert Teams/Tours/Matches/Scores and call `update_points_for_match()` on finished matches. **Score update is skipped if `Score.manual_lock=True`.**
