@@ -52,6 +52,14 @@ a { text-decoration: none; }
     font-size: 1.05rem;
     text-transform: uppercase;
 }
+.nav-stats-link {
+    color: var(--text-muted);
+    font-size: 1rem;
+    text-decoration: none;
+    transition: color .15s;
+    line-height: 1;
+}
+.nav-stats-link:hover { color: #d4af37; }
 .nav-link-admin {
     background: var(--surface);
     color: var(--text-label) !important;
@@ -209,7 +217,7 @@ a { text-decoration: none; }
 .pred-input.readonly { opacity: .45; cursor: not-allowed; border-color: var(--border-sub); }
 .pred-locked { font-size: .65rem; color: var(--text-dim); margin-left: 4px; }
 .prediction-row { display: flex; margin-top: 10px; align-items: center; gap: 6px; }
-.match-odds { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.match-odds { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
 .odds-item { padding: 2px 8px; border-radius: 6px; font-size: .63rem; font-weight: 700; letter-spacing: .04em; white-space: nowrap; }
 .odds-home { background: rgba(0,200,122,.08); color: #00c87a; border: 1px solid rgba(0,200,122,.2); }
 .odds-draw { background: rgba(var(--accent-rgb),.08); color: var(--accent); border: 1px solid rgba(var(--accent-rgb),.2); }

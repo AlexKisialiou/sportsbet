@@ -108,6 +108,7 @@ def _save_pl_matches(raw_matches, season):
                         changed = True
                 existing.status = status
                 db.session.flush()
+                db.session.expire(existing, ['score'])
                 if status == "finished":
                     update_points_for_match(existing)
                 if changed:
@@ -202,6 +203,7 @@ def _save_wc_matches(raw_matches, season):
                         changed = True
                 existing.status = status
                 db.session.flush()
+                db.session.expire(existing, ['score'])
                 if status == "finished":
                     update_points_for_match(existing)
                 if changed:
@@ -322,6 +324,7 @@ def _save_matches(raw_matches, season):
                         changed = True
                 existing.status = status
                 db.session.flush()
+                db.session.expire(existing, ['score'])
                 if status == "finished":
                     update_points_for_match(existing)
                 if changed:

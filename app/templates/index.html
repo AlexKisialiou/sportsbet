@@ -128,18 +128,18 @@
                                placeholder="—" {% if not locked %}onchange="savePrediction({{ match.id }})"{% endif %}
                                {% if locked %}disabled{% endif %}>
                         <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
-                        {% if match.odds_home and match.odds_away %}
-                        <div class="match-odds">
-                            <span class="odds-item odds-home">П1&nbsp;{{ "%.2f"|format(match.odds_home) }}</span>
-                            {% if match.odds_draw %}
-                            <span class="odds-sep">·</span>
-                            <span class="odds-item odds-draw">X&nbsp;{{ "%.2f"|format(match.odds_draw) }}</span>
-                            {% endif %}
-                            <span class="odds-sep">·</span>
-                            <span class="odds-item odds-away">П2&nbsp;{{ "%.2f"|format(match.odds_away) }}</span>
-                        </div>
-                        {% endif %}
                     </div>
+                    {% if match.odds_home and match.odds_away %}
+                    <div class="match-odds">
+                        <span class="odds-item odds-home">П1&nbsp;{{ "%.2f"|format(match.odds_home) }}</span>
+                        {% if match.odds_draw %}
+                        <span class="odds-sep">·</span>
+                        <span class="odds-item odds-draw">X&nbsp;{{ "%.2f"|format(match.odds_draw) }}</span>
+                        {% endif %}
+                        <span class="odds-sep">·</span>
+                        <span class="odds-item odds-away">П2&nbsp;{{ "%.2f"|format(match.odds_away) }}</span>
+                    </div>
+                    {% endif %}
                 </div>
             {% endfor %}
         {% else %}
