@@ -22,7 +22,7 @@
                 {% endif %}
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;">
-                {% if current_user and current_user.is_superuser %}
+                {% if current_user and current_user.is_admin %}
                 <a href="/stats" class="nav-stats-link">📊</a>
                 {% endif %}
                 {% if current_user and current_user.is_admin %}
