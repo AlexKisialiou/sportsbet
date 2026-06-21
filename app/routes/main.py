@@ -1,7 +1,8 @@
+from collections import defaultdict
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
 from sqlalchemy import func, case as sa_case
-from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment
+from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment, CommentRead
 from ..services.points import get_leaderboard
 from ..services.activity import ACTION_LABELS
 from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
@@ -129,6 +130,8 @@ def index():
         finished_recent = []
         pred_map = {}
         comment_map = {}
+        unread_map = {}
+        reads_map = {}
         if pred_days:
             finished_recent = (
                 Match.query.join(Tour)
@@ -146,8 +149,20 @@ def index():
             if match_ids:
                 for p in Prediction.query.filter(Prediction.match_id.in_(match_ids)).all():
                     pred_map[(p.match_id, p.user_id)] = p
-                for c in MatchComment.query.filter(MatchComment.match_id.in_(match_ids)).all():
-                    comment_map.setdefault(c.match_id, {})[c.user_id] = c
+                for c in MatchComment.query.filter(MatchComment.match_id.in_(match_ids)).order_by(MatchComment.created_at.asc()).all():
+                    comment_map.setdefault(c.match_id, []).append(c)
+                cu = user
+                if cu:
+                    reads_map = {r.match_id: r.last_read_comment_id
+                                 for r in CommentRead.query.filter(
+                                     CommentRead.user_id == cu.id,
+                                     CommentRead.match_id.in_(match_ids)
+                                 ).all()}
+                    for mid, cmts in comment_map.items():
+                        last_read = reads_map.get(mid, 0)
+                        n = sum(1 for c in cmts if c.id > last_read and c.user_id != cu.id)
+                        if n:
+                            unread_map[mid] = n
 
         live_matches = (
             Match.query.join(Tour)
@@ -183,6 +198,8 @@ def index():
             "finished_recent": finished_recent,
             "pred_map": pred_map,
             "comment_map": comment_map,
+            "unread_map": unread_map,
+            "reads_map": reads_map,
             "live_matches": live_matches,
             "live_pred_map": live_pred_map,
             "scheduled_total": scheduled_total,
@@ -195,6 +212,40 @@ def index():
     ucl_data = _build("UCL")
     pl_data = _build("PL")
     wc_data = _build("WC")
+
+    def _collect_unread_notifications(data, tab_id):
+        notifs = []
+        if not user:
+            return notifs
+        match_lookup = {m.id: m for m in data["finished_recent"]}
+        for mid, count in data["unread_map"].items():
+            match = match_lookup.get(mid)
+            if not match:
+                continue
+            last_read = data["reads_map"].get(mid, 0)
+            unread_cmts = [c for c in data["comment_map"].get(mid, [])
+                           if c.id > last_read and c.user_id != user.id]
+            if not unread_cmts:
+                continue
+            seen, authors = set(), []
+            for c in reversed(unread_cmts):
+                if c.user_id not in seen:
+                    seen.add(c.user_id)
+                    authors.append(c.user.display_name)
+            notifs.append({
+                "match_id": mid,
+                "tab_id": tab_id,
+                "home": match.home_team.display_name,
+                "away": match.away_team.display_name,
+                "count": count,
+                "authors": authors[:3],
+            })
+        return notifs
+
+    unread_notifications = []
+    for _lg, _tid, _d in (("UCL", "ucl", ucl_data), ("PL", "pl", pl_data), ("WC", "wc", wc_data)):
+        if league_enabled.get(_lg):
+            unread_notifications.extend(_collect_unread_notifications(_d, _tid))
 
     lock_s = Setting.query.get("betting_locked")
     betting_locked = lock_s is not None and lock_s.value == "1"
@@ -275,7 +326,8 @@ def index():
                            league_enabled=league_enabled,
                            release_note=release_note,
                            team_form_data=team_form_data,
-                           comment_max_length=comment_max_length)
+                           comment_max_length=comment_max_length,
+                           unread_notifications=unread_notifications)
 
 
 @main_bp.route("/admin")
@@ -445,12 +497,25 @@ def activity_log():
 @main_bp.route("/stats")
 @admin_required
 def stats():
-    league_filter = request.args.get("league")  # None | "UCL" | "PL" | "WC"
-
     users = User.query.filter_by(is_bot=False).order_by(User.id).all()
 
-    # ── Общая статистика ──────────────────────────────────────────
-    base_q = (
+    league_order, league_enabled = _get_league_config()
+    enabled_leagues = [lg for lg in league_order if league_enabled.get(lg)]
+    league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ 2026"}
+
+    active_league = request.args.get("league")
+    if active_league not in enabled_leagues:
+        active_league = enabled_leagues[0] if enabled_leagues else None
+
+    if not active_league:
+        return render_template("stats.html", users=users, overall_stats=[],
+                               chart_labels=[], chart_datasets=[],
+                               enabled_leagues=[], active_league=None,
+                               league_names=league_names,
+                               top_actual_scores=[], top_pred_scores=[])
+
+    # ── Общая статистика по активной лиге ────────────────────────
+    rows = (
         db.session.query(
             Prediction.user_id,
             func.coalesce(func.sum(PredictionPoints.points), 0).label("total_points"),
@@ -462,11 +527,10 @@ def stats():
         .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
         .join(Match, Prediction.match_id == Match.id)
         .join(Tour, Match.tour_id == Tour.id)
-        .filter(Match.status == "finished")
+        .filter(Match.status == "finished", Tour.league == active_league)
+        .group_by(Prediction.user_id)
+        .all()
     )
-    if league_filter:
-        base_q = base_q.filter(Tour.league == league_filter)
-    rows = base_q.group_by(Prediction.user_id).all()
 
     overall_map = {r.user_id: r for r in rows}
     overall_stats = []
@@ -478,45 +542,33 @@ def stats():
         none_c = r.none_count    if r else 0
         pts    = int(r.total_points) if r else 0
         accuracy = round((exact + winner) / total * 100) if total else 0
+        exact_accuracy = round(exact / total * 100) if total else 0
         overall_stats.append({
             "user": u, "points": pts, "exact": exact,
             "winner": winner, "none": none_c,
-            "total": total, "accuracy": accuracy,
+            "total": total, "accuracy": accuracy, "exact_accuracy": exact_accuracy,
         })
     overall_stats.sort(key=lambda x: x["points"], reverse=True)
 
-    # ── График: туры в хронологическом порядке ───────────────────
-    tour_order_q = (
-        db.session.query(
-            Tour.id,
-            Tour.name,
-            func.min(Match.kickoff_time).label("first_kickoff"),
-        )
-        .join(Match, Tour.id == Match.tour_id)
-        .filter(Match.status == "finished", Match.featured == True)
-    )
-    if league_filter:
-        tour_order_q = tour_order_q.filter(Tour.league == league_filter)
+    # ── График по активной лиге ───────────────────────────────────
     tour_order_rows = (
-        tour_order_q.group_by(Tour.id, Tour.name)
+        db.session.query(Tour.id, Tour.name, func.min(Match.kickoff_time).label("first_kickoff"))
+        .join(Match, Tour.id == Match.tour_id)
+        .filter(Match.status == "finished", Match.featured == True, Tour.league == active_league)
+        .group_by(Tour.id, Tour.name)
         .order_by(func.min(Match.kickoff_time))
         .all()
     )
 
-    chart_pts_q = (
-        db.session.query(
-            Tour.id,
-            Prediction.user_id,
-            func.sum(PredictionPoints.points).label("pts"),
-        )
+    chart_pts_rows = (
+        db.session.query(Tour.id, Prediction.user_id, func.sum(PredictionPoints.points).label("pts"))
         .join(Match, Tour.id == Match.tour_id)
         .join(Prediction, Match.id == Prediction.match_id)
         .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
-        .filter(Match.status == "finished", Match.featured == True)
+        .filter(Match.status == "finished", Match.featured == True, Tour.league == active_league)
+        .group_by(Tour.id, Prediction.user_id)
+        .all()
     )
-    if league_filter:
-        chart_pts_q = chart_pts_q.filter(Tour.league == league_filter)
-    chart_pts_rows = chart_pts_q.group_by(Tour.id, Prediction.user_id).all()
 
     tour_pts_map = {}
     for r in chart_pts_rows:
@@ -524,6 +576,7 @@ def stats():
 
     chart_labels = [r.name for r in tour_order_rows]
     chart_datasets = []
+    cumulative_by_user = {}
     for u in users:
         cumulative = 0
         data = []
@@ -535,20 +588,86 @@ def stats():
             "color": u.avatar_color or "#7c7caa",
             "data": data,
         })
+        cumulative_by_user[u.id] = data
 
-    # Вкладки лиг
-    _le = {
-        "UCL": Setting.query.get("league_enabled_UCL"),
-        "PL":  Setting.query.get("league_enabled_PL"),
-        "WC":  Setting.query.get("league_enabled_WC"),
-    }
-    enabled_leagues = [lg for lg in ["WC", "UCL", "PL"]
-                       if not _le[lg] or _le[lg].value != "0"]
+    # ── График позиций в лидерборде по турам ─────────────────────
+    rank_datasets = []
+    for u_idx, u in enumerate(users):
+        rank_data = []
+        for t_idx in range(len(tour_order_rows)):
+            my_pts = cumulative_by_user[u.id][t_idx]
+            rank = sum(1 for uid, d in cumulative_by_user.items() if d[t_idx] > my_pts) + 1
+            rank_data.append(rank)
+        rank_datasets.append({
+            "label": u.display_name,
+            "color": u.avatar_color or "#7c7caa",
+            "data": rank_data,
+        })
+
+    # ── Топ-10 счётов матчей по активной лиге ────────────────────
+    score_rows = (
+        db.session.query(Score.home_score, Score.away_score, func.count(Score.id).label("cnt"))
+        .join(Match, Score.match_id == Match.id)
+        .join(Tour, Match.tour_id == Tour.id)
+        .filter(Match.status == "finished", Score.home_score.isnot(None), Tour.league == active_league)
+        .group_by(Score.home_score, Score.away_score)
+        .all()
+    )
+    bucket = defaultdict(int)
+    for r in score_rows:
+        key = (max(r.home_score, r.away_score), min(r.home_score, r.away_score))
+        bucket[key] += r.cnt
+    top_actual_scores = []
+    for (hi, lo), cnt in sorted(bucket.items(), key=lambda x: x[1], reverse=True)[:10]:
+        label = f"{hi}:{lo}" if hi == lo else f"{hi}:{lo} / {lo}:{hi}"
+        top_actual_scores.append({"score": label, "count": cnt})
+
+    # ── Топ-10 угаданных счётов (exact) по активной лиге ─────────
+    exact_rows = (
+        db.session.query(Prediction.home_score, Prediction.away_score, func.count(Prediction.id).label("cnt"))
+        .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+        .join(Match, Prediction.match_id == Match.id)
+        .join(Tour, Match.tour_id == Tour.id)
+        .filter(PredictionPoints.reason == "exact", Tour.league == active_league)
+        .group_by(Prediction.home_score, Prediction.away_score)
+        .all()
+    )
+    exact_bucket = defaultdict(int)
+    for r in exact_rows:
+        key = (max(r.home_score, r.away_score), min(r.home_score, r.away_score))
+        exact_bucket[key] += r.cnt
+    top_exact_scores = []
+    for (hi, lo), cnt in sorted(exact_bucket.items(), key=lambda x: x[1], reverse=True)[:10]:
+        label = f"{hi}:{lo}" if hi == lo else f"{hi}:{lo} / {lo}:{hi}"
+        top_exact_scores.append({"score": label, "count": cnt})
+
+    # ── Топ-10 прогнозов игроков по активной лиге ────────────────
+    pred_rows = (
+        db.session.query(Prediction.home_score, Prediction.away_score, func.count(Prediction.id).label("cnt"))
+        .join(Match, Prediction.match_id == Match.id)
+        .join(Tour, Match.tour_id == Tour.id)
+        .filter(Match.status == "finished", Tour.league == active_league)
+        .group_by(Prediction.home_score, Prediction.away_score)
+        .all()
+    )
+    pred_bucket = defaultdict(int)
+    for r in pred_rows:
+        key = (max(r.home_score, r.away_score), min(r.home_score, r.away_score))
+        pred_bucket[key] += r.cnt
+    top_pred_scores = []
+    for (hi, lo), cnt in sorted(pred_bucket.items(), key=lambda x: x[1], reverse=True)[:10]:
+        label = f"{hi}:{lo}" if hi == lo else f"{hi}:{lo} / {lo}:{hi}"
+        top_pred_scores.append({"score": label, "count": cnt})
 
     return render_template("stats.html",
                            users=users,
                            overall_stats=overall_stats,
                            chart_labels=chart_labels,
                            chart_datasets=chart_datasets,
-                           active_league=league_filter,
-                           enabled_leagues=enabled_leagues)
+                           rank_datasets=rank_datasets,
+                           enabled_leagues=enabled_leagues,
+                           active_league=active_league,
+                           league_names=league_names,
+                           top_actual_scores=top_actual_scores,
+                           top_exact_scores=top_exact_scores,
+                           top_pred_scores=top_pred_scores)

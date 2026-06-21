@@ -48,6 +48,11 @@
         </div>
     </div>
 </nav>
+{% if APP_ENV == 'sandbox' %}
+<div style="background:#1a0d00;border-bottom:2px solid #7a4a00;text-align:center;padding:5px 0;font-size:.78rem;font-weight:700;color:#f0a030;letter-spacing:.08em;">
+    ⚠ SANDBOX — тестовая среда, данные не настоящие
+</div>
+{% endif %}
 
 <div class="container-fluid" style="max-width:1400px;padding:0 20px;">
     {% block content %}{% endblock %}

@@ -38,6 +38,9 @@ ACTION_LABELS = {
     'comment_set':             'Комментарий к матчу',
     'comment_deleted':         'Удаление комментария',
     'comment_max_length_changed': 'Макс. длина комментария',
+    'match_live_set':            'Матч: статус «идёт»',
+    'match_live_cleared':        'Матч: статус «запланирован»',
+    'copy_prod_to_sandbox':      'Копирование прод → сэндбокс',
 }
 
 

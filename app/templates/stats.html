@@ -62,7 +62,7 @@
     font-weight: 700;
     letter-spacing: .06em;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-label);
     padding: 8px 14px;
     text-align: right;
     background: var(--surface-deep);
@@ -84,11 +84,11 @@
 .stats-pts { font-weight: 700; color: #fff; }
 .stats-exact { color: #00c87a; font-weight: 600; }
 .stats-winner { color: var(--accent); }
-.stats-miss { color: var(--text-dim); }
+.stats-miss { color: var(--text-label); }
 .pct-bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .pct-bar { width: 44px; height: 4px; background: var(--surface-hi); border-radius: 2px; overflow: hidden; }
 .pct-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
-.stats-pct { font-size: .78rem; color: var(--text-muted); }
+.stats-pct { font-size: .78rem; color: var(--text-label); }
 /* Chart card */
 .chart-wrap {
     background: linear-gradient(135deg, var(--surface) 0%, var(--surface-deep) 100%);
@@ -104,6 +104,14 @@
     font-size: .85rem;
     padding: 32px 0;
 }
+.top-scores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 32px;
+}
+@media (max-width: 900px) { .top-scores-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .top-scores-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
@@ -115,12 +123,8 @@
 
 <!-- League tabs -->
 <div class="league-tabs">
-    <a href="/stats" class="league-tab {% if not active_league %}active{% endif %}">Все</a>
-    {% set league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ 2026"} %}
-    {% for lg in ["UCL", "PL", "WC"] %}
-    {% if lg in enabled_leagues %}
+    {% for lg in enabled_leagues %}
     <a href="/stats?league={{ lg }}" class="league-tab {% if active_league == lg %}active{% endif %}">{{ league_names[lg] }}</a>
-    {% endif %}
     {% endfor %}
 </div>
 
@@ -137,6 +141,7 @@
             <th class="stats-th">Результат ✓</th>
             <th class="stats-th">Промахов</th>
             <th class="stats-th">Всего</th>
+            <th class="stats-th">Точных %</th>
             <th class="stats-th">Точность</th>
         </tr>
     </thead>
@@ -157,6 +162,12 @@
         <td class="stats-td" style="color:var(--text-muted);">{{ s.total }}</td>
         <td class="stats-td">
             <div class="pct-bar-wrap">
+                <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ s.exact_accuracy }}%;background:#00c87a;"></div></div>
+                <span class="stats-pct" style="color:#00c87a;">{{ s.exact_accuracy }}%</span>
+            </div>
+        </td>
+        <td class="stats-td">
+            <div class="pct-bar-wrap">
                 <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ s.accuracy }}%;"></div></div>
                 <span class="stats-pct">{{ s.accuracy }}%</span>
             </div>
@@ -164,7 +175,7 @@
     </tr>
     {% else %}
     <tr>
-        <td colspan="8" class="stats-td" style="text-align:center;color:var(--text-dim);padding:24px;">Нет данных</td>
+        <td colspan="9" class="stats-td" style="text-align:center;color:var(--text-dim);padding:24px;">Нет данных</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -179,6 +190,110 @@
 {% else %}
     <div class="chart-empty">Нет завершённых матчей для отображения</div>
 {% endif %}
+</div>
+
+<!-- ── График позиций ── -->
+<div class="stats-section-title">Динамика мест в таблице лидеров</div>
+<div class="chart-wrap">
+{% if chart_labels %}
+    <canvas id="rankChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+<!-- ── Топ счётов ── -->
+<div class="top-scores-grid">
+    <div>
+        <div class="stats-section-title">Топ-10 счётов матчей</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Матчей</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_actual_scores %}
+                {% set max_val = top_actual_scores[0].count %}
+                {% for s in top_actual_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-pts">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-dim);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div>
+        <div class="stats-section-title">Топ-10 угаданных счётов ⚽</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Угадано</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_exact_scores %}
+                {% set max_val = top_exact_scores[0].count %}
+                {% for s in top_exact_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-label);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-exact">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;background:#00c87a;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-label);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div>
+        <div class="stats-section-title">Топ-10 прогнозов игроков</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Прогнозов</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_pred_scores %}
+                {% set max_val = top_pred_scores[0].count %}
+                {% for s in top_pred_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-exact">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-dim);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
 </div>
 
 {% if chart_labels %}
@@ -201,43 +316,70 @@
         fill: false,
     }));
 
+    const chartOptions = (yOpts) => ({
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: '#a0a0c0', font: { size: 12 }, boxWidth: 14, padding: 16 }
+            },
+            tooltip: {
+                backgroundColor: '#0e1220',
+                borderColor: '#2a2a4a',
+                borderWidth: 1,
+                titleColor: '#c0c0e0',
+                bodyColor: '#a0a0c0',
+                padding: 10,
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#6a6a9a', font: { size: 11 }, maxRotation: 35 },
+                grid: { color: '#1a1a2e' },
+            },
+            y: Object.assign({
+                ticks: { color: '#6a6a9a', font: { size: 11 }, stepSize: 1 },
+                grid: { color: '#1a1a2e' },
+            }, yOpts),
+        }
+    });
+
     new Chart(document.getElementById('pointsChart'), {
         type: 'line',
         data: { labels, datasets: chartDatasets },
-        options: {
-            responsive: true,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: '#a0a0c0',
-                        font: { size: 12 },
-                        boxWidth: 14,
-                        padding: 16,
-                    }
-                },
-                tooltip: {
-                    backgroundColor: '#0e1220',
-                    borderColor: '#2a2a4a',
-                    borderWidth: 1,
-                    titleColor: '#c0c0e0',
-                    bodyColor: '#a0a0c0',
-                    padding: 10,
-                }
+        options: chartOptions({ beginAtZero: true }),
+    });
+
+    const rankData = {{ rank_datasets | tojson }};
+    const rankDatasets = rankData.map(d => ({
+        label: d.label,
+        data: d.data,
+        borderColor: d.color,
+        backgroundColor: d.color + '22',
+        pointBackgroundColor: d.color,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
+        tension: 0.25,
+        fill: false,
+    }));
+
+    const numPlayers = rankData.length || 1;
+    new Chart(document.getElementById('rankChart'), {
+        type: 'line',
+        data: { labels, datasets: rankDatasets },
+        options: chartOptions({
+            reverse: true,
+            min: 1,
+            max: numPlayers,
+            ticks: {
+                color: '#6a6a9a',
+                font: { size: 11 },
+                stepSize: 1,
+                callback: v => Number.isInteger(v) ? v + ' место' : '',
             },
-            scales: {
-                x: {
-                    ticks: { color: '#6a6a9a', font: { size: 11 }, maxRotation: 35 },
-                    grid: { color: '#1a1a2e' },
-                },
-                y: {
-                    ticks: { color: '#6a6a9a', font: { size: 11 }, stepSize: 1 },
-                    grid: { color: '#1a1a2e' },
-                    beginAtZero: true,
-                }
-            }
-        }
+        }),
     });
 })();
 </script>

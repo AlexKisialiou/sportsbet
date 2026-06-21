@@ -23,15 +23,40 @@ def _load_prompt(tournament, hint_type):
         return None
 
 
-def generate_bender_pick(home_team, away_team, tournament="UCL"):
+def _odds_context(home_team, away_team, odds):
+    """Build a Russian odds context string to append to Bender's prompt."""
+    if not odds:
+        return ""
+    h, d, a = odds.get("home"), odds.get("draw"), odds.get("away")
+    if not (h and a):
+        return ""
+    if d:
+        return (
+            f"\nКоэффициенты букмекеров: победа {home_team} — {h:.2f}, "
+            f"ничья — {d:.2f}, победа {away_team} — {a:.2f}. "
+            "Учти эти данные при составлении прогноза."
+        )
+    return (
+        f"\nКоэффициенты букмекеров: победа {home_team} — {h:.2f}, "
+        f"победа {away_team} — {a:.2f}. "
+        "Учти эти данные при составлении прогноза."
+    )
+
+
+def generate_bender_pick(home_team, away_team, tournament="UCL", odds=None):
     """Returns (home_score, away_score, text)."""
     if not os.environ.get("GROQ_API_KEY"):
         return None
 
+    ctx = _odds_context(home_team, away_team, odds)
+
     template = _load_prompt(tournament, "prompt")
     if template:
-        prompt = template.format(home_team=home_team, away_team=away_team)
-        print(f"[bender] {tournament} промпт из БД: {home_team} vs {away_team}")
+        if "{odds_context}" in template:
+            prompt = template.format(home_team=home_team, away_team=away_team, odds_context=ctx)
+        else:
+            prompt = template.format(home_team=home_team, away_team=away_team) + ctx
+        print(f"[bender] {tournament} промпт из БД: {home_team} vs {away_team}" + (" +odds" if ctx else ""))
         try:
             from .activity import log_action
             log_action(None, "prompt_hint_applied",
@@ -39,9 +64,10 @@ def generate_bender_pick(home_team, away_team, tournament="UCL"):
         except Exception:
             pass
     else:
-        print(f"[bender] {tournament}: промпт не найден в БД, используется fallback")
+        print(f"[bender] {tournament}: промпт не найден в БД, используется fallback" + (" +odds" if ctx else ""))
         prompt = (
-            f"Матч {tournament}: {home_team} — {away_team}.\n\n"
+            f"Матч {tournament}: {home_team} — {away_team}."
+            + ctx + "\n\n"
             "Ты — профессиональный футбольный аналитик. Напиши на русском языке краткий "
             "аналитический прогноз (3–4 предложения): оцени форму команд, преимущества "
             "и слабые стороны, тактику, обоснуй исход и счёт.\n\n"

@@ -10,6 +10,7 @@ Flask web app for UCL, EPL and World Cup match score predictions among a small g
 - Python / Flask, SQLAlchemy (PostgreSQL — locally and on Render)
 - football-data.org API for Champions League, Premier League and World Cup data
 - Groq API (`llama-3.1-8b-instant`) for AI commentary via Bender bot
+- The Odds API (the-odds-api.com, free 500 req/month) for bookmaker decimal odds (h2h)
 - Bootstrap 5 dark theme (CDN) + custom CSS in `app/static/css/main.css`
 - `flask-limiter` for rate limiting (in-memory, fixed-window)
 - Deployed on https://dashboard.render.com/
@@ -30,6 +31,7 @@ Schema `bet` is created automatically on startup; all tables live there (not in 
 | `DATABASE_URL`                        | PostgreSQL URL. `postgres://` is auto-converted to `postgresql://` (Render compat). Falls back to SQLite if unset. |
 | `FOOTBALL_API_KEY`                    | football-data.org free tier key |
 | `GROQ_API_KEY`                        | Groq API key for Bender AI commentary |
+| `ODDS_API_KEY`                        | The Odds API key (the-odds-api.com, free tier 500 req/month) for betting odds on featured matches |
 | `SECRET_KEY`                          | Flask session secret |
 | `ADMIN_PASSWORD`                      | Superuser login password (checked directly, not hashed) |
 | `ADMIN_USERNAME/PASSWORD/такNICKNAME` | Seeded admin user credentials |
@@ -76,7 +78,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 |---|---|
 | `Team` | `external_id`, `name`, `name_ru`, `short_name`, `crest`; `display_name` returns RU name when set |
 | `Tour` | `name`, `season`, `round_number`, `league` (`"local"`/`"UCL"`/`"PL"`/`"WC"`), `status` |
-| `Match` | `tour_id`, `home_team_id`, `away_team_id`, `kickoff_time`, `status`, `featured` (bool) |
+| `Match` | `tour_id`, `home_team_id`, `away_team_id`, `kickoff_time`, `status`, `featured` (bool), `odds_home`/`odds_draw`/`odds_away` (Float, nullable) — average bookmaker decimal odds fetched from The Odds API when match is set as featured |
 | `Score` | 1:1 with Match; `home_score`, `away_score`, `manual_lock` (bool) — if True, API updates are skipped |
 | `User` | `username`, `password_hash`, `is_admin`, `is_superuser`, `nickname`, `is_bot`, `avatar_emoji`, `avatar_color`, `superadmin_note`; `display_name` returns nickname or username |
 | `Prediction` | `user_id`, `match_id`, `home_score`, `away_score`; unique on `(user_id, match_id)` |
@@ -85,7 +87,8 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC`, `auto_fetch_enabled`, `auto_fetch_interval_min`, `team_form_matches_count`, `comment_max_length` |
 | `ActivityLog` | `user_id` (FK nullable), `action`, `details`, `ip_address`, `created_at`; records all user/admin actions |
 | `PromptHint` | `tournament` (e.g. `"WC2026"`, `"UCL"`, `"PL"`), `hint_type` (`"prompt"` or `"standings"`), `content` (full prompt template), `active` (bool), `sort_order`; stores editable Groq prompts per tournament |
-| `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; unique on `(match_id, user_id)`; user's comment on a finished match |
+| `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; **no unique constraint** — multiple messages per user per match allowed |
+| `CommentRead` | `user_id`, `match_id`, `last_read_comment_id`; unique on `(user_id, match_id)`; tracks read position per user per match for unread badge logic |
 | `ReleaseNote` | for future changelog display |
 | `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500) |
 
@@ -129,8 +132,9 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/settings/team-form-count` | Set how many recent matches to show in team tooltip; body `{"count":5}` (superuser) |
 | `api` | `POST /api/settings/comment-max-length` | Set max comment length 1–500; body `{"length":280}` (superuser) |
 | `api` | `GET /api/team/<id>/recent-matches?league=UCL` | Get recent finished matches for a team (login required); respects `team_form_matches_count` setting |
-| `api` | `POST /api/match/<id>/comment` | Upsert user's comment on a match (login required); body `{"text":"..."}` |
-| `api` | `DELETE /api/match/<id>/comment` | Delete user's own comment on a match (login required) |
+| `api` | `POST /api/match/<id>/comment` | Post new comment on a finished match (login required); body `{"text":"..."}`; returns `{ok, id, created_at, author, avatar_emoji, avatar_color, is_bot}`; also updates `CommentRead` for the author |
+| `api` | `DELETE /api/match/<id>/comment/<comment_id>` | Delete specific comment by id (login required; only own comments) |
+| `api` | `POST /api/match/<id>/comments/read` | Mark all comments on a match as read for current user; upserts `CommentRead` to latest comment id (login required) |
 | `auth` | `GET/POST /login` | Session login; bot users blocked |
 | `auth` | `GET /logout` | Clear session |
 | `auth` | `GET/POST /profile` | Edit nickname, avatar emoji+color (login required) |
@@ -154,7 +158,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 
 ### Admin Panel (`/admin`)
 - **Загрузить матчи ЛЧ / АПЛ / ЧМ** — fetches from football-data.org (per-league tabs: UCL, PL, WC)
-- **Матчи для ставок** — checkbox list to mark featured matches (UCL + PL + WC tabs); saves immediately, generates Bender AI picks in background (parallel Groq calls via ThreadPoolExecutor)
+- **Матчи для ставок** — checkbox list to mark featured matches (UCL + PL + WC tabs); saves immediately; background thread: 1) fetches bookmaker odds via The Odds API (by English team name, fuzzy match), saves to `Match.odds_*`; 2) calls Bender (Groq) with odds context injected into prompt (parallel via ThreadPoolExecutor, each worker gets own `app_context`)
 - **Опасная зона** — reset scores only, or full DB reset (with confirmations)
 - Simulation UI removed (API endpoint `POST /api/simulate-results` kept)
 
@@ -171,15 +175,27 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 - Per-league countdown bar (`.betting-bar`) above match list; auto-locks inputs at first kickoff time
 - Inputs disabled when `betting_locked=True` (server) or tab locked by JS timer; 423 response also triggers lock
 - Full-width predictions table below: finished matches from last N game days (configurable per league via `pred_days_*`, default 4)
+- Each past match card has `id="match-<id>"` for scroll targeting
 - Floating bottom tray: 📊 Бендер об очках (gold chip per league), 📋 Прогноз (green chip per league); hidden for disabled leagues
 - All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
 - JS: `switchTab()` falls back to first enabled tab if saved sessionStorage tab is disabled; `lockBetting()` uses `querySelectorAll('.tab-btn')` dynamically
 
+### Comments (chat per match)
+- Each finished match has a scrollable comment section (`.mc-scroll`, max ~3 messages visible)
+- Multiple messages per user allowed; no upsert — every send creates a new row
+- Unread badge (`.mc-unread-badge`) shown per match if other users posted since last read; counted in `unread_map` passed to template
+- **Unread notifications bar** (`.unread-notif-bar`) at top of page: one chip per match with unread comments; shows match name + "от [author]" (single author) or "от нескольких" (multiple); click chip → switches tab + scrolls to match card; "✕ все прочитаны" marks all as read at once
+- Read tracking via `IntersectionObserver`: after 1s of visibility, `POST /api/match/<id>/comments/read` fires; badge + chip disappear
+- New message appended to DOM without page reload; author's own new comment auto-marks match as read
+- `_ME` JS constant (injected per-user) holds `{name, emoji, color}` for client-side DOM building
+- `jumpToComment(matchId, tabId)`: switches tab, forces reflow (`void document.body.offsetHeight`), calls `scrollIntoView({block:'center'})` on the match card
+
 ### Scheduler (`app/scheduler.py`)
-`BackgroundScheduler` (APScheduler, daemon=True) for periodic auto-fetch.
-- `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled
+`BackgroundScheduler` (APScheduler, daemon=True) for periodic jobs.
+- `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled; always schedules `_auto_odds_job`
 - `update_auto_fetch(enabled, interval)` — called live from `POST /api/settings/auto-fetch`; adds/removes the APScheduler job without restart
 - `_auto_fetch_job()` — runs all three fetch functions, skips disabled leagues, logs to stdout
+- `_auto_odds_job()` — runs every 3 hours; **only between 07:00–24:00 Minsk time** (UTC+3); for each enabled league fetches bookmaker odds if there are featured scheduled matches, updates `Match.odds_*`; skips leagues with no featured matches to conserve API quota (500 req/month free tier)
 
 ### Team Form Tooltip
 `_build_team_form_data(league, team_ids, limit)` in `main.py` — precomputes last N finished matches per team for all teams on the page; result injected as `TEAM_FORM_DATA` JSON into `index.html`. On desktop: tooltip appears on `mouseover` after 180ms delay. On mobile: tap shows tooltip, second tap or tap elsewhere hides it (`touchstart` handler with `e.preventDefault()`).
@@ -187,7 +203,8 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 ### Services
 - **`app/services/football_api.py`** — `fetch_and_save_cl_matches()`: UCL from `competitions/CL/matches`. `fetch_and_save_pl_matches()`: EPL from `competitions/PL/matches`, tours named "АПЛ Тур N" with `league="PL"`. `fetch_and_save_wc_matches()`: World Cup from `competitions/WC/matches`, uses `WC_STAGE_MAP` with `league="WC"`. All three upsert Teams/Tours/Matches/Scores and call `update_points_for_match()` on finished matches. **Score update is skipped if `Score.manual_lock=True`.**
 - **`app/services/points.py`** — `calc_points()`: 3 pts exact, 1 pt correct winner/draw, 0 otherwise. `update_points_for_match()`: upserts `PredictionPoints`; **skips predictions where `PredictionPoints.manual_lock=True`**. `get_leaderboard(last_days=N)`: users sorted by total with per-day breakdown.
-- **`app/services/groq_api.py`** — `generate_bender_pick(home, away, tournament)` → loads full prompt template from `PromptHint` table by `(tournament, hint_type="prompt")`, substitutes `{home_team}`/`{away_team}`, parses `АНАЛИЗ:` / `СЧЁТ: X:Y`; falls back to generic prompt if DB record missing. `generate_bender_standings(text, tournament)` → loads `hint_type="standings"` template, substitutes `{standings_text}`. `_load_prompt(tournament, hint_type)` → DB lookup helper. `translate_team_names(names)` → sends numbered list to `llama-3.1-8b-instant`, returns `{english: russian}` dict. `STANDINGS_LABEL_UCL/PL/WC` constants for Commentary labels. Bender picks use `llama-3.3-70b-versatile`; standings + translation use `llama-3.1-8b-instant`.
+- **`app/services/groq_api.py`** — `generate_bender_pick(home, away, tournament, odds=None)` → loads full prompt template from `PromptHint` table by `(tournament, hint_type="prompt")`, substitutes `{home_team}`/`{away_team}`; if `odds` dict provided (`{home, draw, away}`), appends Russian bookmaker odds line to prompt (supports `{odds_context}` placeholder in DB templates, otherwise appends after); parses `АНАЛИЗ:` / `СЧЁТ: X:Y`; falls back to generic prompt if DB record missing. `generate_bender_standings(text, tournament)` → loads `hint_type="standings"` template, substitutes `{standings_text}`. `_load_prompt(tournament, hint_type)` → DB lookup helper. `translate_team_names(names)` → sends numbered list to `llama-3.1-8b-instant`, returns `{english: russian}` dict. `STANDINGS_LABEL_UCL/PL/WC` constants for Commentary labels. Bender picks use `llama-3.3-70b-versatile`; standings + translation use `llama-3.1-8b-instant`.
+- **`app/services/odds_api.py`** — `fetch_odds_for_matches(match_data, league)`: takes `[(match_id, home_en, away_en), ...]`, makes one HTTP GET to `api.the-odds-api.com/v4/sports/{sport}/odds?regions=eu&markets=h2h&oddsFormat=decimal`, fuzzy-matches teams via `difflib.SequenceMatcher` (threshold 0.50), averages decimal odds across all bookmakers; returns `{match_id: {home, draw, away}}`. `LEAGUE_SPORT_KEY` maps `UCL/PL/WC` → API sport slugs. Logs remaining quota from `x-requests-remaining` header. Returns `{}` silently if `ODDS_API_KEY` not set.
 - **`app/services/activity.py`** — `log_action(user_id, action, details)`: writes to `ActivityLog`, captures IP from request context, never raises (own try/except). `ACTION_LABELS` dict maps action codes to Russian display names.
 - **`app/services/standings.py`** — `maybe_generate_standings(league, app)`: called after every fetch (startup + API) for UCL, PL, WC. Runs in background thread. Groups featured matches by Minsk date; finds latest day where ALL are `finished`; checks `Setting[standings_day_{league}]` for idempotency; if new complete day found, calls `generate_bender_standings(text, tournament=LEAGUE_TO_TOURNAMENT[league])` and saves to `Commentary`.
 
@@ -213,7 +230,7 @@ Key constants exported from `seed.py`:
 ## Render Deployment
 - **Build:** `pip install -r requirements.txt`
 - **Start:** `bash start.sh` → `gunicorn wsgi:app`
-- Set `DATABASE_URL`, `FOOTBALL_API_KEY`, `GROQ_API_KEY`, `SECRET_KEY`, `ADMIN_PASSWORD`, user credentials in Render env vars
+- Set `DATABASE_URL`, `FOOTBALL_API_KEY`, `GROQ_API_KEY`, `ODDS_API_KEY`, `SECRET_KEY`, `ADMIN_PASSWORD`, user credentials in Render env vars
 - Render provides `postgres://` URL — auto-fixed to `postgresql://` in `create_app()`
 - `RENDER` env var is set automatically by Render — enables secure cookies, HSTS, ProxyFix
 
@@ -252,3 +269,25 @@ Key constants exported from `seed.py`:
 | `FINISHED` | `finished` |
 | `IN_PLAY` / `PAUSED` | `live` |
 | `SCHEDULED` / `TIMED` | `scheduled` |
+
+## The Odds API
+- **Docs:** https://the-odds-api.com/liveapi/guides/v4/
+- Free tier: 500 requests/month; odds update every ~15 min
+- Auth: `apiKey` query param
+- Endpoint: `GET /v4/sports/{sport}/odds?apiKey=...&regions=eu&markets=h2h&oddsFormat=decimal`
+- Response header `x-requests-remaining` — logged on each call
+
+### League → Sport key mapping
+| League | Sport key |
+|--------|-----------|
+| `UCL` | `soccer_uefa_champs_league` |
+| `PL` | `soccer_epl` |
+| `WC` | `soccer_fifa_world_cup` |
+
+### Odds flow
+1. **On featured-matches set** (admin panel) — fetched immediately in background thread before Bender runs
+2. **Scheduler** — refreshes every 3 hours, 07:00–24:00 Minsk only, skips leagues without featured scheduled matches
+3. Stored in `Match.odds_home` / `Match.odds_draw` / `Match.odds_away` (Float, nullable)
+4. Displayed in match card prediction row (right side): `П1 1.85 · X 3.40 · П2 4.10`
+5. Passed to Bender prompt as: _"Коэффициенты букмекеров: победа X — 1.85, ничья — 3.40, победа Y — 4.10. Учти эти данные."_
+6. Team matching: fuzzy via `difflib.SequenceMatcher` on English names (`team.name`), threshold 0.50

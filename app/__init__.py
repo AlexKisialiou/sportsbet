@@ -75,6 +75,15 @@ def create_app():
                 ))
                 db.session.commit()
                 print("[migration] added matches.featured column")
+            for col, ddl in [
+                ("odds_home", "ALTER TABLE matches ADD COLUMN odds_home FLOAT"),
+                ("odds_draw", "ALTER TABLE matches ADD COLUMN odds_draw FLOAT"),
+                ("odds_away", "ALTER TABLE matches ADD COLUMN odds_away FLOAT"),
+            ]:
+                if col not in cols:
+                    db.session.execute(text(ddl))
+                    db.session.commit()
+                    print(f"[migration] added matches.{col} column")
         except Exception as e:
             db.session.rollback()
             print(f"[migration] matches skipped: {e}")
@@ -129,6 +138,17 @@ def create_app():
         except Exception as e:
             db.session.rollback()
             print(f"[migration] users skipped: {e}")
+
+        try:
+            if is_postgres:
+                db.session.execute(text(
+                    "ALTER TABLE match_comments DROP CONSTRAINT IF EXISTS match_comments_match_id_user_id_key"
+                ))
+                db.session.commit()
+                print("[migration] dropped match_comments unique constraint (if existed)")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] match_comments constraint skipped: {e}")
 
         from .seed import run as seed, seed_prompt_hints
         seed()

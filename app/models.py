@@ -45,6 +45,9 @@ class Match(db.Model):
     kickoff_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default="scheduled")  # scheduled / live / finished
     featured = db.Column(db.Boolean, default=False, nullable=False)
+    odds_home = db.Column(db.Float, nullable=True)
+    odds_draw = db.Column(db.Float, nullable=True)
+    odds_away = db.Column(db.Float, nullable=True)
 
     home_team = db.relationship("Team", foreign_keys=[home_team_id])
     away_team = db.relationship("Team", foreign_keys=[away_team_id])
@@ -168,9 +171,18 @@ class MatchComment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (db.UniqueConstraint("match_id", "user_id"),)
-
     user = db.relationship("User")
+
+
+class CommentRead(db.Model):
+    __tablename__ = "comment_reads"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False)
+    last_read_comment_id = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (db.UniqueConstraint("user_id", "match_id"),)
 
 
 class ActivityLog(db.Model):
