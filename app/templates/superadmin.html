@@ -423,7 +423,7 @@
                 <span style="font-size:.83rem;color:#c0c8d0;flex:1;min-width:80px;">
                     {{ m.away_team.display_name }}
                 </span>
-                <span style="font-size:.68rem;padding:2px 6px;border-radius:5px;flex-shrink:0;
+                <span id="status-badge-{{ m.id }}" style="font-size:.68rem;padding:2px 6px;border-radius:5px;flex-shrink:0;
                       background:{% if m.status == 'finished' %}#1a2e1a{% elif m.status == 'live' %}#2a1a00{% else %}#1a1a2e{% endif %};
                       color:{% if m.status == 'finished' %}#5db85d{% elif m.status == 'live' %}#e09a40{% else %}#5a5a9a{% endif %};">
                     {{ m.status }}
@@ -443,6 +443,13 @@
                                background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;flex-shrink:0;
                                display:{% if m.score %}inline-block{% else %}none{% endif %};">
                     Убрать
+                </button>
+                <button id="live-btn-{{ m.id }}"
+                        onclick="setMatchLive({{ m.id }}, {{ 'false' if m.status == 'live' else 'true' }})"
+                        style="font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;flex-shrink:0;
+                               {% if m.status == 'live' %}background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;
+                               {% else %}background:#2a1a00;color:#e09a40;border:1px solid #5a3a00;{% endif %}">
+                    {% if m.status == 'live' %}⏹ Стоп{% else %}▶ Live{% endif %}
                 </button>
                 <button onclick="togglePredPanel({{ m.id }})"
                         id="preds-btn-{{ m.id }}"
@@ -610,6 +617,37 @@
 
 <div class="admin-card" style="border-color:#5a1a1a;">
     <h6 style="color:#e05555;">⚠️ Опасная зона</h6>
+    {% if APP_ENV == 'sandbox' %}
+    <p class="text-secondary mb-2" style="font-size:.85rem;">
+        Копирует пользователей и ставки из прод (<code style="color:#e09a40;">bet</code>) в сэндбокс (<code style="color:#e09a40;">bet_develop</code>). Только в sandbox режиме.
+    </p>
+    <button class="btn-action" style="background:#1a1000;color:#e09a40;border-color:#4a3010;"
+            id="copyProdBtn" onclick="confirmCopyProd()">
+        📦 Прод → Сэндбокс
+    </button>
+    <div class="spinner" id="copyProdSpinner"></div>
+    <div class="result-msg" id="copyProdMsg"></div>
+
+    <hr style="border-color:#3a1218;margin:18px 0;">
+
+    <p class="text-secondary mb-2" style="font-size:.85rem;">
+        Генерирует случайные ставки (0–3) всем игрокам на все прошедшие featured-матчи лиги. Существующие ставки перезаписываются.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        {% set _lg_names = {'UCL': 'ЛЧ', 'PL': 'АПЛ', 'WC': 'ЧМ'} %}
+        {% for lg in league_order %}{% if league_enabled[lg] %}
+        <button class="btn-action" style="background:#0a0a1a;color:#9090e0;border-color:#3a3a8a;"
+                onclick="confirmRandomPreds('{{ lg }}', '{{ _lg_names[lg] }}')">
+            🎲 {{ _lg_names[lg] }}
+        </button>
+        {% endif %}{% endfor %}
+    </div>
+    <div class="spinner" id="randomPredsSpinner"></div>
+    <div class="result-msg" id="randomPredsMsg"></div>
+
+    <hr style="border-color:#3a1218;margin:18px 0;">
+    {% endif %}
+
     <p class="text-secondary mb-2" style="font-size:.85rem;">
         Сброс ставок и очков. Матчи и пользователи останутся. Необратимо.
     </p>
@@ -731,6 +769,36 @@ async function clearMatchScore(matchId) {
         if (data.ok) {
             msg.innerHTML = '<span class="success-msg">Счёт убран. Перезагрузка…</span>';
             setTimeout(() => location.reload(), 900);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch { msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>'; }
+}
+
+async function setMatchLive(matchId, live) {
+    const msg = document.getElementById(`match-msg-${matchId}`);
+    try {
+        const resp = await fetch(`/api/admin/match/${matchId}/set-live`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ live }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            const btn = document.getElementById(`live-btn-${matchId}`);
+            const badge = document.getElementById(`status-badge-${matchId}`);
+            if (live) {
+                btn.textContent = '⏹ Стоп';
+                btn.onclick = () => setMatchLive(matchId, false);
+                btn.style.cssText = 'font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;flex-shrink:0;background:#2a0a0a;color:#e05555;border:1px solid #5a1a1a;';
+                if (badge) { badge.textContent = 'live'; badge.style.background = '#2a1a00'; badge.style.color = '#e09a40'; }
+            } else {
+                btn.textContent = '▶ Live';
+                btn.onclick = () => setMatchLive(matchId, true);
+                btn.style.cssText = 'font-size:.73rem;padding:3px 9px;border-radius:5px;cursor:pointer;flex-shrink:0;background:#2a1a00;color:#e09a40;border:1px solid #5a3a00;';
+                if (badge) { badge.textContent = 'scheduled'; badge.style.background = '#1a1a2e'; badge.style.color = '#5a5a9a'; }
+            }
+            msg.innerHTML = `<span class="success-msg">Статус: ${data.status}</span>`;
         } else {
             msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
         }
@@ -1490,6 +1558,60 @@ async function deleteReleaseNote(noteId, version) {
         }
     } catch {
         msg.innerHTML = '<span class="error-msg">Ошибка.</span>';
+    }
+}
+
+async function confirmRandomPreds(league, name) {
+    if (!confirm(`Сгенерировать случайные ставки для лиги ${name}? Существующие ставки будут перезаписаны.`)) return;
+
+    const spinner = document.getElementById('randomPredsSpinner');
+    const msg = document.getElementById('randomPredsMsg');
+    spinner.style.display = 'block';
+    msg.innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/admin/generate-random-predictions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({league})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">Готово: ${data.predictions} ставок для ${name}.</span>`;
+        } else {
+            msg.innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = `<span class="error-msg">Не удалось выполнить запрос.</span>`;
+    } finally {
+        spinner.style.display = 'none';
+    }
+}
+
+async function confirmCopyProd() {
+    if (!confirm('Скопировать пользователей и ставки из прод в сэндбокс? Существующие данные будут обновлены.')) return;
+
+    const btn = document.getElementById('copyProdBtn');
+    btn.disabled = true;
+    document.getElementById('copyProdSpinner').style.display = 'block';
+    document.getElementById('copyProdMsg').innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/admin/copy-prod-to-sandbox', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            document.getElementById('copyProdMsg').innerHTML =
+                `<span class="success-msg">Готово: ${data.users} юзеров, ${data.matches} матчей, ${data.predictions} ставок.</span>`;
+        } else {
+            document.getElementById('copyProdMsg').innerHTML =
+                `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        }
+    } catch {
+        document.getElementById('copyProdMsg').innerHTML =
+            `<span class="error-msg">Не удалось выполнить копирование.</span>`;
+    } finally {
+        document.getElementById('copyProdSpinner').style.display = 'none';
+        btn.disabled = false;
     }
 }
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
-from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment
+from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment, CommentRead
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
 from ..services.points import update_points_for_match, calc_points
 from ..auth import get_current_user, login_required, admin_required, superuser_required
@@ -167,7 +167,8 @@ def set_featured_matches():
     # Extract data before thread — ORM objects must not cross session boundaries
     match_data = [
         (m.id, m.home_team.display_name, m.away_team.display_name,
-         f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}")
+         f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}",
+         m.home_team.name, m.away_team.name)
         for m in featured_matches
     ]
 
@@ -180,6 +181,7 @@ def set_featured_matches():
         def generate_bender_async():
             with app.app_context():
                 from ..services.groq_api import generate_bender_pick
+                from ..services.odds_api import fetch_odds_for_matches
                 from ..seed import BENDER_USERNAME
 
                 Commentary.query.filter(
@@ -193,14 +195,33 @@ def set_featured_matches():
                 from ..seed import LEAGUE_TO_TOURNAMENT
                 tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
 
+                # Fetch odds first; use English team names for matching
+                odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
+                odds_map = fetch_odds_for_matches(odds_input, league)
+
+                # Persist odds to Match rows
+                if odds_map:
+                    for mid, odds in odds_map.items():
+                        m = Match.query.get(mid)
+                        if m:
+                            m.odds_home = odds.get("home")
+                            m.odds_draw = odds.get("draw")
+                            m.odds_away = odds.get("away")
+                    db.session.commit()
+
                 def call_groq(item):
-                    match_id, home, away, label = item
-                    try:
-                        result = generate_bender_pick(home, away, tournament=tournament)
-                        return (match_id, label, result)
-                    except Exception as e:
-                        print(f"[groq] bender skipped for {label}: {e}")
-                        return (match_id, label, None)
+                    match_id, home, away, label, _hen, _aen = item
+                    with app.app_context():
+                        try:
+                            result = generate_bender_pick(
+                                home, away,
+                                tournament=tournament,
+                                odds=odds_map.get(match_id),
+                            )
+                            return (match_id, label, result)
+                        except Exception as e:
+                            print(f"[groq] bender skipped for {label}: {e}")
+                            return (match_id, label, None)
 
                 with ThreadPoolExecutor(max_workers=min(len(match_data), 5)) as executor:
                     results = list(executor.map(call_groq, match_data))
@@ -755,6 +776,30 @@ def clear_match_score(match_id):
     return jsonify({"ok": True})
 
 
+@api_bp.route("/admin/match/<int:match_id>/set-live", methods=["POST"])
+@superuser_required
+@limiter.limit("60 per minute")
+def set_match_live(match_id):
+    data = request.get_json(silent=True) or {}
+    live = data.get("live", True)
+    match = Match.query.get(match_id)
+    if not match:
+        return jsonify({"error": "Матч не найден"}), 404
+    if live:
+        match.status = "live"
+        db.session.commit()
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "match_live_set",
+                   f"{match.home_team.display_name} vs {match.away_team.display_name}")
+    else:
+        match.status = "scheduled"
+        db.session.commit()
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "match_live_cleared",
+                   f"{match.home_team.display_name} vs {match.away_team.display_name}")
+    return jsonify({"ok": True, "status": match.status})
+
+
 @api_bp.route("/admin/match/<int:match_id>/predictions", methods=["GET"])
 @superuser_required
 def get_match_predictions(match_id):
@@ -1046,36 +1091,63 @@ def save_match_comment(match_id):
 
     max_len_s = Setting.query.get("comment_max_length")
     try:
-        max_len = max(1, int(max_len_s.value)) if max_len_s else 10
+        max_len = max(1, int(max_len_s.value)) if max_len_s else 280
     except (ValueError, TypeError):
-        max_len = 10
+        max_len = 280
 
     if len(text) > max_len:
         return jsonify({"error": f"Слишком длинный (макс. {max_len})"}), 400
 
-    comment = MatchComment.query.filter_by(match_id=match_id, user_id=user.id).first()
-    if comment:
-        comment.text = text
-        comment.updated_at = datetime.utcnow()
+    comment = MatchComment(match_id=match_id, user_id=user.id, text=text)
+    db.session.add(comment)
+    db.session.flush()
+    # mark as read up to this comment for the author
+    read = CommentRead.query.filter_by(user_id=user.id, match_id=match_id).first()
+    if read:
+        read.last_read_comment_id = comment.id
     else:
-        comment = MatchComment(match_id=match_id, user_id=user.id, text=text)
-        db.session.add(comment)
+        db.session.add(CommentRead(user_id=user.id, match_id=match_id, last_read_comment_id=comment.id))
     db.session.commit()
     log_action(user.id, "comment_set", f"Матч #{match_id}: {text[:50]}")
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True,
+        "id": comment.id,
+        "created_at": comment.created_at.isoformat(),
+        "author": user.display_name,
+        "avatar_emoji": user.avatar_emoji or "",
+        "avatar_color": user.avatar_color or "",
+        "is_bot": user.is_bot,
+    })
 
 
-@api_bp.route("/match/<int:match_id>/comment", methods=["DELETE"])
+@api_bp.route("/match/<int:match_id>/comment/<int:comment_id>", methods=["DELETE"])
 @login_required
 @limiter.limit("30 per minute")
-def delete_match_comment(match_id):
+def delete_match_comment(match_id, comment_id):
     user = get_current_user()
-    comment = MatchComment.query.filter_by(match_id=match_id, user_id=user.id).first()
+    comment = MatchComment.query.filter_by(id=comment_id, match_id=match_id, user_id=user.id).first()
     if not comment:
         return jsonify({"error": "Комментарий не найден"}), 404
     db.session.delete(comment)
     db.session.commit()
     log_action(user.id, "comment_deleted", f"Матч #{match_id}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/match/<int:match_id>/comments/read", methods=["POST"])
+@login_required
+@limiter.limit("60 per minute")
+def mark_comments_read(match_id):
+    user = get_current_user()
+    latest = MatchComment.query.filter_by(match_id=match_id).order_by(MatchComment.id.desc()).first()
+    if not latest:
+        return jsonify({"ok": True})
+    read = CommentRead.query.filter_by(user_id=user.id, match_id=match_id).first()
+    if read:
+        read.last_read_comment_id = latest.id
+    else:
+        db.session.add(CommentRead(user_id=user.id, match_id=match_id, last_read_comment_id=latest.id))
+    db.session.commit()
     return jsonify({"ok": True})
 
 
@@ -1096,3 +1168,269 @@ def set_comment_max_length():
     log_action(actor.id if actor else None, "comment_max_length_changed",
                f"Макс. длина комментария: {val}")
     return jsonify({"ok": True, "length": val})
+
+
+@api_bp.route("/admin/generate-random-predictions", methods=["POST"])
+@superuser_required
+@limiter.limit("5 per minute")
+def generate_random_predictions():
+    import os, random
+
+    if os.environ.get("APP_ENV") != "sandbox":
+        return jsonify({"error": "Только в sandbox режиме"}), 400
+
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "Неизвестная лига"}), 400
+
+    users = User.query.filter_by(is_bot=False, is_superuser=False).all()
+    if not users:
+        return jsonify({"ok": True, "predictions": 0})
+
+    matches = (
+        Match.query.join(Tour)
+        .filter(Tour.league == league, Match.status == "finished", Match.featured == True)
+        .all()
+    )
+    if not matches:
+        return jsonify({"ok": True, "predictions": 0})
+
+    preds_created = 0
+    for match in matches:
+        for user in users:
+            hs = random.randint(0, 3)
+            aws = random.randint(0, 3)
+            pred = Prediction.query.filter_by(user_id=user.id, match_id=match.id).first()
+            if pred:
+                pred.home_score = hs
+                pred.away_score = aws
+            else:
+                pred = Prediction(user_id=user.id, match_id=match.id, home_score=hs, away_score=aws)
+                db.session.add(pred)
+            preds_created += 1
+        db.session.flush()
+        update_points_for_match(match, commit=False)
+
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "random_preds_generated",
+               f"Рандомные ставки {league}: {preds_created} шт.")
+    return jsonify({"ok": True, "predictions": preds_created})
+
+
+@api_bp.route("/admin/copy-prod-to-sandbox", methods=["POST"])
+@superuser_required
+@limiter.limit("3 per minute")
+def copy_prod_to_sandbox():
+    import os
+    from sqlalchemy import text as satext
+
+    if os.environ.get("APP_ENV") != "sandbox":
+        return jsonify({"error": "Только в sandbox режиме"}), 400
+
+    try:
+        # 1. Fetch non-bot, non-superuser users from prod schema
+        prod_users = db.session.execute(satext(
+            "SELECT id, username, password_hash, is_admin, nickname, avatar_emoji, avatar_color "
+            "FROM bet.users WHERE is_bot = false AND is_superuser = false"
+        )).fetchall()
+
+        if not prod_users:
+            return jsonify({"ok": True, "users": 0, "matches": 0, "predictions": 0})
+
+        # 2. Upsert users into sandbox (current schema)
+        users_copied = 0
+        for u in prod_users:
+            db.session.execute(satext("""
+                INSERT INTO users (username, password_hash, is_admin, is_superuser, nickname, is_bot, avatar_emoji, avatar_color)
+                VALUES (:username, :ph, :is_admin, false, :nickname, false, :emoji, :color)
+                ON CONFLICT (username) DO UPDATE SET
+                    password_hash = EXCLUDED.password_hash,
+                    nickname = EXCLUDED.nickname,
+                    avatar_emoji = EXCLUDED.avatar_emoji,
+                    avatar_color = EXCLUDED.avatar_color
+            """), dict(username=u.username, ph=u.password_hash, is_admin=u.is_admin,
+                       nickname=u.nickname, emoji=u.avatar_emoji, color=u.avatar_color))
+            users_copied += 1
+
+        # 3. Build prod_id → sandbox_id mapping via username
+        sb_users = db.session.execute(satext(
+            "SELECT id, username FROM users WHERE username = ANY(:unames)"
+        ), {"unames": [u.username for u in prod_users]}).fetchall()
+        username_to_sb_id = {u.username: u.id for u in sb_users}
+        prod_to_sb_user = {pu.id: username_to_sb_id[pu.username]
+                           for pu in prod_users if pu.username in username_to_sb_id}
+        prod_user_ids = list(prod_to_sb_user.keys())
+
+        if not prod_user_ids:
+            db.session.commit()
+            return jsonify({"ok": True, "users": users_copied, "matches": 0, "predictions": 0})
+
+        # 4. Determine which leagues are enabled in prod
+        enabled_rows = db.session.execute(satext(
+            "SELECT key, value FROM bet.settings WHERE key IN "
+            "('league_enabled_UCL', 'league_enabled_PL', 'league_enabled_WC')"
+        )).fetchall()
+        setting_map = {row.key: row.value for row in enabled_rows}
+        enabled_leagues = [
+            league for league in ("UCL", "PL", "WC")
+            if setting_map.get(f"league_enabled_{league}", "1") == "1"
+        ]
+        if not enabled_leagues:
+            db.session.commit()
+            return jsonify({"ok": True, "users": users_copied, "matches": 0, "predictions": 0})
+
+        # 4a. Fetch finished matches from prod (enabled leagues only) with team/tour/score data
+        prod_finished = db.session.execute(satext("""
+            SELECT
+                m.external_id, m.kickoff_time, m.status, m.featured,
+                ht.external_id AS home_ext, ht.name AS home_name, ht.name_ru AS home_name_ru,
+                    ht.short_name AS home_short, ht.crest AS home_crest,
+                at.external_id AS away_ext, at.name AS away_name, at.name_ru AS away_name_ru,
+                    at.short_name AS away_short, at.crest AS away_crest,
+                tr.name AS tour_name, tr.season, tr.round_number, tr.league,
+                    tr.start_date, tr.end_date, tr.status AS tour_status,
+                s.home_score, s.away_score
+            FROM bet.matches m
+            JOIN bet.teams ht ON ht.id = m.home_team_id
+            JOIN bet.teams at ON at.id = m.away_team_id
+            JOIN bet.tours tr ON tr.id = m.tour_id
+            LEFT JOIN bet.scores s ON s.match_id = m.id
+            WHERE m.status = 'finished' AND m.external_id IS NOT NULL
+              AND tr.league = ANY(:leagues)
+        """), {"leagues": enabled_leagues}).fetchall()
+
+        # 4a. Upsert teams (by external_id)
+        seen_team_exts = set()
+        for r in prod_finished:
+            for ext, name, name_ru, short, crest in (
+                (r.home_ext, r.home_name, r.home_name_ru, r.home_short, r.home_crest),
+                (r.away_ext, r.away_name, r.away_name_ru, r.away_short, r.away_crest),
+            ):
+                if ext in seen_team_exts:
+                    continue
+                seen_team_exts.add(ext)
+                db.session.execute(satext("""
+                    INSERT INTO teams (external_id, name, name_ru, short_name, crest)
+                    VALUES (:ext, :name, :name_ru, :short, :crest)
+                    ON CONFLICT (external_id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        name_ru = COALESCE(EXCLUDED.name_ru, teams.name_ru),
+                        short_name = EXCLUDED.short_name,
+                        crest = EXCLUDED.crest
+                """), dict(ext=ext, name=name, name_ru=name_ru, short=short, crest=crest))
+
+        sb_team_rows = db.session.execute(satext(
+            "SELECT id, external_id FROM teams WHERE external_id = ANY(:eids)"
+        ), {"eids": list(seen_team_exts)}).fetchall()
+        ext_to_sb_team = {t.external_id: t.id for t in sb_team_rows}
+
+        # 4b. Upsert tours (no unique constraint — match by name+season+league)
+        tour_key_to_sb_id = {}
+        for r in prod_finished:
+            key = (r.tour_name, r.season, r.league)
+            if key in tour_key_to_sb_id:
+                continue
+            existing = db.session.execute(satext(
+                "SELECT id FROM tours WHERE name = :name AND season = :season AND league = :league"
+            ), dict(name=r.tour_name, season=r.season, league=r.league)).fetchone()
+            if existing:
+                tour_key_to_sb_id[key] = existing.id
+            else:
+                new_tour = db.session.execute(satext("""
+                    INSERT INTO tours (name, season, round_number, league, start_date, end_date, status)
+                    VALUES (:name, :season, :rn, :league, :sd, :ed, :status)
+                    RETURNING id
+                """), dict(name=r.tour_name, season=r.season, rn=r.round_number,
+                           league=r.league, sd=r.start_date, ed=r.end_date,
+                           status=r.tour_status)).fetchone()
+                tour_key_to_sb_id[key] = new_tour.id
+
+        # 4c. Upsert finished matches and their scores
+        matches_copied = 0
+        ext_to_sb_match = {}
+        for r in prod_finished:
+            key = (r.tour_name, r.season, r.league)
+            sb_tour_id = tour_key_to_sb_id.get(key)
+            sb_home_id = ext_to_sb_team.get(r.home_ext)
+            sb_away_id = ext_to_sb_team.get(r.away_ext)
+            if not (sb_tour_id and sb_home_id and sb_away_id):
+                continue
+            match_row = db.session.execute(satext("""
+                INSERT INTO matches (external_id, tour_id, home_team_id, away_team_id,
+                                     kickoff_time, status, featured)
+                VALUES (:ext, :tid, :hid, :aid, :kt, :status, :featured)
+                ON CONFLICT (external_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    kickoff_time = EXCLUDED.kickoff_time,
+                    featured = EXCLUDED.featured,
+                    tour_id = EXCLUDED.tour_id,
+                    home_team_id = EXCLUDED.home_team_id,
+                    away_team_id = EXCLUDED.away_team_id
+                RETURNING id
+            """), dict(ext=r.external_id, tid=sb_tour_id, hid=sb_home_id, aid=sb_away_id,
+                       kt=r.kickoff_time, status=r.status, featured=r.featured)).fetchone()
+            if match_row:
+                matches_copied += 1
+                ext_to_sb_match[r.external_id] = match_row.id
+                if r.home_score is not None:
+                    db.session.execute(satext("""
+                        INSERT INTO scores (match_id, home_score, away_score, manual_lock)
+                        VALUES (:mid, :hs, :aws, false)
+                        ON CONFLICT (match_id) DO UPDATE SET
+                            home_score = EXCLUDED.home_score,
+                            away_score = EXCLUDED.away_score
+                    """), dict(mid=match_row.id, hs=r.home_score, aws=r.away_score))
+
+        # 5. Fetch prod predictions for those matches
+        prod_match_ext_ids = list(ext_to_sb_match.keys())
+        if not prod_match_ext_ids:
+            db.session.commit()
+            return jsonify({"ok": True, "users": users_copied, "matches": matches_copied, "predictions": 0})
+
+        prod_preds = db.session.execute(satext("""
+            SELECT p.user_id, p.home_score, p.away_score, m.external_id AS match_ext_id,
+                   pp.points, pp.reason, pp.manual_lock
+            FROM bet.predictions p
+            JOIN bet.matches m ON p.match_id = m.id
+            LEFT JOIN bet.prediction_points pp ON pp.prediction_id = p.id
+            WHERE p.user_id = ANY(:uid)
+        """), {"uid": prod_user_ids}).fetchall()
+
+        # 6. Upsert predictions and their points
+        preds_copied = 0
+        for p in prod_preds:
+            sb_uid = prod_to_sb_user.get(p.user_id)
+            sb_mid = ext_to_sb_match.get(p.match_ext_id)
+            if not (sb_uid and sb_mid):
+                continue
+
+            row = db.session.execute(satext("""
+                INSERT INTO predictions (user_id, match_id, home_score, away_score)
+                VALUES (:uid, :mid, :hs, :aws)
+                ON CONFLICT (user_id, match_id) DO UPDATE SET
+                    home_score = EXCLUDED.home_score, away_score = EXCLUDED.away_score
+                RETURNING id
+            """), dict(uid=sb_uid, mid=sb_mid, hs=p.home_score, aws=p.away_score)).fetchone()
+
+            if row:
+                preds_copied += 1
+                if p.points is not None:
+                    db.session.execute(satext("""
+                        INSERT INTO prediction_points (prediction_id, points, reason, manual_lock)
+                        VALUES (:pid, :pts, :reason, :ml)
+                        ON CONFLICT (prediction_id) DO UPDATE SET
+                            points = EXCLUDED.points, reason = EXCLUDED.reason,
+                            manual_lock = EXCLUDED.manual_lock
+                    """), dict(pid=row.id, pts=p.points, reason=p.reason, ml=p.manual_lock or False))
+
+        db.session.commit()
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "copy_prod_to_sandbox",
+                   f"Скопировано из прод: {users_copied} юзеров, {matches_copied} матчей, {preds_copied} ставок")
+        return jsonify({"ok": True, "users": users_copied, "matches": matches_copied, "predictions": preds_copied})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
