@@ -337,6 +337,27 @@
 </div>
 
 <div class="admin-card" style="border-color:#1a2a3a;">
+    <h6 style="color:#b59a5a;">📡 Запросы к API ставок</h6>
+    <p class="text-secondary mb-3" style="font-size:.85rem;">
+        Разрешить получение коэффициентов с The Odds API. Выключи чтобы экономить квоту (500 req/мес).
+    </p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <span id="oddsfetch-status" style="font-size:.88rem;color:{% if odds_fetch_enabled %}#5db85d{% else %}#888{% endif %};">
+            {% if odds_fetch_enabled %}✓ Включено{% else %}○ Выключено{% endif %}
+        </span>
+        <button onclick="toggleOddsFetch({{ 'false' if odds_fetch_enabled else 'true' }})"
+                id="oddsfetch-btn"
+                style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                       background:{% if odds_fetch_enabled %}#2a0a0a{% else %}#0a2a10{% endif %};
+                       color:{% if odds_fetch_enabled %}#e05555{% else %}#5db85d{% endif %};
+                       border:1px solid {% if odds_fetch_enabled %}#5a1a1a{% else %}#1a5a2a{% endif %};">
+            {% if odds_fetch_enabled %}Выключить{% else %}Включить{% endif %}
+        </button>
+        <span id="oddsfetchMsg" style="font-size:.82rem;"></span>
+    </div>
+</div>
+
+<div class="admin-card" style="border-color:#1a2a3a;">
     <h6 style="color:#7a9ab5;">🔍 Форма команды в подсказке</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">
         Сколько последних матчей показывать при наведении на команду. 0 — все матчи.
@@ -1174,6 +1195,42 @@ async function toggleBettingLock(lock) {
             setTimeout(() => msg.innerHTML = '', 2000);
         } else {
             msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function toggleOddsFetch(enable) {
+    const btn = document.getElementById('oddsfetch-btn');
+    const status = document.getElementById('oddsfetch-status');
+    const msg = document.getElementById('oddsfetchMsg');
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/settings/odds-fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (enable) {
+                status.textContent = '✓ Включено'; status.style.color = '#5db85d';
+                btn.textContent = 'Выключить';
+                btn.style.background = '#2a0a0a'; btn.style.color = '#e05555'; btn.style.borderColor = '#5a1a1a';
+                btn.onclick = () => toggleOddsFetch(false);
+            } else {
+                status.textContent = '○ Выключено'; status.style.color = '#888';
+                btn.textContent = 'Включить';
+                btn.style.background = '#0a2a10'; btn.style.color = '#5db85d'; btn.style.borderColor = '#1a5a2a';
+                btn.onclick = () => toggleOddsFetch(true);
+            }
+            msg.innerHTML = '<span class="success-msg">Сохранено.</span>';
+            setTimeout(() => msg.innerHTML = '', 2000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
         }
     } catch {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';

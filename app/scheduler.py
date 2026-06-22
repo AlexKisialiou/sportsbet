@@ -52,6 +52,11 @@ def _auto_odds_job():
         from .services.odds_api import fetch_odds_for_matches
         from .models import Match, Tour, Setting, db
 
+        odds_enabled_s = Setting.query.get("odds_fetch_enabled")
+        if odds_enabled_s is not None and odds_enabled_s.value == "0":
+            print(f"[odds-scheduler] {ts} — disabled in settings, skipped")
+            return
+
         for league in ("UCL", "PL", "WC"):
             s = Setting.query.get(f"league_enabled_{league}")
             if s is not None and s.value == "0":

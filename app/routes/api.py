@@ -195,9 +195,13 @@ def set_featured_matches():
                 from ..seed import LEAGUE_TO_TOURNAMENT
                 tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
 
-                # Fetch odds first; use English team names for matching
-                odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
-                odds_map = fetch_odds_for_matches(odds_input, league)
+                # Fetch odds first (unless disabled); use English team names for matching
+                odds_enabled_s = Setting.query.get("odds_fetch_enabled")
+                if odds_enabled_s is None or odds_enabled_s.value != "0":
+                    odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
+                    odds_map = fetch_odds_for_matches(odds_input, league)
+                else:
+                    odds_map = {}
 
                 # Persist odds to Match rows
                 if odds_map:
@@ -986,6 +990,25 @@ def set_auto_fetch():
     log_action(actor.id if actor else None, "auto_fetch_changed",
                f"Автообновление: {'вкл' if final_enabled else 'выкл'}, интервал {final_interval} мин")
     return jsonify({"ok": True, "enabled": final_enabled, "interval": final_interval})
+
+
+@api_bp.route("/settings/odds-fetch", methods=["POST"])
+@superuser_required
+def set_odds_fetch():
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    if enabled is None:
+        return jsonify({"error": "enabled required"}), 400
+
+    s = Setting.query.get("odds_fetch_enabled") or Setting(key="odds_fetch_enabled", value="1")
+    s.value = "1" if enabled else "0"
+    db.session.add(s)
+    db.session.commit()
+
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "odds_fetch_changed",
+               f"Запросы ставок: {'вкл' if enabled else 'выкл'}")
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @api_bp.route("/team/<int:team_id>/recent-matches", methods=["GET"])

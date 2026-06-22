@@ -84,13 +84,13 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `Prediction` | `user_id`, `match_id`, `home_score`, `away_score`; unique on `(user_id, match_id)` |
 | `PredictionPoints` | 1:1 with Prediction; `points` (0/1/3), `reason` (`"exact"`/`"winner"`/`"none"`/`"manual"`), `manual_lock` (bool) — if True, recalculation is skipped |
 | `Commentary` | `match_label`, `text`; Bender's AI comments; `"__standings__"` label for leaderboard commentary |
-| `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC`, `auto_fetch_enabled`, `auto_fetch_interval_min`, `team_form_matches_count`, `comment_max_length` |
+| `Setting` | `key` (PK), `value`; stores `theme`, `betting_locked`, `standings_day_ucl/pl/wc`, `league_enabled_UCL/PL/WC`, `league_order`, `pred_days_UCL/PL/WC`, `auto_fetch_enabled`, `auto_fetch_interval_min`, `odds_fetch_enabled`, `team_form_matches_count`, `comment_max_length` |
 | `ActivityLog` | `user_id` (FK nullable), `action`, `details`, `ip_address`, `created_at`; records all user/admin actions |
 | `PromptHint` | `tournament` (e.g. `"WC2026"`, `"UCL"`, `"PL"`), `hint_type` (`"prompt"` or `"standings"`), `content` (full prompt template), `active` (bool), `sort_order`; stores editable Groq prompts per tournament |
 | `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; **no unique constraint** — multiple messages per user per match allowed |
 | `CommentRead` | `user_id`, `match_id`, `last_read_comment_id`; unique on `(user_id, match_id)`; tracks read position per user per match for unread badge logic |
 | `ReleaseNote` | for future changelog display |
-| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500) |
+| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `odds_fetch_enabled` (`"0"`/`"1"`, default `"1"`), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500) |
 
 ### Routes
 | Blueprint | Route | Description |
@@ -131,6 +131,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/settings/auto-fetch` | Toggle auto-fetch and/or set interval; body `{"enabled":true,"interval":15}` (superuser) |
 | `api` | `POST /api/settings/team-form-count` | Set how many recent matches to show in team tooltip; body `{"count":5}` (superuser) |
 | `api` | `POST /api/settings/comment-max-length` | Set max comment length 1–500; body `{"length":280}` (superuser) |
+| `api` | `POST /api/settings/odds-fetch` | Enable/disable The Odds API requests; body `{"enabled":true/false}` (superuser) |
 | `api` | `GET /api/team/<id>/recent-matches?league=UCL` | Get recent finished matches for a team (login required); respects `team_form_matches_count` setting |
 | `api` | `POST /api/match/<id>/comment` | Post new comment on a finished match (login required); body `{"text":"..."}`; returns `{ok, id, created_at, author, avatar_emoji, avatar_color, is_bot}`; also updates `CommentRead` for the author |
 | `api` | `DELETE /api/match/<id>/comment/<comment_id>` | Delete specific comment by id (login required; only own comments) |
@@ -150,6 +151,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - **⏱ Автообновление** — toggle auto-fetch on/off + interval input (5–120 min); calls `POST /api/settings/auto-fetch`; reschedules APScheduler job live
 - **📊 Форма команд** — input for how many recent matches to show in tooltip (0 = all); calls `POST /api/settings/team-form-count`
 - **💬 Комментарии** — max comment length input (1–500); calls `POST /api/settings/comment-max-length`
+- **📡 Запросы к API ставок** — toggle to enable/disable The Odds API requests (saves quota); calls `POST /api/settings/odds-fetch`; both scheduler job and featured-matches endpoint respect this flag
 - **📋 Лог активности** — link to activity log page
 
 ### Activity Log (`/activity-log`)
@@ -194,6 +196,7 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 `BackgroundScheduler` (APScheduler, daemon=True) for periodic jobs.
 - `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled; always schedules `_auto_odds_job`
 - `update_auto_fetch(enabled, interval)` — called live from `POST /api/settings/auto-fetch`; adds/removes the APScheduler job without restart
+- `_auto_odds_job()` checks `odds_fetch_enabled` setting at runtime; skips entirely if `"0"`
 - `_auto_fetch_job()` — runs all three fetch functions, skips disabled leagues, logs to stdout
 - `_auto_odds_job()` — runs every 3 hours; **only between 07:00–24:00 Minsk time** (UTC+3); for each enabled league fetches bookmaker odds if there are featured scheduled matches, updates `Match.odds_*`; skips leagues with no featured matches to conserve API quota (500 req/month free tier)
 

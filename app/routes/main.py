@@ -428,6 +428,8 @@ def superadmin():
     af_enabled_s = Setting.query.get("auto_fetch_enabled")
     auto_fetch_enabled = af_enabled_s is not None and af_enabled_s.value == "1"
     af_interval_s = Setting.query.get("auto_fetch_interval_min")
+    odds_s = Setting.query.get("odds_fetch_enabled")
+    odds_fetch_enabled = odds_s is None or odds_s.value != "0"
     try:
         auto_fetch_interval = max(5, min(int(af_interval_s.value), 120)) if af_interval_s else 15
     except (ValueError, TypeError):
@@ -457,6 +459,7 @@ def superadmin():
                            release_notes=release_notes,
                            auto_fetch_enabled=auto_fetch_enabled,
                            auto_fetch_interval=auto_fetch_interval,
+                           odds_fetch_enabled=odds_fetch_enabled,
                            team_form_count=team_form_count,
                            comment_max_length=sa_comment_max_length)
 
@@ -574,12 +577,12 @@ def stats():
     for r in chart_pts_rows:
         tour_pts_map.setdefault(r.id, {})[r.user_id] = int(r.pts)
 
-    chart_labels = [r.name for r in tour_order_rows]
+    chart_labels = ["Старт"] + [r.name for r in tour_order_rows]
     chart_datasets = []
     cumulative_by_user = {}
     for u in users:
         cumulative = 0
-        data = []
+        data = [0]
         for t in tour_order_rows:
             cumulative += tour_pts_map.get(t.id, {}).get(u.id, 0)
             data.append(cumulative)
@@ -593,8 +596,8 @@ def stats():
     # ── График позиций в лидерборде по турам ─────────────────────
     rank_datasets = []
     for u_idx, u in enumerate(users):
-        rank_data = []
-        for t_idx in range(len(tour_order_rows)):
+        rank_data = [1]
+        for t_idx in range(1, len(tour_order_rows) + 1):
             my_pts = cumulative_by_user[u.id][t_idx]
             rank = sum(1 for uid, d in cumulative_by_user.items() if d[t_idx] > my_pts) + 1
             rank_data.append(rank)
