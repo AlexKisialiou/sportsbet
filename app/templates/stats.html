@@ -91,11 +91,10 @@
 .stats-pct { font-size: .78rem; color: var(--text-label); }
 @media (max-width: 599px) {
   .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .stats-scroll .stats-table-wrap { overflow: visible; }
   .stats-scroll .stats-table { width: auto; }
   .stats-th { padding: 7px 10px; font-size: .6rem; }
   .stats-td { padding: 8px 10px; font-size: .8rem; }
-  .stats-table th:nth-child(8), .stats-table td:nth-child(8),
-  .stats-table th:nth-child(9), .stats-table td:nth-child(9) { display: none; }
   .league-tabs { gap: 4px; }
   .league-tab { padding: 5px 12px; font-size: .75rem; }
 }
