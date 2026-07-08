@@ -41,7 +41,9 @@ def create_app():
     # Pin all connections to the sportsbet schema (PostgreSQL only)
     if is_postgres:
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-            "connect_args": {"options": f"-csearch_path={DB_SCHEMA}"}
+            "connect_args": {"options": f"-csearch_path={DB_SCHEMA}"},
+            "pool_pre_ping": True,
+            "pool_recycle": 280,
         }
 
     # Trust the Render proxy for real client IPs

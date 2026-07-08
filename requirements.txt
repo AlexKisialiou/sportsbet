@@ -6,3 +6,4 @@ python-dotenv
 groq
 flask-limiter
 apscheduler
+requests
