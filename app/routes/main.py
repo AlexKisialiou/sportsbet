@@ -163,23 +163,44 @@ def index():
 
         leaderboard = get_leaderboard(last_rounds=pred_rounds, league=league)
 
+        # Streak = consecutive featured_rounds (descending) where user got at least one exact/winner.
+        # Round without any hit (or no prediction at all) breaks the streak.
+        _all_streak_rounds = [
+            r[0] for r in (
+                db.session.query(Match.featured_round)
+                .join(Tour)
+                .filter(
+                    Tour.league == league,
+                    Match.status == 'finished',
+                    Match.featured == True,
+                    Match.featured_round.isnot(None),
+                    Match.featured_round != 0,
+                )
+                .group_by(Match.featured_round)
+                .order_by(Match.featured_round.desc())
+                .all()
+            )
+        ]
         _streak_q = (
-            db.session.query(Prediction.user_id, PredictionPoints.reason)
+            db.session.query(Prediction.user_id, Match.featured_round, PredictionPoints.reason)
             .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
             .join(Match, Prediction.match_id == Match.id)
             .join(Tour, Match.tour_id == Tour.id)
-            .filter(Match.status == 'finished', Match.featured == True, Tour.league == league)
-            .order_by(Match.kickoff_time.asc(), Match.id.asc())
+            .filter(
+                Match.status == 'finished', Match.featured == True,
+                Match.featured_round.isnot(None), Match.featured_round != 0,
+                Tour.league == league,
+            )
             .all()
         )
-        _pred_hist = defaultdict(list)
+        _pred_by_round = defaultdict(lambda: defaultdict(list))
         for _r in _streak_q:
-            _pred_hist[_r.user_id].append(_r.reason)
+            _pred_by_round[_r.user_id][_r.featured_round].append(_r.reason)
         _user_streaks = {}
-        for _uid, _reasons in _pred_hist.items():
+        for _uid, _rounds_map in _pred_by_round.items():
             _s = 0
-            for _reason in reversed(_reasons):
-                if _reason in ('exact', 'winner'):
+            for _rnd in _all_streak_rounds:
+                if any(r == 'exact' for r in _rounds_map.get(_rnd, [])):
                     _s += 1
                 else:
                     break
