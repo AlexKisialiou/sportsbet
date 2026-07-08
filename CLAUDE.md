@@ -46,7 +46,7 @@ Do NOT set `RESET_DB` — removed. Reset is done via admin panel.
 ### App Factory (`app/__init__.py`)
 `create_app()` runs in this order:
 1. Configures Flask + SQLAlchemy; fixes `postgres://` → `postgresql://`
-2. For PostgreSQL: sets `SQLALCHEMY_ENGINE_OPTIONS` with `connect_args: {options: "-csearch_path=sportsbet"}` to pin all connections to the `bet` schema
+2. For PostgreSQL: sets `SQLALCHEMY_ENGINE_OPTIONS` with `connect_args: {options: "-csearch_path=sportsbet"}`, `pool_pre_ping=True`, `pool_recycle=280` — pins schema, validates connections before use, recycles before Render/PgBouncer timeout to prevent SSL stale-connection errors
 3. Applies `ProxyFix` (production only) for real client IPs behind Render's proxy
 4. Calls `_init_schema(db, "sportsbet")` — creates schema if missing, moves any tables still in `public` to `sportsbet`
 5. `db.create_all()` — creates missing tables directly in `sportsbet`
@@ -189,6 +189,7 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 - Floating bottom tray: 📊 Бендер об очках (gold chip per league), 📋 Прогноз (green chip per league); hidden for disabled leagues
 - All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
 - JS: `switchTab()` falls back to first enabled tab if saved sessionStorage tab is disabled; `lockBetting()` uses `querySelectorAll('.tab-btn')` dynamically
+- **Streak** (`main.py:_build`): `🔥N` badge shown when `N >= 2`. Streak = consecutive `featured_round` values (descending, archive round 0 excluded) where user has at least one `reason == 'exact'` prediction. A round with no exact score (even if winner guessed) or no prediction at all resets the streak to 0.
 
 ### Comments (chat per match)
 - Each finished match has a scrollable comment section (`.mc-scroll`, max ~3 messages visible)
