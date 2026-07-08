@@ -78,8 +78,8 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 |---|---|
 | `Team` | `external_id`, `name`, `name_ru`, `short_name`, `crest`; `display_name` returns RU name when set |
 | `Tour` | `name`, `season`, `round_number`, `league` (`"local"`/`"UCL"`/`"PL"`/`"WC"`), `status` |
-| `Match` | `tour_id`, `home_team_id`, `away_team_id`, `kickoff_time`, `status`, `featured` (bool), `odds_home`/`odds_draw`/`odds_away` (Float, nullable) — average bookmaker decimal odds fetched from The Odds API when match is set as featured |
-| `Score` | 1:1 with Match; `home_score`, `away_score`, `manual_lock` (bool) — if True, API updates are skipped |
+| `Match` | `tour_id`, `home_team_id`, `away_team_id`, `kickoff_time`, `status`, `featured` (bool), `featured_round` (Int, nullable) — game-day number assigned when match is set as featured; `0` = archive (matches without a day); `odds_home`/`odds_draw`/`odds_away` (Float, nullable) — average bookmaker decimal odds fetched from The Odds API when match is set as featured |
+| `Score` | 1:1 with Match; `home_score`, `away_score`, `win_type` (`'aet'`/`'pen'`/None — extra time or penalties), `penalties_home`/`penalties_away` (Int, nullable), `manual_lock` (bool) — if True, API updates are skipped |
 | `User` | `username`, `password_hash`, `is_admin`, `is_superuser`, `nickname`, `is_bot`, `avatar_emoji`, `avatar_color`, `superadmin_note`; `display_name` returns nickname or username |
 | `Prediction` | `user_id`, `match_id`, `home_score`, `away_score`; unique on `(user_id, match_id)` |
 | `PredictionPoints` | 1:1 with Prediction; `points` (0/1/3), `reason` (`"exact"`/`"winner"`/`"none"`/`"manual"`), `manual_lock` (bool) — if True, recalculation is skipped |
@@ -90,7 +90,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; **no unique constraint** — multiple messages per user per match allowed |
 | `CommentRead` | `user_id`, `match_id`, `last_read_comment_id`; unique on `(user_id, match_id)`; tracks read position per user per match for unread badge logic |
 | `ReleaseNote` | for future changelog display |
-| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `odds_fetch_enabled` (`"0"`/`"1"`, default `"1"`), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500) |
+| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `odds_fetch_enabled` (`"0"`/`"1"`, default `"1"`), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500), `tg_remind_enabled` (`"0"`/`"1"`), `tg_remind_before_min` (minutes before first match to send reminder, default 60), `tg_remind_quiet_from`/`tg_remind_quiet_to` (hour 0–23, don't send during quiet window) |
 
 ### Routes
 | Blueprint | Route | Description |
@@ -132,6 +132,9 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/settings/team-form-count` | Set how many recent matches to show in team tooltip; body `{"count":5}` (superuser) |
 | `api` | `POST /api/settings/comment-max-length` | Set max comment length 1–500; body `{"length":280}` (superuser) |
 | `api` | `POST /api/settings/odds-fetch` | Enable/disable The Odds API requests; body `{"enabled":true/false}` (superuser) |
+| `api` | `POST /api/admin/fix-round0` | Set `featured=True, featured_round=0` for all finished matches of a league with `featured_round IS NULL`; body `{"league":"WC"}` (superuser) |
+| `api` | `POST /api/settings/tg-remind` | Save Telegram reminder settings; body `{"enabled":bool,"before_min":N,"quiet_from":H,"quiet_to":H}` (superuser) |
+| `api` | `POST /api/admin/tg-remind` | Manually trigger Telegram reminder for upcoming featured matches (superuser) |
 | `api` | `GET /api/team/<id>/recent-matches?league=UCL` | Get recent finished matches for a team (login required); respects `team_form_matches_count` setting |
 | `api` | `POST /api/match/<id>/comment` | Post new comment on a finished match (login required); body `{"text":"..."}`; returns `{ok, id, created_at, author, avatar_emoji, avatar_color, is_bot}`; also updates `CommentRead` for the author |
 | `api` | `DELETE /api/match/<id>/comment/<comment_id>` | Delete specific comment by id (login required; only own comments) |
@@ -152,6 +155,8 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - **📊 Форма команд** — input for how many recent matches to show in tooltip (0 = all); calls `POST /api/settings/team-form-count`
 - **💬 Комментарии** — max comment length input (1–500); calls `POST /api/settings/comment-max-length`
 - **📡 Запросы к API ставок** — toggle to enable/disable The Odds API requests (saves quota); calls `POST /api/settings/odds-fetch`; both scheduler job and featured-matches endpoint respect this flag
+- **✈️ Telegram-напоминание** — enable/disable auto-reminder, set minutes before first match, quiet hours (from/to), «Отправить сейчас» manual trigger; calls `POST /api/settings/tg-remind` and `POST /api/admin/tg-remind`; reads `TG_BOT_TOKEN` + `TG_CHAT_ID` env vars
+- **→ день 0** (per-league button in 🏆 Управление лигами row) — moves all finished matches without a `featured_round` to `featured_round=0` (archive); calls `POST /api/admin/fix-round0`
 - **📋 Лог активности** — link to activity log page
 
 ### Activity Log (`/activity-log`)
@@ -160,9 +165,11 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 
 ### Admin Panel (`/admin`)
 - **Загрузить матчи ЛЧ / АПЛ / ЧМ** — fetches from football-data.org (per-league tabs: UCL, PL, WC)
-- **Матчи для ставок** — checkbox list to mark featured matches (UCL + PL + WC tabs); saves immediately; background thread: 1) fetches bookmaker odds via The Odds API (by English team name, fuzzy match), saves to `Match.odds_*`; 2) calls Bender (Groq) with odds context injected into prompt (parallel via ThreadPoolExecutor, each worker gets own `app_context`)
+- **Матчи для ставок** — «Ручная настройка матчей» (collapsible per league): checkbox list to mark featured matches; saves immediately; background thread: 1) fetches bookmaker odds via The Odds API, saves to `Match.odds_*`; 2) calls Bender (Groq) with odds context injected into prompt
 - **Опасная зона** — reset scores only, or full DB reset (with confirmations)
 - Simulation UI removed (API endpoint `POST /api/simulate-results` kept)
+
+> **TODO (disabled):** Quickselect panel (по туру / по времени / авто) is implemented in `admin.html` but wrapped in `{% if false %}`. Before re-enabling, improve: (1) show current featured matches in the card header without opening the manual section; (2) display date (not just time) in the preview list; (3) add «Очистить всё» button per league; (4) auto-refresh preview on tour dropdown change without clicking «Выбрать».
 
 ### CSS Theming (`app/static/css/main.css`)
 Only `purple` theme is active. CSS custom properties on `:root`.  
@@ -176,7 +183,8 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 - Two-column grid per tab: left 420px leaderboard + fill status, right: featured scheduled matches for betting
 - Per-league countdown bar (`.betting-bar`) above match list; auto-locks inputs at first kickoff time
 - Inputs disabled when `betting_locked=True` (server) or tab locked by JS timer; 423 response also triggers lock
-- Full-width predictions table below: finished matches from last N game days (configurable per league via `pred_days_*`, default 4)
+- **Game-day visibility** (`main.py:_build`): among all featured scheduled matches, only the **lowest `featured_round`** is shown for betting (the current active day). When all matches in that round finish, the next round automatically becomes visible — regardless of kickoff date. Matches with `featured_round=None` are always shown. This allows pre-configuring multiple game days in advance: Day 2 activates the moment Day 1 completes.
+- Full-width predictions table below: finished featured matches grouped by `featured_round` (game-day number); shows last N rounds (configurable per league via `pred_days_*`, default 4); `featured_round=0` (archive) is always appended outside the N-round limit if any such matches exist; ordering: `featured_round desc, kickoff_time desc` to keep round groups intact
 - Each past match card has `id="match-<id>"` for scroll targeting
 - Floating bottom tray: 📊 Бендер об очках (gold chip per league), 📋 Прогноз (green chip per league); hidden for disabled leagues
 - All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
@@ -194,11 +202,12 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 
 ### Scheduler (`app/scheduler.py`)
 `BackgroundScheduler` (APScheduler, daemon=True) for periodic jobs.
-- `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled; always schedules `_auto_odds_job`
+- `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled; always schedules `_auto_odds_job` and `_auto_tg_remind_job`
 - `update_auto_fetch(enabled, interval)` — called live from `POST /api/settings/auto-fetch`; adds/removes the APScheduler job without restart
-- `_auto_odds_job()` checks `odds_fetch_enabled` setting at runtime; skips entirely if `"0"`
+- `update_tg_remind(enabled)` — called live from `POST /api/settings/tg-remind`; adds/removes the tg-remind job without restart
 - `_auto_fetch_job()` — runs all three fetch functions, skips disabled leagues, logs to stdout
-- `_auto_odds_job()` — runs every 3 hours; **only between 07:00–24:00 Minsk time** (UTC+3); for each enabled league fetches bookmaker odds if there are featured scheduled matches, updates `Match.odds_*`; skips leagues with no featured matches to conserve API quota (500 req/month free tier)
+- `_auto_odds_job()` — runs every 3 hours; **only between 07:00–24:00 Minsk time** (UTC+3); for each enabled league fetches bookmaker odds if there are featured scheduled matches, updates `Match.odds_*`; skips leagues with no featured matches to conserve API quota (500 req/month free tier); checks `odds_fetch_enabled` setting at runtime, skips entirely if `"0"`
+- `_auto_tg_remind_job()` — runs every 15 min; checks `tg_remind_enabled`; if enabled and current time is **before** the first upcoming featured match by `tg_remind_before_min` minutes (±15 min window), sends a Telegram message listing users without predictions; respects quiet hours (`tg_remind_quiet_from`/`tg_remind_quiet_to`); reads `TG_BOT_TOKEN` + `TG_CHAT_ID` from env; `_is_quiet(hour, q_from, q_to)` handles midnight-spanning ranges
 
 ### Team Form Tooltip
 `_build_team_form_data(league, team_ids, limit)` in `main.py` — precomputes last N finished matches per team for all teams on the page; result injected as `TEAM_FORM_DATA` JSON into `index.html`. On desktop: tooltip appears on `mouseover` after 180ms delay. On mobile: tap shows tooltip, second tap or tap elsewhere hides it (`touchstart` handler with `e.preventDefault()`).

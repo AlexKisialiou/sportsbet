@@ -60,6 +60,19 @@ def _regular_time_score(score_data):
     return ft.get("home"), ft.get("away")
 
 
+def _score_outcome(score_data):
+    """Return (win_type, et_home, et_away, pen_home, pen_away)."""
+    duration = score_data.get("duration", "REGULAR")
+    if duration == "PENALTY_SHOOTOUT":
+        pen = score_data.get("penalties") or {}
+        et = score_data.get("extraTime") or {}
+        return "pen", et.get("home"), et.get("away"), pen.get("home"), pen.get("away")
+    if duration == "EXTRA_TIME":
+        ft = score_data.get("fullTime") or {}
+        return "aet", ft.get("home"), ft.get("away"), None, None
+    return None, None, None, None, None
+
+
 def _save_pl_matches(raw_matches, season):
     added = updated = existing_count = 0
 
@@ -90,6 +103,7 @@ def _save_pl_matches(raw_matches, season):
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
             hs, as_ = _regular_time_score(m["score"])
+            win_type, et_home, et_away, pen_home, pen_away = _score_outcome(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
@@ -103,8 +117,15 @@ def _save_pl_matches(raw_matches, season):
                                 existing.score.away_score = as_
                                 existing.score.updated_at = datetime.utcnow()
                                 changed = True
+                            existing.score.win_type = win_type
+                            existing.score.extra_time_home = et_home
+                            existing.score.extra_time_away = et_away
+                            existing.score.penalties_home = pen_home
+                            existing.score.penalties_away = pen_away
                     else:
-                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_,
+                                             win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                             penalties_home=pen_home, penalties_away=pen_away))
                         changed = True
                 existing.status = status
                 db.session.flush()
@@ -125,7 +146,9 @@ def _save_pl_matches(raw_matches, season):
                 db.session.add(match)
                 db.session.flush()
                 if hs is not None:
-                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_,
+                                         win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                         penalties_home=pen_home, penalties_away=pen_away))
                 added += 1
 
     db.session.commit()
@@ -185,6 +208,7 @@ def _save_wc_matches(raw_matches, season):
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
             hs, as_ = _regular_time_score(m["score"])
+            win_type, et_home, et_away, pen_home, pen_away = _score_outcome(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
@@ -198,8 +222,15 @@ def _save_wc_matches(raw_matches, season):
                                 existing.score.away_score = as_
                                 existing.score.updated_at = datetime.utcnow()
                                 changed = True
+                            existing.score.win_type = win_type
+                            existing.score.extra_time_home = et_home
+                            existing.score.extra_time_away = et_away
+                            existing.score.penalties_home = pen_home
+                            existing.score.penalties_away = pen_away
                     else:
-                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_,
+                                             win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                             penalties_home=pen_home, penalties_away=pen_away))
                         changed = True
                 existing.status = status
                 db.session.flush()
@@ -220,7 +251,9 @@ def _save_wc_matches(raw_matches, season):
                 db.session.add(match)
                 db.session.flush()
                 if hs is not None:
-                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_,
+                                         win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                         penalties_home=pen_home, penalties_away=pen_away))
                 added += 1
 
     db.session.commit()
@@ -306,6 +339,7 @@ def _save_matches(raw_matches, season):
             status = STATUS_MAP.get(m["status"], "scheduled")
             kickoff = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")).replace(tzinfo=None)
             hs, as_ = _regular_time_score(m["score"])
+            win_type, et_home, et_away, pen_home, pen_away = _score_outcome(m["score"])
 
             existing = Match.query.filter_by(external_id=ext_id).first()
             if existing:
@@ -319,8 +353,15 @@ def _save_matches(raw_matches, season):
                                 existing.score.away_score = as_
                                 existing.score.updated_at = datetime.utcnow()
                                 changed = True
+                            existing.score.win_type = win_type
+                            existing.score.extra_time_home = et_home
+                            existing.score.extra_time_away = et_away
+                            existing.score.penalties_home = pen_home
+                            existing.score.penalties_away = pen_away
                     else:
-                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_))
+                        db.session.add(Score(match_id=existing.id, home_score=hs, away_score=as_,
+                                             win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                             penalties_home=pen_home, penalties_away=pen_away))
                         changed = True
                 existing.status = status
                 db.session.flush()
@@ -341,7 +382,9 @@ def _save_matches(raw_matches, season):
                 db.session.add(match)
                 db.session.flush()
                 if hs is not None:
-                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_))
+                    db.session.add(Score(match_id=match.id, home_score=hs, away_score=as_,
+                                         win_type=win_type, extra_time_home=et_home, extra_time_away=et_away,
+                                         penalties_home=pen_home, penalties_away=pen_away))
                 added += 1
 
     db.session.commit()

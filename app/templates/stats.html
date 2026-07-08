@@ -121,6 +121,61 @@
 }
 @media (max-width: 900px) { .top-scores-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .top-scores-grid { grid-template-columns: 1fr; } }
+/* Game day badge used in matrix group rows */
+.gd-badge {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: rgba(var(--accent-rgb), .18);
+    color: var(--accent);
+    border: 1px solid rgba(var(--accent-rgb), .35);
+    border-radius: 20px;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+.gd-date { font-size: .78rem; color: var(--text-muted); }
+/* Match matrix */
+.mm-table { width: 100%; }
+.mm-group-row td {
+    background: var(--surface-deep);
+    padding: 7px 14px;
+    border-top: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.mm-th-match { text-align: left !important; min-width: 180px; }
+.mm-th-score { min-width: 46px; }
+.mm-th-user  { min-width: 72px; }
+.mm-td-match { text-align: left !important; }
+.mm-td-score { font-weight: 700; color: #fff; text-align: center !important; }
+.mm-td-cell  { text-align: center !important; padding: 6px 8px !important; vertical-align: middle; }
+.mm-team { font-size: .82rem; }
+.mm-vs { color: var(--text-dim); font-size: .75rem; }
+.mm-pred { font-size: .84rem; font-weight: 600; line-height: 1.2; }
+.mm-pts-line { font-size: .68rem; margin-top: 2px; }
+.mm-exact .mm-pred, .mm-exact .mm-pts-line { color: #00c87a; }
+.mm-winner .mm-pred, .mm-winner .mm-pts-line { color: var(--accent); }
+.mm-none .mm-pred { color: var(--text-muted); }
+.mm-none .mm-pts-line { color: var(--text-dim); }
+.mm-nopred { color: var(--text-dim); font-size: .85rem; }
+/* Doughnut grid */
+.donut-grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; padding: 4px 0; }
+.donut-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.donut-name { font-size: .72rem; color: var(--text-muted); max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+/* Profiles grid */
+.profiles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 32px; }
+@media (max-width: 700px) { .profiles-grid { grid-template-columns: 1fr; } }
+/* Heatmap */
+.heatmap-table { width: 100%; border-collapse: separate; border-spacing: 3px; }
+.heatmap-th { font-size: .62rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-label); padding: 6px 8px; text-align: center; white-space: nowrap; }
+.heatmap-th:first-child { text-align: left; min-width: 80px; }
+.heatmap-td { padding: 5px 10px; text-align: center; border-radius: 6px; font-size: .82rem; font-weight: 700; }
+.heatmap-td:first-child { text-align: left; font-size: .82rem; color: var(--text-muted); padding-left: 0; border-radius: 0; background: transparent !important; }
+/* Sparklines */
+.sparklines-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.spark-item { background: var(--surface-deep); border: 1px solid var(--border-sub); border-radius: 10px; padding: 10px 8px; display: flex; flex-direction: column; gap: 4px; }
+.spark-label { font-size: .72rem; color: var(--text-muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spark-total { font-size: .78rem; font-weight: 700; color: var(--text); text-align: center; }
 </style>
 {% endblock %}
 
@@ -191,6 +246,24 @@
 </table>
 </div></div><!-- /stats-scroll -->
 
+<!-- ── D: Рейтинг точности ── -->
+<div class="stats-section-title">Рейтинг точности</div>
+<div class="chart-wrap">
+{% if overall_stats and overall_stats | selectattr('total', 'gt', 0) | list %}
+    <canvas id="accuracyChart" style="max-height:260px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет данных</div>
+{% endif %}
+</div>
+
+<!-- ── E: Bubble ── -->
+{% if overall_stats and overall_stats | selectattr('total', 'gt', 0) | list %}
+<div class="stats-section-title">Снайпер или везунчик</div>
+<div class="chart-wrap">
+    <canvas id="bubbleChart" style="max-height:340px;"></canvas>
+</div>
+{% endif %}
+
 <!-- ── График по турам ── -->
 <div class="stats-section-title">Динамика очков по турам</div>
 <div class="chart-wrap">
@@ -201,6 +274,57 @@
 {% endif %}
 </div>
 
+<!-- ── F: Stacked area ── -->
+{% if bar_labels %}
+<div class="stats-section-title">Командный вклад по дням (заливка)</div>
+<div class="chart-wrap">
+    <canvas id="areaChart" style="max-height:300px;"></canvas>
+</div>
+{% endif %}
+
+<!-- ── A: Очки по игровым дням ── -->
+<div class="stats-section-title">Очки по игровым дням</div>
+<div class="chart-wrap">
+{% if bar_labels %}
+    <canvas id="barChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+<!-- ── G: Heatmap ── -->
+{% if bar_labels and bar_datasets %}
+<div class="stats-section-title">Тепловая карта очков</div>
+<div class="stats-table-wrap" style="padding:16px 20px;margin-bottom:32px;overflow-x:auto;">
+<table class="heatmap-table">
+    <thead><tr>
+        <th class="heatmap-th" style="text-align:left;">Игрок</th>
+        {% for lbl in bar_labels %}<th class="heatmap-th">{{ lbl.split(' (')[0].replace('День ', 'Д.') }}</th>{% endfor %}
+        <th class="heatmap-th">Σ</th>
+    </tr></thead>
+    <tbody>
+    {% for d in bar_datasets %}
+    <tr>
+        <td class="heatmap-td">{{ d.label }}</td>
+        {% for pts in d.data %}
+        <td class="heatmap-td" style="background:{% if pts == 0 %}#1e2038{% elif pts == 1 %}#1a3e32{% elif pts == 2 %}#0e6645{% else %}#00c87a{% endif %};color:{% if pts == 3 %}#003d20{% elif pts >= 1 %}#c8f0de{% else %}var(--text-dim){% endif %};">{{ pts }}</td>
+        {% endfor %}
+        <td class="heatmap-td" style="background:rgba(var(--accent-rgb),.13);border:1px solid rgba(var(--accent-rgb),.25);color:var(--text);">{{ d.data | sum }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+<!-- ── H: Diverging ── -->
+{% if bar_labels %}
+<div class="stats-section-title">Отклонение от среднего по дням</div>
+<div class="chart-wrap">
+    <canvas id="divergingChart" style="max-height:320px;"></canvas>
+</div>
+{% endif %}
+
 <!-- ── График позиций ── -->
 <div class="stats-section-title">Динамика мест в таблице лидеров</div>
 <div class="chart-wrap">
@@ -210,6 +334,52 @@
     <div class="chart-empty">Нет завершённых матчей для отображения</div>
 {% endif %}
 </div>
+
+<!-- ── B+C: Профиль игроков ── -->
+{% if overall_stats and overall_stats | selectattr('total', 'gt', 0) | list %}
+<div class="stats-section-title">Профиль игроков</div>
+<div class="profiles-grid">
+    <div class="chart-wrap" style="margin-bottom:0;">
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-label);margin-bottom:14px;">Состав прогнозов</div>
+        <div class="donut-grid">
+            {% for s in overall_stats %}
+            <div class="donut-item">
+                <canvas id="donut{{ loop.index0 }}" width="96" height="96"></canvas>
+                <div class="donut-name">{{ s.user.display_name }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="chart-wrap" style="margin-bottom:0;">
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-label);margin-bottom:14px;">Паутина профилей</div>
+        <canvas id="radarChart" style="max-height:340px;"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<!-- ── I: Sparklines ── -->
+{% if bar_labels and bar_datasets %}
+<div class="stats-section-title">Спарклайны — очки по дням</div>
+<div class="chart-wrap">
+<div class="sparklines-grid">
+    {% for d in bar_datasets %}
+    <div class="spark-item">
+        <div class="spark-label">{{ d.label }}</div>
+        <canvas id="spark{{ loop.index0 }}" height="55"></canvas>
+        <div class="spark-total">{{ d.data | sum }} очк.</div>
+    </div>
+    {% endfor %}
+</div>
+</div>
+{% endif %}
+
+<!-- ── J: Polar area ── -->
+{% if overall_stats and overall_stats | selectattr('total', 'gt', 0) | list %}
+<div class="stats-section-title">Полярный рейтинг точности</div>
+<div class="chart-wrap">
+    <canvas id="polarChart" style="max-height:380px;"></canvas>
+</div>
+{% endif %}
 
 <!-- ── Топ счётов ── -->
 <div class="top-scores-grid">
@@ -305,91 +475,317 @@
     </div>
 </div>
 
-{% if chart_labels %}
+<!-- ── Матрица матчей по игровым дням ── -->
+{% if rounds_table %}
+<div class="stats-section-title">Прогнозы по матчам</div>
+<div class="stats-scroll"><div class="stats-table-wrap" style="margin-bottom:32px;">
+<table class="stats-table mm-table">
+    <thead>
+        <tr>
+            <th class="stats-th mm-th-match" style="text-align:left;">Матч</th>
+            <th class="stats-th mm-th-score">Счёт</th>
+            {% for u in users %}
+            <th class="stats-th mm-th-user">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:2px 0;">
+                    {{ user_avatar(u) }}
+                    <span style="font-size:.6rem;color:var(--text-muted);text-transform:none;letter-spacing:0;white-space:nowrap;">{{ u.display_name }}</span>
+                </div>
+            </th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for rd in rounds_table %}
+        <tr class="mm-group-row">
+            <td colspan="{{ users|length + 2 }}">
+                <span class="gd-badge">{% if rd.index == 0 %}Архив{% else %}Игровой день {{ rd.index }}{% endif %}</span>
+                {% if rd.date_label %}<span class="gd-date" style="margin-left:8px;">{{ rd.date_label }}</span>{% endif %}
+            </td>
+        </tr>
+        {% for m in rd.matches %}
+        <tr>
+            <td class="stats-td mm-td-match">
+                <span class="mm-team">{{ m.home }}</span>
+                <span class="mm-vs"> — </span>
+                <span class="mm-team">{{ m.away }}</span>
+            </td>
+            <td class="stats-td mm-td-score">{{ m.score }}</td>
+            {% for cell in m.user_cells %}
+            <td class="stats-td mm-td-cell{% if cell.reason == 'exact' %} mm-exact{% elif cell.reason == 'winner' %} mm-winner{% elif cell.reason == 'none' %} mm-none{% endif %}">
+                {% if cell.pred %}
+                    <div class="mm-pred">{{ cell.pred }}</div>
+                    <div class="mm-pts-line">
+                        {% if cell.reason == 'exact' %}+{{ cell.points }} ⚽
+                        {% elif cell.reason == 'winner' %}+{{ cell.points }} ✓
+                        {% elif cell.reason == 'none' %}0 ✗
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <span class="mm-nopred">—</span>
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endif %}
+
+{% set _any_chart = chart_labels or bar_labels or (overall_stats | selectattr('total', 'gt', 0) | list) %}
+{% if _any_chart %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 (function() {
-    const labels = {{ chart_labels | tojson }};
-    const datasets = {{ chart_datasets | tojson }};
+    const GRID = '#1a1a2e';
+    const TICK = '#6a6a9a';
+    const LEG  = { position: 'bottom', labels: { color: '#a0a0c0', font: { size: 12 }, boxWidth: 14, padding: 16 } };
+    const TIP  = { backgroundColor: '#0e1220', borderColor: '#2a2a4a', borderWidth: 1, titleColor: '#c0c0e0', bodyColor: '#a0a0c0', padding: 10 };
 
-    const chartDatasets = datasets.map(d => ({
-        label: d.label,
-        data: d.data,
-        borderColor: d.color,
-        backgroundColor: d.color + '22',
-        pointBackgroundColor: d.color,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2.5,
-        tension: 0.25,
-        fill: false,
+    function dayTick(val) {
+        const label = this.getLabelForValue(val);
+        if (window.innerWidth < 600) { const m = label.match(/День (\d+)/); return m ? 'Д.' + m[1] : label; }
+        return label;
+    }
+
+    // ── Линейные: накопительные очки + места ─────────────────────
+    {% if chart_labels %}
+    const lineLabels = {{ chart_labels | tojson }};
+    const lineSrc    = {{ chart_datasets | tojson }};
+    const rankSrc    = {{ rank_datasets | tojson }};
+
+    const mkLine = src => src.map(d => ({
+        label: d.label, data: d.data,
+        borderColor: d.color, backgroundColor: d.color + '22',
+        pointBackgroundColor: d.color, pointRadius: 4, pointHoverRadius: 6,
+        borderWidth: 2.5, tension: 0.25, fill: false,
     }));
-
-    const chartOptions = (yOpts) => ({
-        responsive: true,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: { color: '#a0a0c0', font: { size: 12 }, boxWidth: 14, padding: 16 }
-            },
-            tooltip: {
-                backgroundColor: '#0e1220',
-                borderColor: '#2a2a4a',
-                borderWidth: 1,
-                titleColor: '#c0c0e0',
-                bodyColor: '#a0a0c0',
-                padding: 10,
-            }
-        },
+    const lineOpts = extra => ({
+        responsive: true, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: LEG, tooltip: TIP },
         scales: {
-            x: {
-                ticks: { color: '#6a6a9a', font: { size: 11 }, maxRotation: 35 },
-                grid: { color: '#1a1a2e' },
-            },
-            y: Object.assign({
-                ticks: { color: '#6a6a9a', font: { size: 11 }, stepSize: 1 },
-                grid: { color: '#1a1a2e' },
-            }, yOpts),
+            x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+            y: Object.assign({ ticks: { color: TICK, font: { size: 11 }, stepSize: 1 }, grid: { color: GRID } }, extra),
         }
     });
+    new Chart(document.getElementById('pointsChart'), { type: 'line', data: { labels: lineLabels, datasets: mkLine(lineSrc) }, options: lineOpts({ beginAtZero: true }) });
+    const numPlayers = rankSrc.length || 1;
+    new Chart(document.getElementById('rankChart'), { type: 'line', data: { labels: lineLabels, datasets: mkLine(rankSrc) }, options: lineOpts({
+        reverse: true, min: 1, max: numPlayers,
+        ticks: { color: TICK, font: { size: 11 }, stepSize: 1, callback: v => Number.isInteger(v) ? v + ' место' : '' },
+    }) });
+    {% endif %}
 
-    new Chart(document.getElementById('pointsChart'), {
-        type: 'line',
-        data: { labels, datasets: chartDatasets },
-        options: chartOptions({ beginAtZero: true }),
+    // ── Бары по дням: A, F, H, I ─────────────────────────────────
+    {% if bar_labels %}
+    const barLabels = {{ bar_labels | tojson }};
+    const barSrc    = {{ bar_datasets | tojson }};
+
+    // A: Grouped bars
+    const barEl = document.getElementById('barChart');
+    if (barEl) {
+        new Chart(barEl, {
+            type: 'bar',
+            data: { labels: barLabels, datasets: barSrc.map(d => ({
+                label: d.label, data: d.data,
+                backgroundColor: d.color + 'bb', borderColor: d.color, borderWidth: 1, borderRadius: 4,
+            })) },
+            options: {
+                responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: TIP },
+                scales: {
+                    x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+                    y: { beginAtZero: true, ticks: { color: TICK, font: { size: 11 }, stepSize: 1 }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    // F: Stacked area (вклад по дням)
+    const areaEl = document.getElementById('areaChart');
+    if (areaEl) {
+        new Chart(areaEl, {
+            type: 'line',
+            data: { labels: barLabels, datasets: barSrc.map(d => ({
+                label: d.label, data: d.data,
+                borderColor: d.color, backgroundColor: d.color + '77',
+                pointBackgroundColor: d.color, pointRadius: 3, pointHoverRadius: 5,
+                borderWidth: 2, tension: 0.3, fill: true,
+            })) },
+            options: {
+                responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: TIP },
+                scales: {
+                    x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+                    y: { stacked: true, beginAtZero: true, ticks: { color: TICK, font: { size: 11 }, stepSize: 1 }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    // H: Diverging bars (отклонение от среднего)
+    const divEl = document.getElementById('divergingChart');
+    if (divEl) {
+        const avgPerDay = barLabels.map((_, di) => {
+            const vals = barSrc.map(d => d.data[di] || 0);
+            return vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+        });
+        new Chart(divEl, {
+            type: 'bar',
+            data: { labels: barLabels, datasets: barSrc.map(d => ({
+                label: d.label,
+                data: d.data.map((pts, di) => +(pts - avgPerDay[di]).toFixed(2)),
+                backgroundColor: d.data.map((pts, di) => pts - avgPerDay[di] >= 0 ? d.color + 'cc' : d.color + '44'),
+                borderColor: d.color, borderWidth: 1, borderRadius: 4,
+            })) },
+            options: {
+                responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: Object.assign({}, TIP, {
+                    callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw >= 0 ? '+' : ''}${ctx.raw}` }
+                }) },
+                scales: {
+                    x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+                    y: { ticks: { color: TICK, font: { size: 11 } }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    // I: Sparklines (мини-бары на игрока)
+    barSrc.forEach((d, i) => {
+        const el = document.getElementById('spark' + i);
+        if (!el) return;
+        new Chart(el, {
+            type: 'bar',
+            data: { labels: barLabels, datasets: [{ data: d.data, backgroundColor: d.color + 'cc', borderRadius: 3, borderSkipped: false }] },
+            options: {
+                responsive: true, animation: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false, beginAtZero: true, max: 3 } }
+            }
+        });
     });
+    {% endif %}
 
-    const rankData = {{ rank_datasets | tojson }};
-    const rankDatasets = rankData.map(d => ({
-        label: d.label,
-        data: d.data,
-        borderColor: d.color,
-        backgroundColor: d.color + '22',
-        pointBackgroundColor: d.color,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2.5,
-        tension: 0.25,
-        fill: false,
-    }));
+    // ── Player stats ──────────────────────────────────────────────
+    const players = {{ chart_player_stats | tojson }};
 
-    const numPlayers = rankData.length || 1;
-    new Chart(document.getElementById('rankChart'), {
-        type: 'line',
-        data: { labels, datasets: rankDatasets },
-        options: chartOptions({
-            reverse: true,
-            min: 1,
-            max: numPlayers,
-            ticks: {
-                color: '#6a6a9a',
-                font: { size: 11 },
-                stepSize: 1,
-                callback: v => Number.isInteger(v) ? v + ' место' : '',
+    // D: Horizontal accuracy stacked bars
+    const accEl = document.getElementById('accuracyChart');
+    if (accEl && players.some(p => p.total > 0)) {
+        const sorted = [...players].filter(p => p.total > 0).sort((a, b) => b.accuracy - a.accuracy);
+        new Chart(accEl, {
+            type: 'bar',
+            data: {
+                labels: sorted.map(p => p.name),
+                datasets: [
+                    { label: 'Точный счёт ⚽', data: sorted.map(p => p.exact_accuracy), backgroundColor: '#00c87acc', borderRadius: 0 },
+                    { label: 'Исход ✓',        data: sorted.map(p => p.accuracy - p.exact_accuracy), backgroundColor: '#7c7cffaa', borderRadius: 0 },
+                    { label: 'Промахи ✗',      data: sorted.map(p => 100 - p.accuracy), backgroundColor: '#ffffff15', borderRadius: 0 },
+                ]
             },
-        }),
+            options: {
+                indexAxis: 'y', responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: Object.assign({}, TIP, { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Math.round(ctx.raw)}%` } }) },
+                scales: {
+                    x: { stacked: true, max: 100, ticks: { color: TICK, font: { size: 11 }, callback: v => v + '%' }, grid: { color: GRID } },
+                    y: { stacked: true, ticks: { color: '#a0a0c0', font: { size: 12 } }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    // E: Bubble (снайпер или везунчик)
+    const bubbleEl = document.getElementById('bubbleChart');
+    if (bubbleEl && players.some(p => p.total > 0)) {
+        new Chart(bubbleEl, {
+            type: 'bubble',
+            data: { datasets: players.filter(p => p.total > 0).map(p => ({
+                label: p.name,
+                data: [{ x: p.accuracy, y: p.exact_accuracy, r: Math.max(6, Math.min(22, p.total * 2)) }],
+                backgroundColor: p.color + 'aa', borderColor: p.color, borderWidth: 2,
+            })) },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: LEG,
+                    tooltip: Object.assign({}, TIP, { callbacks: { label: ctx => ` ${ctx.dataset.label}: исход ${ctx.parsed.x}%, точных ${ctx.parsed.y}%` } })
+                },
+                scales: {
+                    x: { min: 0, max: 100, title: { display: true, text: 'Угадал исход %', color: '#a0a0c0', font: { size: 11 } }, ticks: { color: TICK, callback: v => v + '%' }, grid: { color: GRID } },
+                    y: { min: 0, max: 100, title: { display: true, text: 'Точных счётов %', color: '#a0a0c0', font: { size: 11 } }, ticks: { color: TICK, callback: v => v + '%' }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    // B: Doughnuts
+    players.forEach((p, i) => {
+        const el = document.getElementById('donut' + i);
+        if (!el || !p.total) return;
+        new Chart(el, {
+            type: 'doughnut',
+            data: {
+                labels: ['Точных ⚽', 'Исход ✓', 'Промахов ✗'],
+                datasets: [{ data: [p.exact, p.winner, p.none], backgroundColor: ['#00c87a', p.color, '#ffffff1a'], borderColor: ['#00c87a', p.color, '#ffffff1a'], borderWidth: 1 }]
+            },
+            options: {
+                responsive: false, cutout: '62%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: Object.assign({}, TIP, { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} (${Math.round(ctx.raw / p.total * 100)}%)` } }),
+                }
+            }
+        });
     });
+
+    // C: Radar
+    const radarEl = document.getElementById('radarChart');
+    if (radarEl) {
+        const radarDS = players.filter(p => p.total > 0).map(p => ({
+            label: p.name,
+            data: [p.exact_accuracy, p.accuracy, Math.round(p.total ? p.points / p.total / 3 * 100 : 0)],
+            borderColor: p.color, backgroundColor: p.color + '22',
+            borderWidth: 2, pointBackgroundColor: p.color, pointRadius: 3,
+        }));
+        new Chart(radarEl, {
+            type: 'radar',
+            data: { labels: ['Точных счётов %', 'Точность %', 'Очков за матч %'], datasets: radarDS },
+            options: {
+                responsive: true,
+                plugins: { legend: LEG, tooltip: TIP },
+                scales: { r: {
+                    min: 0, max: 100,
+                    ticks: { color: TICK, font: { size: 10 }, backdropColor: 'transparent', stepSize: 25, callback: v => v + '%' },
+                    grid: { color: GRID }, angleLines: { color: GRID },
+                    pointLabels: { color: '#a0a0c0', font: { size: 11 } },
+                }}
+            }
+        });
+    }
+
+    // J: Polar area
+    const polarEl = document.getElementById('polarChart');
+    if (polarEl && players.some(p => p.total > 0)) {
+        const pActive = players.filter(p => p.total > 0);
+        new Chart(polarEl, {
+            type: 'polarArea',
+            data: {
+                labels: pActive.map(p => p.name),
+                datasets: [{ data: pActive.map(p => p.accuracy), backgroundColor: pActive.map(p => p.color + 'aa'), borderColor: pActive.map(p => p.color), borderWidth: 2 }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: LEG, tooltip: Object.assign({}, TIP, { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}%` } }) },
+                scales: { r: {
+                    min: 0, max: 100,
+                    ticks: { color: TICK, backdropColor: 'transparent', stepSize: 25, callback: v => v + '%' },
+                    grid: { color: GRID },
+                }}
+            }
+        });
+    }
 })();
 </script>
 {% endif %}

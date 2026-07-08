@@ -188,6 +188,12 @@
                            background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
                 ОК
             </button>
+            <button onclick="fixRound0('{{ lg }}')"
+                    title="Перенести все завершённые матчи без игрового дня в день 0"
+                    style="font-size:.72rem;padding:3px 9px;border-radius:5px;cursor:pointer;
+                           background:#0a0a1a;color:#8080c0;border:1px solid #2a2a6a;">
+                → день 0
+            </button>
         </div>
         {% endfor %}
     </div>
@@ -634,6 +640,74 @@
     {% else %}
     <p style="font-size:.83rem;color:#3a5a7a;">Нет заметок о релизах.</p>
     {% endif %}
+</div>
+
+<div class="admin-card" style="border-color:#1a3a4a;">
+    <h6 style="color:#5ab5d5;">✈️ Telegram-напоминание</h6>
+
+    <div style="margin-bottom:16px;">
+        <div style="font-size:.8rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Автоматическая отправка</div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;">
+            <span id="tgAutoStatus" style="font-size:.88rem;color:{% if tg_remind_enabled %}#5db85d{% else %}#888{% endif %};">
+                {% if tg_remind_enabled %}✓ Включено{% else %}○ Выключено{% endif %}
+            </span>
+            <button onclick="toggleTgAuto({{ 'false' if tg_remind_enabled else 'true' }})"
+                    id="tgAutoToggleBtn"
+                    style="font-size:.82rem;padding:6px 18px;border-radius:7px;cursor:pointer;
+                           background:{% if tg_remind_enabled %}#2a0a0a{% else %}#0a2a10{% endif %};
+                           color:{% if tg_remind_enabled %}#e05555{% else %}#5db85d{% endif %};
+                           border:1px solid {% if tg_remind_enabled %}#5a1a1a{% else %}#1a5a2a{% endif %};">
+                {% if tg_remind_enabled %}Выключить{% else %}Включить{% endif %}
+            </button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+            <label style="font-size:.83rem;color:#9ab5c8;white-space:nowrap;">За сколько минут до первого матча:</label>
+            <input type="number" id="tgBeforeMinInput" min="1" max="1440" value="{{ tg_before_min }}"
+                   style="width:72px;padding:4px 8px;border-radius:6px;background:#0d1b28;
+                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
+            <button onclick="saveTgScheduleSettings()"
+                    style="font-size:.82rem;padding:5px 16px;border-radius:7px;cursor:pointer;
+                           background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
+                Сохранить
+            </button>
+            <span id="tgScheduleMsg" style="font-size:.82rem;display:none;"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-size:.83rem;color:#9ab5c8;white-space:nowrap;">Тихие часы (МСК+0): с</label>
+            <input type="number" id="tgQuietFromInput" min="0" max="23" value="{{ tg_quiet_from }}"
+                   style="width:58px;padding:4px 8px;border-radius:6px;background:#0d1b28;
+                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
+            <label style="font-size:.83rem;color:#9ab5c8;">до</label>
+            <input type="number" id="tgQuietToInput" min="0" max="23" value="{{ tg_quiet_to }}"
+                   style="width:58px;padding:4px 8px;border-radius:6px;background:#0d1b28;
+                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
+            <span style="font-size:.78rem;color:#5a7a8a;">(не слать с {{ tg_quiet_from }}:00 до {{ tg_quiet_to }}:00)</span>
+        </div>
+
+        {% if tg_last_sent %}
+        <div style="margin-top:8px;font-size:.78rem;color:#4a6a7a;">
+            Последнее автонапоминание: {{ tg_last_sent }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div style="border-top:1px solid #1a3a4a;padding-top:14px;">
+        <div style="font-size:.8rem;color:#7a9ab5;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Отправить сейчас</div>
+        <p class="text-secondary mb-2" style="font-size:.83rem;">
+            Кто из игроков ещё не поставил на активные матчи.
+        </p>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <button onclick="sendTgRemind()" id="tgRemindBtn"
+                    style="font-size:.88rem;padding:8px 22px;border-radius:8px;cursor:pointer;
+                           background:#0a2a3a;color:#5ab5d5;border:1px solid #1a5a7a;">
+                Отправить напоминание
+            </button>
+            <div class="spinner" id="tgRemindSpinner"></div>
+            <span id="tgRemindMsg" style="font-size:.83rem;"></span>
+        </div>
+    </div>
 </div>
 
 <div class="admin-card" style="border-color:#5a1a1a;">
@@ -1350,6 +1424,97 @@ async function saveTeamFormCount() {
     }
 }
 
+async function toggleTgAuto(enable) {
+    const btn = document.getElementById('tgAutoToggleBtn');
+    const status = document.getElementById('tgAutoStatus');
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/settings/tg-remind', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (enable) {
+                status.textContent = '✓ Включено';
+                status.style.color = '#5db85d';
+                btn.textContent = 'Выключить';
+                btn.style.background = '#2a0a0a';
+                btn.style.color = '#e05555';
+                btn.style.borderColor = '#5a1a1a';
+                btn.setAttribute('onclick', 'toggleTgAuto(false)');
+            } else {
+                status.textContent = '○ Выключено';
+                status.style.color = '#888';
+                btn.textContent = 'Включить';
+                btn.style.background = '#0a2a10';
+                btn.style.color = '#5db85d';
+                btn.style.borderColor = '#1a5a2a';
+                btn.setAttribute('onclick', 'toggleTgAuto(true)');
+            }
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function saveTgScheduleSettings() {
+    const beforeMin = parseInt(document.getElementById('tgBeforeMinInput').value);
+    const quietFrom = parseInt(document.getElementById('tgQuietFromInput').value);
+    const quietTo = parseInt(document.getElementById('tgQuietToInput').value);
+    const msg = document.getElementById('tgScheduleMsg');
+    if (isNaN(beforeMin) || beforeMin < 1 || beforeMin > 1440) {
+        msg.innerHTML = '<span class="error-msg">Введи 1–1440 минут</span>';
+        msg.style.display = '';
+        return;
+    }
+    if (isNaN(quietFrom) || quietFrom < 0 || quietFrom > 23 || isNaN(quietTo) || quietTo < 0 || quietTo > 23) {
+        msg.innerHTML = '<span class="error-msg">Часы: 0–23</span>';
+        msg.style.display = '';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/tg-remind', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ before_min: beforeMin, quiet_from: quietFrom, quiet_to: quietTo })
+        });
+        const data = await resp.json();
+        msg.innerHTML = data.ok
+            ? '<span class="success-msg">✓ Сохранено</span>'
+            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        msg.style.display = '';
+        setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
+        msg.style.display = '';
+    }
+}
+
+async function sendTgRemind() {
+    const btn = document.getElementById('tgRemindBtn');
+    const spinner = document.getElementById('tgRemindSpinner');
+    const msg = document.getElementById('tgRemindMsg');
+    btn.disabled = true;
+    spinner.style.display = 'block';
+    msg.textContent = '';
+    try {
+        const resp = await fetch('/api/admin/tg-remind', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">✓ ${data.message}</span>`;
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
+    } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+    }
+}
+
 async function translateTeamsRu() {
     const btn = document.getElementById('translateTeamsRuBtn');
     btn.disabled = true;
@@ -1418,6 +1583,26 @@ async function applyTeamsRu() {
     } finally {
         document.getElementById('teamsRuSpinner').style.display = 'none';
         btn.disabled = false;
+    }
+}
+
+async function fixRound0(league) {
+    const msg = document.getElementById('leagueMsg');
+    try {
+        const resp = await fetch('/api/admin/fix-round0', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            msg.innerHTML = `<span class="success-msg">Перенесено в день 0: ${data.updated} матчей.</span>`;
+            setTimeout(() => msg.innerHTML = '', 3000);
+        } else {
+            msg.innerHTML = `<span class="error-msg">${data.error}</span>`;
+        }
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
     }
 }
 

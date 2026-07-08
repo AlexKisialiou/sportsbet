@@ -5,7 +5,7 @@
 {% macro render_tab(tab_id, data, locked=false, first_match_iso=none, reveal_live=false) %}
 {% if first_match_iso or locked %}
 <div class="betting-bar{% if locked %} locked{% endif %}" id="betting-bar-{{ tab_id }}">
-    <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До закрытия ставок:{% endif %}</span>
+    <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До следующего матча:{% endif %}</span>
     {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>{% endif %}
 </div>
 {% endif %}
@@ -34,8 +34,10 @@
                 <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
                 <span class="lb-name lb-col-label">Участник</span>
                 <span class="lb-pts lb-col-label">Всего</span>
-                {% for day in data.pred_days %}
-                <span class="lb-day lb-col-label">{{ day.strftime('%d.%m') }}</span>
+                {% for rnd in data.pred_rounds %}
+                <span class="lb-day lb-col-label" style="line-height:1.2;white-space:normal;text-align:center;">
+                    {% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}{% if data.round_date_short.get(rnd) %}<br><span style="font-size:.58rem;opacity:.7;">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
+                </span>
                 {% endfor %}
             </div>
             {% for row in data.leaderboard %}
@@ -43,8 +45,8 @@
             <div class="lb-row" {% if loop.index == 1 %}style="background:rgba(212,175,55,.03);"{% endif %}>
                 <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
                 <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
-                <span class="lb-pts">{{ row.total }}</span>
+                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}{% if row.streak >= 2 %}<span class="streak-badge">🔥{{ row.streak }}</span>{% endif %}</span>
+                <span class="lb-pts" data-target="{{ row.total }}">{{ row.total }}</span>
                 {% for d in row.days %}
                 {% if not d.has_pred %}
                 <span class="lb-day" style="color:#8a8aaa;">0</span>
@@ -88,15 +90,21 @@
         <div class="col-section-title">Прогнозы</div>
 
         {% if data.scheduled_matches %}
-            {% set ns = namespace(current_stage='') %}
+            {% set ns = namespace(cur_round='') %}
             {% for match in data.scheduled_matches %}
-                {% set stage = match.tour.name %}
-                {% if stage != ns.current_stage %}
-                    {% set ns.current_stage = stage %}
-                    <div class="stage-header">{{ stage }} · {{ match.tour.season }}</div>
+                {% set mround = match.featured_round %}
+                {% if mround != ns.cur_round %}
+                    {% set ns.cur_round = mround %}
+                    <div class="pred-day-sep">
+                        {%- if mround -%}
+                            Игровой день {{ mround }}{% if data.round_date_labels.get(mround) %} ({{ data.round_date_labels.get(mround) }}){% endif %}
+                        {%- else -%}
+                            {{ match.tour.name }} · {{ match.tour.season }}
+                        {%- endif -%}
+                    </div>
                 {% endif %}
                 {% set pred = predictions.get(match.id) %}
-                <div class="match-card" data-match-id="{{ match.id }}" style="flex-direction:column;align-items:stretch;">
+                <div class="match-card" data-match-id="{{ match.id }}" data-kickoff="{{ match.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if match.kickoff_time else '' }}" style="flex-direction:column;align-items:stretch;">
                     <div style="display:flex;align-items:center;">
                         <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
                             <span class="team-name">{{ match.home_team.display_name }}</span>
@@ -108,6 +116,7 @@
                             <div class="score-time">{{ (match.kickoff_time | minsk).strftime('%H:%M') if match.kickoff_time else '—' }}</div>
                             <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
                             <div class="match-date">{{ (match.kickoff_time | minsk).strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                            <div style="font-size:.6rem;color:#3a5a7a;margin-top:2px;white-space:nowrap;">{{ match.tour.name }}</div>
                         </div>
                         <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                             {% if match.away_team.crest %}
@@ -204,16 +213,24 @@
 
 <!-- ══ Предикты ══ -->
 {% if data.finished_recent %}
-{% set months = ['','января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'] %}
 <div style="margin-bottom:32px;">
     <div class="col-section-title">Прошедшие матчи</div>
-    {% set ns2 = namespace(cur_date='') %}
+    {% set ns2 = namespace(cur_round='') %}
     {% for match in data.finished_recent %}
-        {% set mdate = (match.kickoff_time | minsk).strftime('%d.%m') if match.kickoff_time else '' %}
-        {% if mdate != ns2.cur_date %}
-            {% set ns2.cur_date = mdate %}
-            {% set mdt = match.kickoff_time | minsk %}
-            <div class="pred-day-sep">{{ mdt.day }} {{ months[mdt.month] }}</div>
+        {% set mround = match.featured_round %}
+        {% if mround != ns2.cur_round %}
+            {% set ns2.cur_round = mround %}
+            <div class="pred-day-sep">
+                {%- if mround == 0 -%}
+                    Архив{% if data.round_date_labels.get(0) %} ({{ data.round_date_labels.get(0) }}){% endif %}
+                {%- elif mround -%}
+                    Игровой день {{ mround }}{% if data.round_date_labels.get(mround) %} ({{ data.round_date_labels.get(mround) }}){% endif %}
+                {%- else -%}—{%- endif -%}
+                {%- if mround and mround != 0 and data.round_winners is defined and data.round_winners.get(mround) -%}
+                    {%- set w = data.round_winners.get(mround) -%}
+                    <span class="day-winner-badge">👑 {{ w.users | map(attribute='display_name') | join(', ') }} · {{ w.pts }} оч.</span>
+                {%- endif -%}
+            </div>
         {% endif %}
         <div class="pred-match-card" id="match-{{ match.id }}">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
@@ -227,7 +244,17 @@
                     {% if match.score %}
                     <div class="score" style="font-size:1rem;">{{ match.score.home_score }}:{{ match.score.away_score }}</div>
                     {% endif %}
-                    <div><span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span></div>
+                    <div>
+                        <span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span>
+                        {% if match.score and match.score.win_type == 'aet' %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(д.в.{% if match.score.extra_time_home is not none %} {{ match.score.extra_time_home }}:{{ match.score.extra_time_away }}{% endif %})</span>
+                        {% elif match.score and match.score.win_type == 'pen' %}
+                        {% if match.score.extra_time_home is not none and (match.score.extra_time_home > 0 or match.score.extra_time_away > 0) %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(д.в. {{ match.score.home_score + match.score.extra_time_home }}:{{ match.score.away_score + match.score.extra_time_away }})</span>
+                        {% endif %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(пен.{% if match.score.penalties_home is not none %} {{ match.score.penalties_home }}:{{ match.score.penalties_away }}{% endif %})</span>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
@@ -312,6 +339,54 @@
     'WC':  {'tab_id': 'wc',  'label': '🌍 ЧМ 2026',       'data': wc,  'first_match_iso': wc_first_match_iso}
 } %}
 
+{% if day_winner_info and current_user %}
+<div class="day-winner-banner" id="day-winner-banner" style="display:none;">
+    <span id="day-winner-text"></span>
+    <button class="day-winner-close" id="day-winner-close" aria-label="Закрыть">✕</button>
+</div>
+<script>
+(function(){
+    const info = {{ day_winner_info | tojson }};
+    const isWinner = {{ 'true' if user_is_day_winner else 'false' }};
+    const dismissKey = 'dwb_' + info.league + '_' + info.round;
+
+    if (localStorage.getItem(dismissKey)) return;
+
+    const banner = document.getElementById('day-winner-banner');
+    const textEl = document.getElementById('day-winner-text');
+
+    if (isWinner) {
+        const name = {{ current_user.display_name | tojson }};
+        const msgs = [
+            '🔥 ' + name + ', ты сделал всех в этом игровом дне!',
+            '👑 ' + name + ' — король игрового дня. Остальные просто участвовали.',
+            '💀 ' + name + ' порвал игровой день. Расходимся.',
+            '😤 ' + name + ', признайся — ты смотрел матчи заранее?',
+            '🐐 ' + name + ' — лучший игрового дня. Просто лучший. Всё.',
+            '🏆 ' + name + ' уничтожил игровой день. Медаль в студию.',
+        ];
+        const idxKey = 'dwb_idx_' + info.league + '_' + info.round;
+        let idx = parseInt(localStorage.getItem(idxKey) ?? '-1');
+        if (idx < 0) {
+            idx = Math.floor(Math.random() * msgs.length);
+            localStorage.setItem(idxKey, idx);
+        }
+        textEl.textContent = msgs[idx];
+    } else {
+        const names = info.names.join(', ');
+        textEl.textContent = '👑 ' + names + ' — лучший в игровом дне ' + info.round + '! (' + info.pts + ' оч.)';
+    }
+
+    banner.style.display = '';
+
+    document.getElementById('day-winner-close').addEventListener('click', function() {
+        localStorage.setItem(dismissKey, '1');
+        banner.style.display = 'none';
+    });
+})();
+</script>
+{% endif %}
+
 {% if unread_notifications %}
 <div class="unread-notif-bar" id="unread-notif-bar">
     <span class="unread-notif-label">💬 Новые комментарии:</span>
@@ -331,6 +406,7 @@
     {% for lg in league_order %}{% if league_enabled[lg] %}
     <button class="tab-btn" data-tab="{{ _lmeta[lg].tab_id }}">{{ _lmeta[lg].label }}</button>
     {% endif %}{% endfor %}
+    <span id="auto-fetch-chip" class="auto-fetch-chip" style="display:none;"></span>
 </div>
 
 {% for lg in league_order %}{% if league_enabled[lg] %}
@@ -484,6 +560,9 @@
     </div>
 </div>
 
+{% if user_is_day_winner %}
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+{% endif %}
 <script>
 const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
 const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
@@ -535,21 +614,41 @@ function startCountdown(tabId, isoTime) {
     const el = document.getElementById(`bb-timer-${tabId}`);
     function tick() {
         const diff = target - Date.now();
-        if (diff <= 0) { lockTab(tabId); return; }
+        if (diff <= 0) { if (el) el.textContent = '—'; return; }
         if (el) el.textContent = formatCountdown(diff);
         setTimeout(tick, 1000);
     }
     tick();
 }
 
+const _lockedMatches = new Set();
+
+function lockMatch(matchId) {
+    if (_lockedMatches.has(matchId)) return;
+    _lockedMatches.add(matchId);
+    const card = document.querySelector(`.match-card[data-match-id="${matchId}"]`);
+    if (!card) return;
+    card.querySelectorAll('.pred-input').forEach(inp => {
+        inp.disabled = true;
+        inp.classList.add('readonly');
+        inp.removeAttribute('onchange');
+    });
+}
+
+function initMatchTimers() {
+    document.querySelectorAll('.match-card[data-kickoff]').forEach(card => {
+        const matchId = parseInt(card.dataset.matchId);
+        const iso = card.dataset.kickoff;
+        if (!iso || !matchId) return;
+        const diff = new Date(iso).getTime() - Date.now();
+        if (diff <= 0) { lockMatch(matchId); return; }
+        setTimeout(() => lockMatch(matchId), diff);
+    });
+}
+
 async function savePrediction(matchId) {
-    if (_bettingLocked) return;
-    const inp = document.getElementById(`ph-${matchId}`);
-    if (inp) {
-        const pane = inp.closest('.tab-pane');
-        if (pane && _lockedTabs.has(pane.id.replace('tab-', ''))) return;
-    }
-    const home = inp ? inp.value : '';
+    if (_bettingLocked || _lockedMatches.has(matchId)) return;
+    const home = document.getElementById(`ph-${matchId}`)?.value ?? '';
     const away = document.getElementById(`pa-${matchId}`)?.value ?? '';
     if (home === '' || away === '') return;
 
@@ -565,7 +664,7 @@ async function savePrediction(matchId) {
         setTimeout(() => saved.classList.remove('show'), 1500);
         updatePredStatus();
     } else if (resp.status === 423) {
-        lockBetting();
+        lockMatch(matchId);
     }
 }
 
@@ -765,6 +864,33 @@ if (!card) return;
     setTimeout(() => card.classList.remove('mc-flash'), 1400);
 }
 
+let _autoFetchTimerId = null;
+function initAutoFetchTimer() {
+    const el = document.getElementById('auto-fetch-chip');
+    if (!el) return;
+    fetch('/api/scheduler/status')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.enabled || !data.next_run_ts) { el.style.display = 'none'; return; }
+            el.style.display = '';
+            el.innerHTML = '<span class="afc-label">обновление матчей через</span> <span class="afc-time" id="afc-time">—</span>';
+            const timeEl = el.querySelector('#afc-time');
+            if (_autoFetchTimerId) clearInterval(_autoFetchTimerId);
+            _autoFetchTimerId = setInterval(() => {
+                const diff = Math.floor(data.next_run_ts - Date.now() / 1000);
+                if (diff <= 0) {
+                    clearInterval(_autoFetchTimerId);
+                    el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
+                    setTimeout(initAutoFetchTimer, 12000);
+                } else {
+                    const m = Math.floor(diff / 60), s = diff % 60;
+                    timeEl.textContent = m + ':' + String(s).padStart(2, '0');
+                }
+            }, 1000);
+        })
+        .catch(() => { const el2 = document.getElementById('auto-fetch-chip'); if (el2) el2.style.display = 'none'; });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -775,6 +901,8 @@ document.addEventListener('DOMContentLoaded', () => {
     startCountdown('ucl', UCL_FIRST_MATCH);
     startCountdown('pl', PL_FIRST_MATCH);
     startCountdown('wc', WC_FIRST_MATCH);
+    initMatchTimers();
+    initAutoFetchTimer();
 
     // scroll all comment containers to bottom
     document.querySelectorAll('.mc-scroll').forEach(el => { el.scrollTop = el.scrollHeight; });
@@ -797,6 +925,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { threshold: 0.6 });
         document.querySelectorAll('.match-comments-section[data-has-unread]').forEach(el => readObserver.observe(el));
     }
+
+    // count-up: lb-pts animate 0 → target in 600ms
+    (function() {
+        const dur = 600;
+        document.querySelectorAll('.lb-pts[data-target]').forEach(el => {
+            const target = parseInt(el.dataset.target, 10) || 0;
+            if (target === 0) return;
+            el.textContent = '0';
+            const start = performance.now();
+            function step(now) {
+                const t = Math.min((now - start) / dur, 1);
+                el.textContent = Math.round(t * t * target);
+                if (t < 1) requestAnimationFrame(step);
+                else el.textContent = target;
+            }
+            requestAnimationFrame(step);
+        });
+    })();
+
+    // pulse on exact score cells when they enter viewport
+    if ('IntersectionObserver' in window) {
+        const pulseObs = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('pulse-anim');
+                    pulseObs.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+        document.querySelectorAll('.pred-exact').forEach(el => pulseObs.observe(el));
+    }
+
+    // confetti once per day winner (stored in localStorage per round)
+    {% if user_is_day_winner and day_winner_info %}
+    (function(){
+        const ck = 'confetti_{{ day_winner_info.league }}_{{ day_winner_info.round }}';
+        if (typeof confetti !== 'undefined' && !localStorage.getItem(ck)) {
+            localStorage.setItem(ck, '1');
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
+            setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { x: 0.1, y: 0.6 } }), 300);
+            setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { x: 0.9, y: 0.6 } }), 500);
+        }
+    })();
+    {% endif %}
 });
 
 (function() {

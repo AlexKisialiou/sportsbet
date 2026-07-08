@@ -278,7 +278,7 @@ a { text-decoration: none; }
 .lb-rank { width: 22px; font-size: .78rem; flex-shrink: 0; font-weight: 700; }
 .lb-name { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .lb-pts { width: 46px; text-align: right; font-weight: 800; color: #fff; flex-shrink: 0; }
-.lb-day { width: 44px; text-align: right; font-size: .8rem; font-weight: 600; flex-shrink: 0; }
+.lb-day { width: 54px; text-align: right; font-size: .8rem; font-weight: 600; flex-shrink: 0; }
 .lb-col-label { color: #8a8aaa; font-size: .66rem; }
 
 /* ── Predictions table ── */
@@ -391,6 +391,73 @@ a { text-decoration: none; }
 .pred-exact  { color: #00c87a; font-weight: 700; }
 .pred-winner { color: var(--accent); font-weight: 600; }
 .pred-miss   { color: #8a8aaa; }
+
+@keyframes exactPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(0,200,122,.5); background: rgba(0,200,122,.15); }
+    60%  { box-shadow: 0 0 0 7px rgba(0,200,122,0); background: rgba(0,200,122,.05); }
+    100% { box-shadow: 0 0 0 0 rgba(0,200,122,0); background: transparent; }
+}
+.pred-exact.pulse-anim { border-radius: 4px; animation: exactPulse .7s ease-out; }
+
+.streak-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: .7rem;
+    font-weight: 700;
+    margin-left: 5px;
+    vertical-align: middle;
+    opacity: .9;
+    letter-spacing: -.01em;
+}
+.day-winner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #d4af37;
+    background: rgba(212,175,55,.10);
+    border: 1px solid rgba(212,175,55,.25);
+    border-radius: 10px;
+    padding: 1px 8px 1px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* ── Day winner banner ── */
+.day-winner-banner {
+    position: sticky;
+    top: 0;
+    z-index: 201;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: linear-gradient(90deg, rgba(212,175,55,.18) 0%, rgba(212,175,55,.10) 100%);
+    border-bottom: 1px solid rgba(212,175,55,.35);
+    color: #d4af37;
+    font-weight: 700;
+    font-size: .92rem;
+    padding: 9px 16px;
+    letter-spacing: .01em;
+    animation: bannerSlide .5s ease-out;
+}
+@keyframes bannerSlide {
+    from { opacity: 0; transform: translateY(-100%); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.day-winner-close {
+    background: none;
+    border: none;
+    color: rgba(212,175,55,.6);
+    cursor: pointer;
+    font-size: .8rem;
+    padding: 0 4px;
+    line-height: 1;
+    margin-left: 4px;
+}
+.day-winner-close:hover { color: #d4af37; }
 
 /* ── Unread comment notifications bar ── */
 .unread-notif-bar {
@@ -722,7 +789,21 @@ a { text-decoration: none; }
 .betting-bar.locked .bb-timer { display: none; }
 
 /* ── League Tabs ── */
-.league-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.league-tabs { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+.auto-fetch-chip {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    white-space: nowrap;
+    font-size: .78rem;
+    color: var(--text-muted);
+    user-select: none;
+}
+.auto-fetch-chip .afc-label { color: var(--text-muted); font-size: .75rem; }
+.auto-fetch-chip .afc-time  { color: var(--text); font-family: monospace; font-weight: 600; letter-spacing: .04em; }
 .tab-btn {
     background: var(--surface);
     border: 1px solid var(--border);

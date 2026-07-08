@@ -79,6 +79,7 @@ def create_app():
                 ("odds_home", "ALTER TABLE matches ADD COLUMN odds_home FLOAT"),
                 ("odds_draw", "ALTER TABLE matches ADD COLUMN odds_draw FLOAT"),
                 ("odds_away", "ALTER TABLE matches ADD COLUMN odds_away FLOAT"),
+                ("featured_round", "ALTER TABLE matches ADD COLUMN featured_round INTEGER"),
             ]:
                 if col not in cols:
                     db.session.execute(text(ddl))
@@ -96,6 +97,17 @@ def create_app():
                 ))
                 db.session.commit()
                 print("[migration] added scores.manual_lock column")
+            for col, ddl in [
+                ("win_type",          "ALTER TABLE scores ADD COLUMN win_type VARCHAR(3)"),
+                ("extra_time_home",   "ALTER TABLE scores ADD COLUMN extra_time_home INTEGER"),
+                ("extra_time_away",   "ALTER TABLE scores ADD COLUMN extra_time_away INTEGER"),
+                ("penalties_home",    "ALTER TABLE scores ADD COLUMN penalties_home INTEGER"),
+                ("penalties_away",    "ALTER TABLE scores ADD COLUMN penalties_away INTEGER"),
+            ]:
+                if col not in score_cols:
+                    db.session.execute(text(ddl))
+                    db.session.commit()
+                    print(f"[migration] added scores.{col} column")
         except Exception as e:
             db.session.rollback()
             print(f"[migration] scores skipped: {e}")

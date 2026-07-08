@@ -13,6 +13,24 @@
     .result-msg { font-size: .85rem; margin-top: 10px; }
     .error-msg { color: #e05555; }
     .success-msg { color: #5db85d; }
+
+    .qs-mode-bar { display: flex; margin-bottom: 16px; border: 1px solid #2a3a4a; border-radius: 8px; overflow: hidden; width: fit-content; }
+    .qs-mode-btn { padding: 6px 20px; background: transparent; color: #7a9ab5; border: none; cursor: pointer; font-size: .82rem; transition: background .15s, color .15s; }
+    .qs-mode-btn:hover { color: #c0c8d0; }
+    .qs-mode-btn.active { background: #1e3a50; color: #7ab4e0; }
+    .qs-field-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .qs-label { font-size: .72rem; color: #5a7a9a; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .qs-input { background: #0f1a28; border: 1px solid #2a3a4a; color: #c0c8d0; padding: 5px 9px; border-radius: 6px; font-size: .85rem; }
+    .qs-input:focus { outline: none; border-color: #3a6a9a; }
+    .qs-select { background: #0f1a28; border: 1px solid #2a3a4a; color: #c0c8d0; padding: 5px 9px; border-radius: 6px; font-size: .85rem; min-width: 200px; max-width: 360px; }
+    .qs-hint { font-size: .73rem; color: #3a5a6a; margin-top: 6px; }
+    .qs-preview { margin-top: 16px; border-top: 1px solid #1e2d3d; padding-top: 14px; }
+    .qs-preview-count { font-size: .72rem; color: #4a8a6a; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .qs-preview-item { padding: 5px 0; border-bottom: 1px solid #131d27; font-size: .87rem; color: #b0b8c0; display: flex; justify-content: space-between; align-items: center; }
+    .qs-empty { color: #4a6a8a; font-size: .85rem; padding: 6px 0; }
+    .fetch-warn { display: flex; align-items: flex-start; gap: 8px; background: #141400; border: 1px solid #33330f; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: .82rem; color: #7a7a38; line-height: 1.5; }
+    .manual-section-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: #5a7a9a; font-size: .82rem; margin-bottom: 0; }
+    .manual-section-toggle:hover { color: #8aaac0; }
 </style>
 {% endblock %}
 
@@ -30,53 +48,149 @@
 {% if league_enabled['UCL'] %}
 <div class="tab-pane" id="admin-tab-ucl">
 
+    {% if false %}{# DISABLED: quickselect (по туру / по времени / авто). TODO: улучшить UX — показывать текущие featured вверху, дату в превью, кнопку «Очистить всё», автообновление превью при смене тура. #}
     <div class="admin-card">
-        <h6>Загрузить матчи</h6>
+        <h6>Выбор матчей для прогноза</h6>
+        {% if ucl_scheduled %}
+        <div class="qs-mode-bar" id="qs-modes-ucl">
+            <button class="qs-mode-btn active" onclick="setQsMode('ucl','tour')">По туру</button>
+            <button class="qs-mode-btn" onclick="setQsMode('ucl','time')">По времени</button>
+        </div>
+
+        <div id="qs-panel-tour-ucl">
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">Тур / этап</div>
+                    <select id="tour-select-ucl" class="qs-select"></select>
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-tour-ucl" class="qs-input" min="1" max="99"
+                           value="{{ next_round['UCL'] }}" style="width:62px;text-align:center;">
+                </div>
+                <button class="btn-action" onclick="qsSelectByTour('ucl')" style="padding:8px 20px;">Выбрать</button>
+            </div>
+        </div>
+
+        <div id="qs-panel-time-ucl" style="display:none">
+            {% if auto_featured['UCL'].manual_lock == '1' %}
+            <div id="qs-lock-badge-ucl" style="display:flex;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% else %}
+            <div id="qs-lock-badge-ucl" style="display:none;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;">
+                <input type="checkbox" id="qs-auto-enabled-ucl"
+                       {% if auto_featured['UCL'].enabled == '1' %}checked{% endif %}
+                       style="width:15px;height:15px;accent-color:#5db85d;cursor:pointer;">
+                <span style="font-size:.85rem;color:#9ab8d0;">Применять автоматически после каждого обновления</span>
+            </label>
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">С (Минск)</div>
+                    <input type="time" id="qs-from-ucl" class="qs-input"
+                           value="{{ auto_featured['UCL'].from_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">До (Минск)</div>
+                    <input type="time" id="qs-to-ucl" class="qs-input"
+                           value="{{ auto_featured['UCL'].to_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">Дней</div>
+                    <input type="number" id="qs-days-ucl" class="qs-input" min="1" max="7"
+                           value="{{ auto_featured['UCL'].days }}" style="width:55px;text-align:center;">
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-time-ucl" class="qs-input" min="1" max="99"
+                           value="{{ next_round['UCL'] }}" style="width:62px;text-align:center;">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                <button class="btn-action" onclick="saveAutoSettings('ucl')" style="padding:8px 20px;">Сохранить</button>
+                <button class="btn-action" onclick="applyAutoNow('ucl')" style="padding:8px 20px;background:#0f2a1a;color:#5db85d;border-color:#1a5a2a;">Применить сейчас</button>
+                <button class="btn-action" onclick="qsSelectByTime('ucl')" style="padding:8px 16px;background:transparent;border-color:#2a3a4a;color:#5a7a9a;font-size:.82rem;">Предпросмотр</button>
+                <span id="qs-auto-msg-ucl" style="font-size:.85rem;"></span>
+            </div>
+            <div class="qs-hint">Паттерн отсчитывается от первого предстоящего матча. Если «до» &lt; «с» — переход через полночь.</div>
+        </div>
+
+        <div id="qs-preview-ucl" class="qs-preview" style="display:none">
+            <div id="qs-preview-count-ucl" class="qs-preview-count"></div>
+            <div id="qs-preview-list-ucl"></div>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button class="btn-action" id="qs-save-btn-ucl" onclick="qsSave('ucl')" disabled>Сохранить выбор</button>
+                <span id="qs-save-msg-ucl" style="font-size:.85rem;"></span>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи ЛЧ ниже.</p>
+        {% endif %}
+    </div>
+    {% endif %}{# /DISABLED quickselect UCL #}
+
+    <div class="admin-card">
+        <h6>Загрузить матчи из API</h6>
+        <div class="fetch-warn">⚠️ Скедулер обновляет данные автоматически. Загружайте вручную только при необходимости — сбой, начало нового сезона или первый запуск.</div>
         <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Загрузить актуальные матчи Лиги Чемпионов из football-data.org API.<br>
+            Загрузить актуальные матчи Лиги Чемпионов из football-data.org.<br>
             Новые матчи добавятся, существующие обновятся.
         </p>
-        <button class="btn-action" id="fetchUclBtn" onclick="loadUclMatches()">
-            Загрузить матчи ЛЧ
-        </button>
+        <button class="btn-action" id="fetchUclBtn" onclick="loadUclMatches()">Загрузить матчи ЛЧ</button>
         <div class="spinner" id="uclSpinner"></div>
         <div class="result-msg" id="uclMsg"></div>
     </div>
 
     <div class="admin-card">
-        <h6>Матчи для ставок</h6>
-        <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Отметь матчи, которые должны показываться пользователям для предикта.
-        </p>
-        {% if ucl_scheduled %}
-        <form id="featuredFormUcl">
-            {% set ns = namespace(cur_date='') %}
-            {% for m in ucl_scheduled %}
-                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-                {% if mdate != ns.cur_date %}
-                    {% set ns.cur_date = mdate %}
-                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-                {% endif %}
-                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
-                    <input type="checkbox" name="featured" value="{{ m.id }}"
-                           {% if m.featured %}checked{% endif %}
-                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
-                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                    </span>
-                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
-                    </span>
-                </label>
-            {% endfor %}
-            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-                <button type="button" class="btn-action" onclick="saveFeatured('ucl')">Сохранить выбор</button>
-                <span id="featuredMsgUcl" style="font-size:.85rem;"></span>
-            </div>
-        </form>
-        {% else %}
-        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
-        {% endif %}
+        <div class="manual-section-toggle" onclick="toggleManual('ucl')" style="margin-bottom:12px;">
+            <span id="manual-arrow-ucl">▶</span>
+            <span style="text-transform:uppercase;letter-spacing:.07em;font-size:.75rem;">Ручная настройка матчей</span>
+        </div>
+        <div id="manual-body-ucl" style="display:none">
+            <p class="text-secondary mb-3" style="font-size:.85rem;">Тонкая настройка: выбери матчи вручную.</p>
+            {% if ucl_scheduled %}
+            <form id="featuredFormUcl">
+                {% set ns = namespace(cur_date='') %}
+                {% for m in ucl_scheduled %}
+                    {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                    {% if mdate != ns.cur_date %}
+                        {% set ns.cur_date = mdate %}
+                        <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                    {% endif %}
+                    <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                        <input type="checkbox" name="featured" value="{{ m.id }}"
+                               {% if m.featured %}checked{% endif %}
+                               style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;"
+                               onchange="toggleRoundInput(this)">
+                        <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                            {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                        </span>
+                        <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                            {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
+                        </span>
+                        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+                            <span style="font-size:.72rem;color:#4a6a8a;">День</span>
+                            <input type="number" class="round-input" min="1" max="20"
+                                   value="{{ m.featured_round or next_round['UCL'] }}"
+                                   {% if not m.featured %}disabled{% endif %}
+                                   style="width:42px;background:#0f1a28;border:1px solid {% if m.featured %}#3a5a7a{% else %}#1e2d3d{% endif %};color:{% if m.featured %}#7ab4e0{% else %}#3a4a5a{% endif %};padding:2px 4px;border-radius:4px;font-size:.78rem;text-align:center;-moz-appearance:textfield;"
+                                   onclick="event.stopPropagation()">
+                        </span>
+                    </label>
+                {% endfor %}
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                    <button type="button" class="btn-action" onclick="saveFeatured('ucl')">Сохранить выбор</button>
+                    <span id="featuredMsgUcl" style="font-size:.85rem;"></span>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+            {% endif %}
+        </div>
     </div>
 
 </div><!-- #admin-tab-ucl -->
@@ -86,54 +200,150 @@
 {% if league_enabled['PL'] %}
 <div class="tab-pane" id="admin-tab-pl">
 
+    {% if false %}{# DISABLED: quickselect PL #}
     <div class="admin-card">
-        <h6>Загрузить матчи</h6>
+        <h6>Выбор матчей для прогноза</h6>
+        {% if pl_scheduled %}
+        <div class="qs-mode-bar" id="qs-modes-pl">
+            <button class="qs-mode-btn active" onclick="setQsMode('pl','tour')">По туру</button>
+            <button class="qs-mode-btn" onclick="setQsMode('pl','time')">По времени</button>
+        </div>
+
+        <div id="qs-panel-tour-pl">
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">Тур / этап</div>
+                    <select id="tour-select-pl" class="qs-select"></select>
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-tour-pl" class="qs-input" min="1" max="99"
+                           value="{{ next_round['PL'] }}" style="width:62px;text-align:center;">
+                </div>
+                <button class="btn-action" onclick="qsSelectByTour('pl')" style="padding:8px 20px;">Выбрать</button>
+            </div>
+        </div>
+
+        <div id="qs-panel-time-pl" style="display:none">
+            {% if auto_featured['PL'].manual_lock == '1' %}
+            <div id="qs-lock-badge-pl" style="display:flex;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% else %}
+            <div id="qs-lock-badge-pl" style="display:none;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;">
+                <input type="checkbox" id="qs-auto-enabled-pl"
+                       {% if auto_featured['PL'].enabled == '1' %}checked{% endif %}
+                       style="width:15px;height:15px;accent-color:#5db85d;cursor:pointer;">
+                <span style="font-size:.85rem;color:#9ab8d0;">Применять автоматически после каждого обновления</span>
+            </label>
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">С (Минск)</div>
+                    <input type="time" id="qs-from-pl" class="qs-input"
+                           value="{{ auto_featured['PL'].from_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">До (Минск)</div>
+                    <input type="time" id="qs-to-pl" class="qs-input"
+                           value="{{ auto_featured['PL'].to_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">Дней</div>
+                    <input type="number" id="qs-days-pl" class="qs-input" min="1" max="7"
+                           value="{{ auto_featured['PL'].days }}" style="width:55px;text-align:center;">
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-time-pl" class="qs-input" min="1" max="99"
+                           value="{{ next_round['PL'] }}" style="width:62px;text-align:center;">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                <button class="btn-action" onclick="saveAutoSettings('pl')" style="padding:8px 20px;">Сохранить</button>
+                <button class="btn-action" onclick="applyAutoNow('pl')" style="padding:8px 20px;background:#0f2a1a;color:#5db85d;border-color:#1a5a2a;">Применить сейчас</button>
+                <button class="btn-action" onclick="qsSelectByTime('pl')" style="padding:8px 16px;background:transparent;border-color:#2a3a4a;color:#5a7a9a;font-size:.82rem;">Предпросмотр</button>
+                <span id="qs-auto-msg-pl" style="font-size:.85rem;"></span>
+            </div>
+            <div class="qs-hint">Паттерн отсчитывается от первого предстоящего матча. Если «до» &lt; «с» — переход через полночь.</div>
+        </div>
+
+        <div id="qs-preview-pl" class="qs-preview" style="display:none">
+            <div id="qs-preview-count-pl" class="qs-preview-count"></div>
+            <div id="qs-preview-list-pl"></div>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button class="btn-action" id="qs-save-btn-pl" onclick="qsSave('pl')" disabled>Сохранить выбор</button>
+                <span id="qs-save-msg-pl" style="font-size:.85rem;"></span>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи АПЛ ниже.</p>
+        {% endif %}
+    </div>
+    {% endif %}{# /DISABLED quickselect PL #}
+
+    <div class="admin-card">
+        <h6>Загрузить матчи из API</h6>
+        <div class="fetch-warn">⚠️ Скедулер обновляет данные автоматически. Загружайте вручную только при необходимости — сбой, начало нового сезона или первый запуск.</div>
         <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Загрузить актуальные матчи Английской Премьер-лиги из football-data.org API.<br>
+            Загрузить актуальные матчи Английской Премьер-лиги из football-data.org.<br>
             Новые матчи добавятся, существующие обновятся.
         </p>
         <button class="btn-action" style="background:#1a2a0a;color:#8ab85a;border-color:#3a5a1a;"
-                id="fetchPlBtn" onclick="loadPlMatches()">
-            Загрузить матчи АПЛ
-        </button>
+                id="fetchPlBtn" onclick="loadPlMatches()">Загрузить матчи АПЛ</button>
         <div class="spinner" id="plSpinner"></div>
         <div class="result-msg" id="plMsg"></div>
     </div>
 
     <div class="admin-card">
-        <h6>Матчи для ставок</h6>
-        <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Отметь матчи, которые должны показываться пользователям для предикта.
-        </p>
-        {% if pl_scheduled %}
-        <form id="featuredFormPl">
-            {% set ns = namespace(cur_date='') %}
-            {% for m in pl_scheduled %}
-                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-                {% if mdate != ns.cur_date %}
-                    {% set ns.cur_date = mdate %}
-                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-                {% endif %}
-                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
-                    <input type="checkbox" name="featured" value="{{ m.id }}"
-                           {% if m.featured %}checked{% endif %}
-                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
-                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                    </span>
-                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
-                    </span>
-                </label>
-            {% endfor %}
-            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-                <button type="button" class="btn-action" onclick="saveFeatured('pl')">Сохранить выбор</button>
-                <span id="featuredMsgPl" style="font-size:.85rem;"></span>
-            </div>
-        </form>
-        {% else %}
-        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи АПЛ выше.</p>
-        {% endif %}
+        <div class="manual-section-toggle" onclick="toggleManual('pl')" style="margin-bottom:12px;">
+            <span id="manual-arrow-pl">▶</span>
+            <span style="text-transform:uppercase;letter-spacing:.07em;font-size:.75rem;">Ручная настройка матчей</span>
+        </div>
+        <div id="manual-body-pl" style="display:none">
+            <p class="text-secondary mb-3" style="font-size:.85rem;">Тонкая настройка: выбери матчи вручную.</p>
+            {% if pl_scheduled %}
+            <form id="featuredFormPl">
+                {% set ns = namespace(cur_date='') %}
+                {% for m in pl_scheduled %}
+                    {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                    {% if mdate != ns.cur_date %}
+                        {% set ns.cur_date = mdate %}
+                        <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                    {% endif %}
+                    <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                        <input type="checkbox" name="featured" value="{{ m.id }}"
+                               {% if m.featured %}checked{% endif %}
+                               style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;"
+                               onchange="toggleRoundInput(this)">
+                        <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                            {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                        </span>
+                        <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                            {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
+                        </span>
+                        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+                            <span style="font-size:.72rem;color:#4a6a8a;">День</span>
+                            <input type="number" class="round-input" min="1" max="20"
+                                   value="{{ m.featured_round or next_round['PL'] }}"
+                                   {% if not m.featured %}disabled{% endif %}
+                                   style="width:42px;background:#0f1a28;border:1px solid {% if m.featured %}#3a5a7a{% else %}#1e2d3d{% endif %};color:{% if m.featured %}#7ab4e0{% else %}#3a4a5a{% endif %};padding:2px 4px;border-radius:4px;font-size:.78rem;text-align:center;-moz-appearance:textfield;"
+                                   onclick="event.stopPropagation()">
+                        </span>
+                    </label>
+                {% endfor %}
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                    <button type="button" class="btn-action" onclick="saveFeatured('pl')">Сохранить выбор</button>
+                    <span id="featuredMsgPl" style="font-size:.85rem;"></span>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи АПЛ выше.</p>
+            {% endif %}
+        </div>
     </div>
 
 </div><!-- #admin-tab-pl -->
@@ -143,60 +353,166 @@
 {% if league_enabled['WC'] %}
 <div class="tab-pane" id="admin-tab-wc">
 
+    {% if false %}{# DISABLED: quickselect WC #}
     <div class="admin-card">
-        <h6>Загрузить матчи</h6>
+        <h6>Выбор матчей для прогноза</h6>
+        {% if wc_scheduled %}
+        <div class="qs-mode-bar" id="qs-modes-wc">
+            <button class="qs-mode-btn active" onclick="setQsMode('wc','tour')">По туру</button>
+            <button class="qs-mode-btn" onclick="setQsMode('wc','time')">По времени</button>
+        </div>
+
+        <div id="qs-panel-tour-wc">
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">Тур / этап</div>
+                    <select id="tour-select-wc" class="qs-select"></select>
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-tour-wc" class="qs-input" min="1" max="99"
+                           value="{{ next_round['WC'] }}" style="width:62px;text-align:center;">
+                </div>
+                <button class="btn-action" onclick="qsSelectByTour('wc')" style="padding:8px 20px;">Выбрать</button>
+            </div>
+        </div>
+
+        <div id="qs-panel-time-wc" style="display:none">
+            {% if auto_featured['WC'].manual_lock == '1' %}
+            <div id="qs-lock-badge-wc" style="display:flex;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% else %}
+            <div id="qs-lock-badge-wc" style="display:none;align-items:center;gap:6px;background:#1a1200;border:1px solid #4a3a00;border-radius:6px;padding:7px 12px;margin-bottom:12px;font-size:.82rem;color:#c0a040;">
+                🔒 Активен ручной выбор — авто пропускается до завершения матчей
+            </div>
+            {% endif %}
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;">
+                <input type="checkbox" id="qs-auto-enabled-wc"
+                       {% if auto_featured['WC'].enabled == '1' %}checked{% endif %}
+                       style="width:15px;height:15px;accent-color:#5db85d;cursor:pointer;">
+                <span style="font-size:.85rem;color:#9ab8d0;">Применять автоматически после каждого обновления</span>
+            </label>
+            <div class="qs-field-row">
+                <div>
+                    <div class="qs-label">С (Минск)</div>
+                    <input type="time" id="qs-from-wc" class="qs-input"
+                           value="{{ auto_featured['WC'].from_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">До (Минск)</div>
+                    <input type="time" id="qs-to-wc" class="qs-input"
+                           value="{{ auto_featured['WC'].to_time }}">
+                </div>
+                <div>
+                    <div class="qs-label">Дней</div>
+                    <input type="number" id="qs-days-wc" class="qs-input" min="1" max="7"
+                           value="{{ auto_featured['WC'].days }}" style="width:55px;text-align:center;">
+                </div>
+                <div>
+                    <div class="qs-label">Игровой день</div>
+                    <input type="number" id="qs-round-time-wc" class="qs-input" min="1" max="99"
+                           value="{{ next_round['WC'] }}" style="width:62px;text-align:center;">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                <button class="btn-action" onclick="saveAutoSettings('wc')" style="padding:8px 20px;">Сохранить</button>
+                <button class="btn-action" onclick="applyAutoNow('wc')" style="padding:8px 20px;background:#0f2a1a;color:#5db85d;border-color:#1a5a2a;">Применить сейчас</button>
+                <button class="btn-action" onclick="qsSelectByTime('wc')" style="padding:8px 16px;background:transparent;border-color:#2a3a4a;color:#5a7a9a;font-size:.82rem;">Предпросмотр</button>
+                <span id="qs-auto-msg-wc" style="font-size:.85rem;"></span>
+            </div>
+            <div class="qs-hint">Паттерн отсчитывается от первого предстоящего матча. Если «до» &lt; «с» — переход через полночь.</div>
+        </div>
+
+        <div id="qs-preview-wc" class="qs-preview" style="display:none">
+            <div id="qs-preview-count-wc" class="qs-preview-count"></div>
+            <div id="qs-preview-list-wc"></div>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                <button class="btn-action" id="qs-save-btn-wc" onclick="qsSave('wc')" disabled>Сохранить выбор</button>
+                <span id="qs-save-msg-wc" style="font-size:.85rem;"></span>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи ЧМ ниже.</p>
+        {% endif %}
+    </div>
+    {% endif %}{# /DISABLED quickselect WC #}
+
+    <div class="admin-card">
+        <h6>Загрузить матчи из API</h6>
+        <div class="fetch-warn">⚠️ Скедулер обновляет данные автоматически. Загружайте вручную только при необходимости — сбой, начало нового сезона или первый запуск.</div>
         <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Загрузить актуальные матчи Чемпионата Мира 2026 из football-data.org API.<br>
+            Загрузить актуальные матчи Чемпионата Мира 2026 из football-data.org.<br>
             Новые матчи добавятся, существующие обновятся.
         </p>
         <button class="btn-action" style="background:#1a1a2a;color:#7a9ae0;border-color:#2a2a6a;"
-                id="fetchWcBtn" onclick="loadWcMatches()">
-            Загрузить матчи ЧМ
-        </button>
+                id="fetchWcBtn" onclick="loadWcMatches()">Загрузить матчи ЧМ</button>
         <div class="spinner" id="wcSpinner"></div>
         <div class="result-msg" id="wcMsg"></div>
     </div>
 
     <div class="admin-card">
-        <h6>Матчи для ставок</h6>
-        <p class="text-secondary mb-3" style="font-size:.85rem;">
-            Отметь матчи, которые должны показываться пользователям для предикта.
-        </p>
-        {% if wc_scheduled %}
-        <form id="featuredFormWc">
-            {% set ns = namespace(cur_date='') %}
-            {% for m in wc_scheduled %}
-                {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
-                {% if mdate != ns.cur_date %}
-                    {% set ns.cur_date = mdate %}
-                    <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
-                {% endif %}
-                <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
-                    <input type="checkbox" name="featured" value="{{ m.id }}"
-                           {% if m.featured %}checked{% endif %}
-                           style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;">
-                    <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
-                        {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
-                    </span>
-                    <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
-                        {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
-                    </span>
-                </label>
-            {% endfor %}
-            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
-                <button type="button" class="btn-action" onclick="saveFeatured('wc')">Сохранить выбор</button>
-                <span id="featuredMsgWc" style="font-size:.85rem;"></span>
-            </div>
-        </form>
-        {% else %}
-        <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи ЧМ выше.</p>
-        {% endif %}
+        <div class="manual-section-toggle" onclick="toggleManual('wc')" style="margin-bottom:12px;">
+            <span id="manual-arrow-wc">▶</span>
+            <span style="text-transform:uppercase;letter-spacing:.07em;font-size:.75rem;">Ручная настройка матчей</span>
+        </div>
+        <div id="manual-body-wc" style="display:none">
+            <p class="text-secondary mb-3" style="font-size:.85rem;">Тонкая настройка: выбери матчи вручную.</p>
+            {% if wc_scheduled %}
+            <form id="featuredFormWc">
+                {% set ns = namespace(cur_date='') %}
+                {% for m in wc_scheduled %}
+                    {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                    {% if mdate != ns.cur_date %}
+                        {% set ns.cur_date = mdate %}
+                        <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                    {% endif %}
+                    <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                        <input type="checkbox" name="featured" value="{{ m.id }}"
+                               {% if m.featured %}checked{% endif %}
+                               style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;"
+                               onchange="toggleRoundInput(this)">
+                        <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                            {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                        </span>
+                        <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                            {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
+                        </span>
+                        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+                            <span style="font-size:.72rem;color:#4a6a8a;">День</span>
+                            <input type="number" class="round-input" min="1" max="20"
+                                   value="{{ m.featured_round or next_round['WC'] }}"
+                                   {% if not m.featured %}disabled{% endif %}
+                                   style="width:42px;background:#0f1a28;border:1px solid {% if m.featured %}#3a5a7a{% else %}#1e2d3d{% endif %};color:{% if m.featured %}#7ab4e0{% else %}#3a4a5a{% endif %};padding:2px 4px;border-radius:4px;font-size:.78rem;text-align:center;-moz-appearance:textfield;"
+                                   onclick="event.stopPropagation()">
+                        </span>
+                    </label>
+                {% endfor %}
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                    <button type="button" class="btn-action" onclick="saveFeatured('wc')">Сохранить выбор</button>
+                    <span id="featuredMsgWc" style="font-size:.85rem;"></span>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей. Загрузите матчи ЧМ выше.</p>
+            {% endif %}
+        </div>
     </div>
 
 </div><!-- #admin-tab-wc -->
 {% endif %}
 
 <script>
+const MATCH_DATA = {
+    ucl: [{% for m in ucl_scheduled %}{"id":{{ m.id }},"kickoff":{{ (m.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff_time else '') | tojson }},"tour":{{ m.tour.name | tojson }},"home":{{ m.home_team.display_name | tojson }},"away":{{ m.away_team.display_name | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    pl:  [{% for m in pl_scheduled  %}{"id":{{ m.id }},"kickoff":{{ (m.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff_time else '') | tojson }},"tour":{{ m.tour.name | tojson }},"home":{{ m.home_team.display_name | tojson }},"away":{{ m.away_team.display_name | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    wc:  [{% for m in wc_scheduled  %}{"id":{{ m.id }},"kickoff":{{ (m.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff_time else '') | tojson }},"tour":{{ m.tour.name | tojson }},"home":{{ m.home_team.display_name | tojson }},"away":{{ m.away_team.display_name | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
+};
+const NEXT_ROUND = {ucl: {{ next_round['UCL'] }}, pl: {{ next_round['PL'] }}, wc: {{ next_round['WC'] }}};
+
+const _qsMode = {ucl: 'tour', pl: 'tour', wc: 'tour'};
+const _qsSelected = {};
+
 function switchAdminTab(tab) {
     document.querySelectorAll('.tab-pane[id^="admin-tab-"]').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -208,25 +524,212 @@ function switchAdminTab(tab) {
     sessionStorage.setItem('activeAdminTab', tab);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const saved = sessionStorage.getItem('activeAdminTab');
-    const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
-    switchAdminTab(saved && document.getElementById('admin-tab-' + saved) ? saved : firstTab);
-});
+function toggleManual(tid) {
+    const body = document.getElementById(`manual-body-${tid}`);
+    const arrow = document.getElementById(`manual-arrow-${tid}`);
+    const open = body.style.display === '';
+    body.style.display = open ? 'none' : '';
+    arrow.textContent = open ? '▶' : '▼';
+}
+
+function setQsMode(tid, mode) {
+    _qsMode[tid] = mode;
+    document.getElementById(`qs-panel-tour-${tid}`).style.display = mode === 'tour' ? '' : 'none';
+    document.getElementById(`qs-panel-time-${tid}`).style.display = mode === 'time' ? '' : 'none';
+    const bar = document.getElementById(`qs-modes-${tid}`);
+    if (bar) bar.querySelectorAll('.qs-mode-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', (i === 0 && mode === 'tour') || (i === 1 && mode === 'time'));
+    });
+    const prev = document.getElementById(`qs-preview-${tid}`);
+    if (prev) prev.style.display = 'none';
+}
+
+function initTourDropdowns() {
+    ['ucl', 'pl', 'wc'].forEach(tid => {
+        const matches = MATCH_DATA[tid];
+        if (!matches || !matches.length) return;
+        const sel = document.getElementById(`tour-select-${tid}`);
+        if (!sel) return;
+        const seen = new Set();
+        matches.forEach(m => {
+            if (!seen.has(m.tour)) {
+                seen.add(m.tour);
+                const opt = document.createElement('option');
+                opt.value = m.tour;
+                opt.textContent = m.tour;
+                sel.appendChild(opt);
+            }
+        });
+    });
+}
+
+
+function qsSelectByTour(tid) {
+    const tour = document.getElementById(`tour-select-${tid}`).value;
+    _qsSelected[tid] = (MATCH_DATA[tid] || []).filter(m => m.tour === tour);
+    showQsPreview(tid);
+}
+
+function qsSelectByTime(tid) {
+    const fromStr = document.getElementById(`qs-from-${tid}`).value || '00:00';
+    const toStr   = document.getElementById(`qs-to-${tid}`).value   || '23:59';
+    const days    = Math.max(1, parseInt(document.getElementById(`qs-days-${tid}`).value) || 1);
+    const matches = MATCH_DATA[tid] || [];
+
+    const nowMs = Date.now();
+    const upcoming = matches.filter(m => m.kickoff && new Date(m.kickoff).getTime() >= nowMs)
+                             .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+    if (!upcoming.length) { _qsSelected[tid] = []; showQsPreview(tid); return; }
+
+    // Anchor date = Minsk date of first upcoming match
+    const anchorMs = new Date(upcoming[0].kickoff).getTime();
+    const [ay, am, ad] = new Date(anchorMs + 3 * 3600000).toISOString().slice(0, 10).split('-').map(Number);
+
+    const result = [];
+    const seen = new Set();
+    for (let i = 0; i < days; i++) {
+        const dt = new Date(Date.UTC(ay, am - 1, ad + i));
+        const dateStr = dt.toISOString().slice(0, 10);
+        const fromMs = new Date(`${dateStr}T${fromStr}:00+03:00`).getTime();
+        let   toMs   = new Date(`${dateStr}T${toStr}:00+03:00`).getTime();
+        if (toMs <= fromMs) toMs += 86400000;
+        matches.forEach(m => {
+            if (!m.kickoff || seen.has(m.id)) return;
+            const ts = new Date(m.kickoff).getTime();
+            if (ts >= fromMs && ts <= toMs) { seen.add(m.id); result.push(m); }
+        });
+    }
+    _qsSelected[tid] = result;
+    showQsPreview(tid);
+}
+
+function showQsPreview(tid) {
+    const matches = _qsSelected[tid] || [];
+    const previewEl  = document.getElementById(`qs-preview-${tid}`);
+    const countEl    = document.getElementById(`qs-preview-count-${tid}`);
+    const listEl     = document.getElementById(`qs-preview-list-${tid}`);
+    const saveBtn    = document.getElementById(`qs-save-btn-${tid}`);
+
+    countEl.textContent = matches.length ? `Выбрано матчей: ${matches.length}` : 'Матчи не найдены';
+
+    if (matches.length) {
+        listEl.innerHTML = matches.map(m => {
+            let t = '';
+            if (m.kickoff) {
+                const dt = new Date(new Date(m.kickoff).getTime() + 3 * 3600000);
+                t = `${String(dt.getUTCHours()).padStart(2,'0')}:${String(dt.getUTCMinutes()).padStart(2,'0')}`;
+            }
+            return `<div class="qs-preview-item"><span>${m.home} — ${m.away}</span><span style="font-size:.75rem;color:#4a6a8a;">${t}</span></div>`;
+        }).join('');
+    } else {
+        listEl.innerHTML = '<div class="qs-empty">Нет матчей в этом промежутке.</div>';
+    }
+
+    previewEl.style.display = '';
+    document.getElementById(`qs-save-msg-${tid}`).innerHTML = '';
+    if (saveBtn) {
+        const isTime = (_qsMode[tid] === 'time');
+        saveBtn.style.display = isTime ? 'none' : '';
+        if (!isTime) saveBtn.disabled = !matches.length;
+    }
+}
+
+async function qsSave(tid) {
+    const matches = _qsSelected[tid] || [];
+    if (!matches.length) return;
+    const round = parseInt(document.getElementById(`qs-round-tour-${tid}`).value) || NEXT_ROUND[tid];
+    const match_ids = matches.map(m => m.id);
+    const round_map = Object.fromEntries(match_ids.map(id => [id, round]));
+    const saveBtn = document.getElementById(`qs-save-btn-${tid}`);
+    const msgEl   = document.getElementById(`qs-save-msg-${tid}`);
+    saveBtn.disabled = true;
+    msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/featured-matches', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({match_ids, league: tid.toUpperCase(), round_map})
+        });
+        const data = await resp.json();
+        msgEl.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей. Прогнозы Бендера генерируются…</span>`;
+    } catch {
+        msgEl.innerHTML = `<span class="error-msg">Ошибка сохранения.</span>`;
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
+
+async function saveAutoSettings(tid) {
+    const enabled   = document.getElementById(`qs-auto-enabled-${tid}`).checked;
+    const from_time = document.getElementById(`qs-from-${tid}`).value || '10:00';
+    const to_time   = document.getElementById(`qs-to-${tid}`).value   || '03:00';
+    const days      = parseInt(document.getElementById(`qs-days-${tid}`).value) || 1;
+    const msgEl     = document.getElementById(`qs-auto-msg-${tid}`);
+    try {
+        const resp = await fetch('/api/settings/featured-auto', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({league: tid.toUpperCase(), enabled, from_time, to_time, days})
+        });
+        const data = await resp.json();
+        msgEl.innerHTML = `<span class="success-msg">Сохранено${enabled ? ' · авто вкл.' : ''}.</span>`;
+        setTimeout(() => msgEl.innerHTML = '', 3000);
+    } catch {
+        msgEl.innerHTML = `<span class="error-msg">Ошибка.</span>`;
+    }
+}
+
+async function applyAutoNow(tid) {
+    const msgEl  = document.getElementById(`qs-auto-msg-${tid}`);
+    const badge  = document.getElementById(`qs-lock-badge-${tid}`);
+    msgEl.innerHTML = `<span style="color:#7a9ab5;font-size:.85rem;">Применяю…</span>`;
+    try {
+        const resp = await fetch('/api/admin/featured-auto/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({league: tid.toUpperCase()})
+        });
+        const data = await resp.json();
+        if (data.featured !== undefined) {
+            if (badge) badge.style.display = 'none';
+            const txt = data.featured
+                ? `Применено: ${data.featured} матчей. Бендер генерируется…`
+                : 'Предстоящих матчей не найдено.';
+            msgEl.innerHTML = `<span class="success-msg">${txt}</span>`;
+        } else {
+            msgEl.innerHTML = `<span class="error-msg">${data.error || 'Ошибка.'}</span>`;
+        }
+    } catch {
+        msgEl.innerHTML = `<span class="error-msg">Ошибка.</span>`;
+    }
+}
+
+function toggleRoundInput(checkbox) {
+    const roundInput = checkbox.closest('label').querySelector('.round-input');
+    if (!roundInput) return;
+    roundInput.disabled = !checkbox.checked;
+    roundInput.style.borderColor = checkbox.checked ? '#3a5a7a' : '#1e2d3d';
+    roundInput.style.color = checkbox.checked ? '#7ab4e0' : '#3a4a5a';
+}
 
 async function saveFeatured(league) {
-    const formIds = { ucl: 'featuredFormUcl', pl: 'featuredFormPl', wc: 'featuredFormWc' };
-    const msgIds  = { ucl: 'featuredMsgUcl',  pl: 'featuredMsgPl',  wc: 'featuredMsgWc'  };
-    const formId = formIds[league] || 'featuredFormUcl';
-    const msgId  = msgIds[league]  || 'featuredMsgUcl';
-    const checked = [...document.querySelectorAll(`#${formId} input[name="featured"]:checked`)]
-        .map(el => parseInt(el.value));
+    const formIds = {ucl: 'featuredFormUcl', pl: 'featuredFormPl', wc: 'featuredFormWc'};
+    const msgIds  = {ucl: 'featuredMsgUcl',  pl: 'featuredMsgPl',  wc: 'featuredMsgWc'};
+    const formId = formIds[league];
+    const msgId  = msgIds[league];
+    const checkedEls = [...document.querySelectorAll(`#${formId} input[name="featured"]:checked`)];
+    const checked = checkedEls.map(el => parseInt(el.value));
+    const roundMap = {};
+    checkedEls.forEach(el => {
+        const ri = el.closest('label').querySelector('.round-input');
+        roundMap[parseInt(el.value)] = ri ? (parseInt(ri.value) || 1) : 1;
+    });
     const msg = document.getElementById(msgId);
     try {
         const resp = await fetch('/api/featured-matches', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ match_ids: checked, league: league.toUpperCase() })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({match_ids: checked, league: league.toUpperCase(), round_map: roundMap})
         });
         const data = await resp.json();
         msg.innerHTML = `<span class="success-msg">Сохранено: ${data.featured} матчей. Прогнозы Бендера генерируются…</span>`;
@@ -241,13 +744,12 @@ async function loadUclMatches() {
     document.getElementById('uclSpinner').style.display = 'block';
     document.getElementById('uclMsg').innerHTML = '';
     try {
-        const resp = await fetch('/api/cl-matches', { method: 'POST' });
+        const resp = await fetch('/api/cl-matches', {method: 'POST'});
         const data = await resp.json();
         if (data.error) {
             document.getElementById('uclMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
         } else {
-            document.getElementById('uclMsg').innerHTML =
-                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            document.getElementById('uclMsg').innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
             setTimeout(() => location.reload(), 1200);
         }
     } catch {
@@ -264,17 +766,12 @@ async function loadPlMatches() {
     document.getElementById('plSpinner').style.display = 'block';
     document.getElementById('plMsg').innerHTML = '';
     try {
-        const resp = await fetch('/api/pl-matches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        });
+        const resp = await fetch('/api/pl-matches', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
         const data = await resp.json();
         if (data.error) {
             document.getElementById('plMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
         } else {
-            document.getElementById('plMsg').innerHTML =
-                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            document.getElementById('plMsg').innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
             setTimeout(() => location.reload(), 1200);
         }
     } catch {
@@ -291,17 +788,12 @@ async function loadWcMatches() {
     document.getElementById('wcSpinner').style.display = 'block';
     document.getElementById('wcMsg').innerHTML = '';
     try {
-        const resp = await fetch('/api/wc-matches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        });
+        const resp = await fetch('/api/wc-matches', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
         const data = await resp.json();
         if (data.error) {
             document.getElementById('wcMsg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
         } else {
-            document.getElementById('wcMsg').innerHTML =
-                `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            document.getElementById('wcMsg').innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
             setTimeout(() => location.reload(), 1200);
         }
     } catch {
@@ -311,5 +803,12 @@ async function loadWcMatches() {
         btn.disabled = false;
     }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const saved = sessionStorage.getItem('activeAdminTab');
+    const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
+    switchAdminTab(saved && document.getElementById('admin-tab-' + saved) ? saved : firstTab);
+    initTourDropdowns();
+});
 </script>
 {% endblock %}

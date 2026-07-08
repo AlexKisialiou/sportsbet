@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, current_app
 from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment, CommentRead
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
@@ -153,6 +154,7 @@ def set_featured_matches():
     data = request.get_json()
     featured_ids = set(data.get("match_ids", []))
     league = data.get("league", "UCL")
+    round_map = {int(k): int(v) for k, v in data.get("round_map", {}).items() if str(v).isdigit()}
     matches = (
         Match.query.join(Tour)
         .filter(Tour.league == league, Match.status == "scheduled")
@@ -160,6 +162,16 @@ def set_featured_matches():
     )
     for m in matches:
         m.featured = m.id in featured_ids
+        if m.id in featured_ids:
+            m.featured_round = round_map.get(m.id) or None
+        else:
+            m.featured_round = None
+    db.session.commit()
+
+    # Manual save — lock auto-featured so scheduler won't override until matches finish
+    lock_row = Setting.query.get(f"featured_manual_lock_{league}") or Setting(key=f"featured_manual_lock_{league}", value="0")
+    lock_row.value = "1"
+    db.session.merge(lock_row)
     db.session.commit()
 
     featured_matches = [m for m in matches if m.featured]
@@ -291,8 +303,6 @@ def simulate_results():
     try:
         from ..services.points import get_leaderboard
         from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
-        from datetime import date as date_type
-        from sqlalchemy import func as sqlfunc
 
         from ..seed import LEAGUE_TO_TOURNAMENT
         for league, label_key, league_name in [
@@ -305,21 +315,19 @@ def simulate_results():
             for i, row in enumerate(lb, 1):
                 standings_lines.append(f"  {i}. {row['user'].display_name} — {row['total']} очков")
 
-            day_row = (
-                db.session.query(sqlfunc.date(Match.kickoff_time))
+            round_row = (
+                db.session.query(Match.featured_round)
                 .join(Tour, Match.tour_id == Tour.id)
-                .filter(Match.status == "finished", Tour.league == league)
-                .group_by(sqlfunc.date(Match.kickoff_time))
-                .order_by(sqlfunc.date(Match.kickoff_time).desc())
+                .filter(Match.status == "finished", Tour.league == league,
+                        Match.featured_round.isnot(None))
+                .order_by(Match.featured_round.desc())
                 .first()
             )
-            if day_row:
-                last_day = day_row[0]
-                lb_day = get_leaderboard(last_days=[
-                    date_type.fromisoformat(last_day) if isinstance(last_day, str) else last_day
-                ], league=league)
-                standings_lines.append(f"\nПоследний игровой день ({last_day}):")
-                for row in lb_day:
+            if round_row:
+                last_round = round_row[0]
+                lb_round = get_leaderboard(last_rounds=[last_round], league=league)
+                standings_lines.append(f"\nИгровой день {last_round}:")
+                for row in lb_round:
                     d = row["days"][0] if row["days"] else {"pts": 0, "has_pred": False}
                     if d["has_pred"]:
                         standings_lines.append(f"  {row['user'].display_name}: +{d['pts']}")
@@ -504,6 +512,34 @@ def apply_teams_ru():
     log_action(actor.id if actor else None, "teams_ru_applied",
                f"Русские названия: обновлено {updated}, без перевода {len(missing)}")
     return jsonify({"ok": True, "updated": updated, "missing": sorted(missing)})
+
+
+@api_bp.route("/admin/fix-round0", methods=["POST"])
+@superuser_required
+def fix_round0():
+    data = request.get_json(silent=True) or {}
+    league = data.get("league", "WC")
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "invalid league"}), 400
+    matches = (
+        Match.query.join(Tour)
+        .filter(
+            Tour.league == league,
+            Match.status == "finished",
+            Match.featured_round.is_(None),
+        )
+        .all()
+    )
+    count = 0
+    for m in matches:
+        m.featured = True
+        m.featured_round = 0
+        count += 1
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "admin_fix",
+               f"Перенос в день 0 [{league}]: {count} матчей")
+    return jsonify({"ok": True, "updated": count})
 
 
 @api_bp.route("/reset-scores", methods=["POST"])
@@ -1011,6 +1047,42 @@ def set_odds_fetch():
     return jsonify({"ok": True, "enabled": enabled})
 
 
+@api_bp.route("/settings/featured-auto", methods=["POST"])
+@admin_required
+def set_featured_auto_settings():
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "invalid league"}), 400
+    from ..services.auto_featured import save_auto_settings
+    save_auto_settings(
+        league,
+        enabled=bool(data.get("enabled", False)),
+        from_time=data.get("from_time", "10:00"),
+        to_time=data.get("to_time", "03:00"),
+        days=int(data.get("days") or 2),
+    )
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/featured-auto/apply", methods=["POST"])
+@admin_required
+def apply_featured_auto_now():
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    if league not in ("UCL", "PL", "WC"):
+        return jsonify({"error": "invalid league"}), 400
+    from ..services.auto_featured import _do_apply
+    # Admin explicitly requests auto-apply — clear manual lock first
+    lock_row = Setting.query.get(f"featured_manual_lock_{league}") or Setting(key=f"featured_manual_lock_{league}", value="0")
+    lock_row.value = "0"
+    db.session.merge(lock_row)
+    db.session.commit()
+    app = current_app._get_current_object()
+    n = _do_apply(league, app, force=True)
+    return jsonify({"ok": True, "featured": n})
+
+
 @api_bp.route("/team/<int:team_id>/recent-matches", methods=["GET"])
 @login_required
 def team_recent_matches(team_id):
@@ -1253,27 +1325,31 @@ def copy_prod_to_sandbox():
         return jsonify({"error": "Только в sandbox режиме"}), 400
 
     try:
-        # 1. Fetch non-bot, non-superuser users from prod schema
+        # 1. Fetch all users from prod schema (including admins, superusers, bots)
         prod_users = db.session.execute(satext(
-            "SELECT id, username, password_hash, is_admin, nickname, avatar_emoji, avatar_color "
-            "FROM bet.users WHERE is_bot = false AND is_superuser = false"
+            "SELECT id, username, password_hash, is_admin, is_superuser, is_bot, "
+            "nickname, avatar_emoji, avatar_color FROM bet.users"
         )).fetchall()
 
         if not prod_users:
             return jsonify({"ok": True, "users": 0, "matches": 0, "predictions": 0})
 
-        # 2. Upsert users into sandbox (current schema)
+        # 2. Upsert users into sandbox (current schema) — all flags preserved from prod
         users_copied = 0
         for u in prod_users:
             db.session.execute(satext("""
-                INSERT INTO users (username, password_hash, is_admin, is_superuser, nickname, is_bot, avatar_emoji, avatar_color)
-                VALUES (:username, :ph, :is_admin, false, :nickname, false, :emoji, :color)
+                INSERT INTO users (username, password_hash, is_admin, is_superuser, is_bot, nickname, avatar_emoji, avatar_color)
+                VALUES (:username, :ph, :is_admin, :is_superuser, :is_bot, :nickname, :emoji, :color)
                 ON CONFLICT (username) DO UPDATE SET
                     password_hash = EXCLUDED.password_hash,
+                    is_admin = EXCLUDED.is_admin,
+                    is_superuser = EXCLUDED.is_superuser,
+                    is_bot = EXCLUDED.is_bot,
                     nickname = EXCLUDED.nickname,
                     avatar_emoji = EXCLUDED.avatar_emoji,
                     avatar_color = EXCLUDED.avatar_color
             """), dict(username=u.username, ph=u.password_hash, is_admin=u.is_admin,
+                       is_superuser=u.is_superuser, is_bot=u.is_bot,
                        nickname=u.nickname, emoji=u.avatar_emoji, color=u.avatar_color))
             users_copied += 1
 
@@ -1457,3 +1533,141 @@ def copy_prod_to_sandbox():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/settings/tg-remind", methods=["POST"])
+@superuser_required
+def set_tg_remind_settings():
+    from ..scheduler import update_tg_remind
+    data = request.get_json(force=True, silent=True) or {}
+
+    keys_updated = []
+
+    if "enabled" in data:
+        val = "1" if data["enabled"] else "0"
+        row = Setting.query.get("tg_remind_enabled") or Setting(key="tg_remind_enabled")
+        row.value = val
+        db.session.add(row)
+        keys_updated.append("enabled")
+
+    if "before_min" in data:
+        try:
+            v = max(1, min(int(data["before_min"]), 1440))
+        except (ValueError, TypeError):
+            return jsonify({"error": "before_min должен быть числом 1–1440"}), 400
+        row = Setting.query.get("tg_remind_before_min") or Setting(key="tg_remind_before_min")
+        row.value = str(v)
+        db.session.add(row)
+        keys_updated.append("before_min")
+
+    if "quiet_from" in data:
+        try:
+            v = max(0, min(int(data["quiet_from"]), 23))
+        except (ValueError, TypeError):
+            return jsonify({"error": "quiet_from должен быть 0–23"}), 400
+        row = Setting.query.get("tg_remind_quiet_from") or Setting(key="tg_remind_quiet_from")
+        row.value = str(v)
+        db.session.add(row)
+        keys_updated.append("quiet_from")
+
+    if "quiet_to" in data:
+        try:
+            v = max(0, min(int(data["quiet_to"]), 23))
+        except (ValueError, TypeError):
+            return jsonify({"error": "quiet_to должен быть 0–23"}), 400
+        row = Setting.query.get("tg_remind_quiet_to") or Setting(key="tg_remind_quiet_to")
+        row.value = str(v)
+        db.session.add(row)
+        keys_updated.append("quiet_to")
+
+    if not keys_updated:
+        return jsonify({"error": "Нечего сохранять"}), 400
+
+    db.session.commit()
+
+    enabled_s = Setting.query.get("tg_remind_enabled")
+    update_tg_remind(enabled_s is not None and enabled_s.value == "1")
+
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "tg_remind_settings",
+               f"Настройки TG напоминания: {', '.join(keys_updated)}")
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/tg-remind", methods=["POST"])
+@superuser_required
+def tg_remind():
+    import requests as req_lib
+    from ..models import Match, Tour, Team, User, Prediction
+
+    MINSK = timezone(timedelta(hours=3))
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not bot_token or not chat_id:
+        return jsonify({"error": "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID не заданы"}), 500
+
+    featured = (
+        Match.query
+        .filter(Match.featured == True, Match.status == "scheduled")
+        .order_by(Match.kickoff_time)
+        .all()
+    )
+    if not featured:
+        return jsonify({"error": "Нет активных матчей для ставок"}), 400
+
+    all_users = User.query.filter(User.is_bot == False).all()
+    placed_ids_by_match = {}
+    for m in featured:
+        preds = Prediction.query.filter_by(match_id=m.id).all()
+        placed_ids_by_match[m.id] = {p.user_id for p in preds}
+
+    lines = ["🔔 Напоминание о ставках!\n"]
+    any_missing = False
+    for m in featured:
+        home = m.home_team.display_name if m.home_team else "?"
+        away = m.away_team.display_name if m.away_team else "?"
+        kt = m.kickoff_time.replace(tzinfo=timezone.utc).astimezone(MINSK).strftime("%H:%M") if m.kickoff_time else "?"
+        missing = [u.display_name for u in all_users if u.id not in placed_ids_by_match[m.id]]
+        lines.append(f"⚽ {kt} — {home} vs {away}")
+        if missing:
+            any_missing = True
+            lines.append(f"❌ Не поставили: {', '.join(missing)}")
+        else:
+            lines.append("✅ Все поставили")
+
+    if not any_missing:
+        return jsonify({"ok": True, "sent": False, "message": "Все уже поставили — сообщение не отправлено"}), 200
+
+    app_url = os.environ.get("APP_URL", "")
+    if app_url:
+        lines.append(f"\n👉 {app_url}")
+
+    text = "\n".join(lines)
+    resp = req_lib.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "tg_remind", f"Отправлено TG напоминание: {len(featured)} матч(ей)")
+    return jsonify({"ok": True, "sent": True, "message": "Сообщение отправлено в Telegram"})
+
+
+@api_bp.route("/scheduler/status", methods=["GET"])
+@login_required
+def scheduler_status():
+    from ..scheduler import _scheduler
+    enabled_s = Setting.query.get("auto_fetch_enabled")
+    enabled = enabled_s is not None and enabled_s.value == "1"
+    interval_s = Setting.query.get("auto_fetch_interval_min")
+    try:
+        interval = max(5, min(int(interval_s.value), 120)) if interval_s else 15
+    except (ValueError, TypeError):
+        interval = 15
+    next_run_ts = None
+    if enabled:
+        job = _scheduler.get_job("auto_fetch")
+        if job and job.next_run_time:
+            next_run_ts = job.next_run_time.timestamp()
+    return jsonify({"enabled": enabled, "interval_min": interval, "next_run_ts": next_run_ts})

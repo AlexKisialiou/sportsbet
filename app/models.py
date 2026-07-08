@@ -45,6 +45,7 @@ class Match(db.Model):
     kickoff_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default="scheduled")  # scheduled / live / finished
     featured = db.Column(db.Boolean, default=False, nullable=False)
+    featured_round = db.Column(db.Integer, nullable=True)
     odds_home = db.Column(db.Float, nullable=True)
     odds_draw = db.Column(db.Float, nullable=True)
     odds_away = db.Column(db.Float, nullable=True)
@@ -61,6 +62,11 @@ class Score(db.Model):
     match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, unique=True)
     home_score = db.Column(db.Integer, nullable=False, default=0)
     away_score = db.Column(db.Integer, nullable=False, default=0)
+    win_type = db.Column(db.String(3), nullable=True)  # 'aet' or 'pen', None = regular
+    extra_time_home = db.Column(db.Integer, nullable=True)
+    extra_time_away = db.Column(db.Integer, nullable=True)
+    penalties_home = db.Column(db.Integer, nullable=True)
+    penalties_away = db.Column(db.Integer, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     manual_lock = db.Column(db.Boolean, default=False, nullable=False)
 

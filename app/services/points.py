@@ -48,7 +48,7 @@ def update_points_for_match(match, commit=True):
     return count
 
 
-def get_leaderboard(last_days=None, league=None):
+def get_leaderboard(last_rounds=None, league=None):
     from ..models import User
 
     if league:
@@ -85,41 +85,37 @@ def get_leaderboard(last_days=None, league=None):
 
     pts_map = {}
     has_set = set()
-    if last_days:
-        from datetime import date as _date
+    if last_rounds:
         pts_bulk = (
             db.session.query(
                 Prediction.user_id,
-                func.date(Match.kickoff_time).label("day"),
+                Match.featured_round.label("rnd"),
                 func.coalesce(func.sum(PredictionPoints.points), 0).label("pts"),
             )
             .join(Prediction, PredictionPoints.prediction_id == Prediction.id)
             .join(Match, Prediction.match_id == Match.id)
-            .filter(func.date(Match.kickoff_time).in_(last_days))
-            .group_by(Prediction.user_id, func.date(Match.kickoff_time))
+            .filter(Match.featured_round.in_(last_rounds))
+            .group_by(Prediction.user_id, Match.featured_round)
         )
         has_bulk = (
-            db.session.query(Prediction.user_id, func.date(Match.kickoff_time).label("day"))
+            db.session.query(Prediction.user_id, Match.featured_round.label("rnd"))
             .join(Match, Prediction.match_id == Match.id)
-            .filter(func.date(Match.kickoff_time).in_(last_days), Match.status == "finished")
+            .filter(Match.featured_round.in_(last_rounds), Match.status == "finished")
             .distinct()
         )
         if league:
             pts_bulk = pts_bulk.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
             has_bulk = has_bulk.join(Tour, Match.tour_id == Tour.id).filter(Tour.league == league)
 
-        def _as_date(v):
-            return _date.fromisoformat(v) if isinstance(v, str) else v
-
-        pts_map = {(r.user_id, _as_date(r.day)): int(r.pts) for r in pts_bulk.all()}
-        has_set = {(r.user_id, _as_date(r.day)) for r in has_bulk.all()}
+        pts_map = {(r.user_id, r.rnd): int(r.pts) for r in pts_bulk.all()}
+        has_set = {(r.user_id, r.rnd) for r in has_bulk.all()}
 
     result = []
     for user, total in rows:
-        day_pts = [
-            {"pts": pts_map.get((user.id, day), 0), "has_pred": (user.id, day) in has_set}
-            for day in (last_days or [])
+        round_pts = [
+            {"pts": pts_map.get((user.id, rnd), 0), "has_pred": (user.id, rnd) in has_set}
+            for rnd in (last_rounds or [])
         ]
-        result.append({"user": user, "total": int(total), "days": day_pts})
+        result.append({"user": user, "total": int(total), "days": round_pts})
 
     return result
