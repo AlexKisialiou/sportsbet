@@ -864,3 +864,51 @@ a { text-decoration: none; }
 .tt-d { color: #d4af37; font-weight: 700; min-width: 14px; }
 .tt-l { color: #e05555; font-weight: 700; min-width: 14px; }
 .tt-empty { font-size: .78rem; color: #4a5a70; }
+
+/* ── Top-3 leaderboard row highlights ── */
+.lb-row-gold   { background: rgba(212,175,55,.07) !important; border-left: 3px solid rgba(212,175,55,.55); padding-left: 13px; }
+.lb-row-silver { background: rgba(155,170,184,.04) !important; border-left: 3px solid rgba(155,170,184,.38); padding-left: 13px; }
+.lb-row-bronze { background: rgba(196,124,58,.04) !important; border-left: 3px solid rgba(196,124,58,.38); padding-left: 13px; }
+
+/* ── Accuracy mini-bar under leaderboard name ── */
+.lb-acc-bar { height: 2px; border-radius: 1px; margin-top: 3px; background: rgba(255,255,255,.05); overflow: hidden; }
+.lb-acc-fill { height: 100%; border-radius: 1px; background: linear-gradient(90deg, var(--accent-muted), var(--accent)); }
+
+/* ── Day winner medal in leaderboard ── */
+.lb-day-winner { font-size: .78rem; margin-left: 2px; vertical-align: middle; }
+
+/* ── Streak badge color variants ── */
+.streak-hot  { color: #ff9430; }
+.streak-fire { color: #ff4848; font-size: .75rem; }
+.streak-gold { color: #d4af37; font-size: .8rem; text-shadow: 0 0 8px rgba(212,175,55,.45); }
+
+/* ── Smooth tab fade ── */
+@keyframes tabFadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+.tab-pane.active { animation: tabFadeIn .18s ease-out; }
+
+/* ── Betting countdown progress bar ── */
+.bb-progress-wrap { flex: 1; height: 3px; background: var(--border); border-radius: 3px; overflow: hidden; min-width: 30px; max-width: 160px; }
+.bb-progress-bar  { height: 100%; border-radius: 3px; background: var(--accent); transition: width 1s linear; }
+
+/* ── Match fill progress dots ── */
+.match-fill-dots { display: flex; align-items: center; gap: 4px; padding: 5px 0 2px; flex-wrap: wrap; }
+.fill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: background .3s; }
+.fill-dot-filled { background: #00c87a; box-shadow: 0 0 4px rgba(0,200,122,.4); }
+.fill-dot-empty  { background: var(--border); }
+.fill-dots-label { font-size: .62rem; color: var(--text-muted); margin-left: 4px; }
+
+/* ── Favorite team name (lower odds) ── */
+.team-name-fav { color: #00c87a !important; font-weight: 600; }
+
+/* ── Live pulsing dot ── */
+.live-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #ff5555;
+    box-shadow: 0 0 5px rgba(255,85,85,.7);
+    animation: pulse 1.2s infinite;
+    vertical-align: middle;
+    margin-right: 2px;
+    margin-bottom: 1px;
+}

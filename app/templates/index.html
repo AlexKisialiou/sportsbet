@@ -6,7 +6,9 @@
 {% if first_match_iso or locked %}
 <div class="betting-bar{% if locked %} locked{% endif %}" id="betting-bar-{{ tab_id }}">
     <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До следующего матча:{% endif %}</span>
-    {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>{% endif %}
+    {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>
+    <div class="bb-progress-wrap"><div class="bb-progress-bar" id="bb-progress-{{ tab_id }}" style="width:100%;"></div></div>
+    {% endif %}
 </div>
 {% endif %}
 <div class="main-grid" style="margin-bottom:32px;">
@@ -42,10 +44,18 @@
             </div>
             {% for row in data.leaderboard %}
             {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
-            <div class="lb-row" {% if loop.index == 1 %}style="background:rgba(212,175,55,.03);"{% endif %}>
+            <div class="lb-row{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
                 <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
                 <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}{% if row.streak >= 2 %}<span class="streak-badge">🔥{{ row.streak }}</span>{% endif %}</span>
+                <span class="lb-name" style="min-width:0;">
+                    <div style="display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;">
+                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.user.display_name }}</span>
+                        {{ role_badge(row.user) }}
+                        {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
+                        {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
+                    </div>
+                    {% if row.accuracy_pct > 0 %}<div class="lb-acc-bar"><div class="lb-acc-fill" style="width:{{ row.accuracy_pct }}%;"></div></div>{% endif %}
+                </span>
                 <span class="lb-pts" data-target="{{ row.total }}">{{ row.total }}</span>
                 {% for d in row.days %}
                 {% if not d.has_pred %}
@@ -104,10 +114,10 @@
                     </div>
                 {% endif %}
                 {% set pred = predictions.get(match.id) %}
-                <div class="match-card" data-match-id="{{ match.id }}" data-kickoff="{{ match.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if match.kickoff_time else '' }}" style="flex-direction:column;align-items:stretch;">
+                <div class="match-card" data-match-id="{{ match.id }}" data-kickoff="{{ match.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if match.kickoff_time else '' }}" data-me-filled="{{ 1 if pred is not none else 0 }}" style="flex-direction:column;align-items:stretch;">
                     <div style="display:flex;align-items:center;">
                         <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
-                            <span class="team-name">{{ match.home_team.display_name }}</span>
+                            <span class="team-name{% if match.odds_home and match.odds_away and match.odds_home < match.odds_away %} team-name-fav{% endif %}">{{ match.home_team.display_name }}</span>
                             {% if match.home_team.crest %}
                             <img src="{{ match.home_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
                             {% endif %}
@@ -122,7 +132,7 @@
                             {% if match.away_team.crest %}
                             <img src="{{ match.away_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
                             {% endif %}
-                            <span class="team-name">{{ match.away_team.display_name }}</span>
+                            <span class="team-name{% if match.odds_home and match.odds_away and match.odds_away < match.odds_home %} team-name-fav{% endif %}">{{ match.away_team.display_name }}</span>
                         </div>
                     </div>
                     <div class="prediction-row" style="padding-left:4px;">
@@ -147,6 +157,15 @@
                         {% endif %}
                         <span class="odds-sep">·</span>
                         <span class="odds-item odds-away">П2&nbsp;{{ "%.2f"|format(match.odds_away) }}</span>
+                    </div>
+                    {% endif %}
+                    {% if data.non_bot_total > 0 %}
+                    {% set filled_n = data.match_fill_counts.get(match.id, 0) %}
+                    <div class="match-fill-dots">
+                        {% for i in range(data.non_bot_total) %}
+                        <div class="fill-dot {% if i < filled_n %}fill-dot-filled{% else %}fill-dot-empty{% endif %}"></div>
+                        {% endfor %}
+                        <span class="fill-dots-label">{{ filled_n }}/{{ data.non_bot_total }}</span>
                     </div>
                     {% endif %}
                 </div>
@@ -182,7 +201,7 @@
                     {% else %}
                     <div class="score" style="font-size:1rem;">— : —</div>
                     {% endif %}
-                    <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;">Идёт</span></div>
+                    <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;"><span class="live-dot"></span>Идёт</span></div>
                 </div>
                 <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
@@ -612,10 +631,17 @@ function startCountdown(tabId, isoTime) {
     if (!isoTime || _lockedTabs.has(tabId)) return;
     const target = new Date(isoTime).getTime();
     const el = document.getElementById(`bb-timer-${tabId}`);
+    const prog = document.getElementById(`bb-progress-${tabId}`);
+    const totalMs = target - Date.now();
     function tick() {
         const diff = target - Date.now();
-        if (diff <= 0) { if (el) el.textContent = '—'; return; }
+        if (diff <= 0) {
+            if (el) el.textContent = '—';
+            if (prog) prog.style.width = '0%';
+            return;
+        }
         if (el) el.textContent = formatCountdown(diff);
+        if (prog) prog.style.width = Math.max(0, Math.min(100, (diff / totalMs) * 100)) + '%';
         setTimeout(tick, 1000);
     }
     tick();
@@ -663,6 +689,7 @@ async function savePrediction(matchId) {
         saved.classList.add('show');
         setTimeout(() => saved.classList.remove('show'), 1500);
         updatePredStatus();
+        updateFillDots(matchId);
     } else if (resp.status === 423) {
         lockMatch(matchId);
     }
@@ -889,6 +916,20 @@ function initAutoFetchTimer() {
             }, 1000);
         })
         .catch(() => { const el2 = document.getElementById('auto-fetch-chip'); if (el2) el2.style.display = 'none'; });
+}
+
+function updateFillDots(matchId) {
+    const card = document.querySelector(`.match-card[data-match-id="${matchId}"]`);
+    if (!card || card.dataset.meFilled === '1') return;
+    card.dataset.meFilled = '1';
+    const dotsWrap = card.querySelector('.match-fill-dots');
+    if (!dotsWrap) return;
+    const firstEmpty = dotsWrap.querySelector('.fill-dot-empty');
+    if (!firstEmpty) return;
+    firstEmpty.classList.replace('fill-dot-empty', 'fill-dot-filled');
+    const filled = dotsWrap.querySelectorAll('.fill-dot-filled').length;
+    const label = dotsWrap.querySelector('.fill-dots-label');
+    if (label) label.textContent = `${filled}/${dotsWrap.querySelectorAll('.fill-dot').length}`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

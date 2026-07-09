@@ -189,7 +189,12 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 - Floating bottom tray: 📊 Бендер об очках (gold chip per league), 📋 Прогноз (green chip per league); hidden for disabled leagues
 - All times displayed in Europe/Minsk (UTC+3) via `| minsk` Jinja filter
 - JS: `switchTab()` falls back to first enabled tab if saved sessionStorage tab is disabled; `lockBetting()` uses `querySelectorAll('.tab-btn')` dynamically
-- **Streak** (`main.py:_build`): `🔥N` badge shown when `N >= 2`. Streak = consecutive `featured_round` values (descending, archive round 0 excluded) where user has at least one `reason == 'exact'` prediction. A round with no exact score (even if winner guessed) or no prediction at all resets the streak to 0.
+- **Streak** (`main.py:_build`): `🔥N` badge shown when `N >= 2`. Streak = consecutive `featured_round` values (descending, archive round 0 excluded) where user has at least one `reason == 'exact'` prediction. A round with no exact score (even if winner guessed) or no prediction at all resets the streak to 0. Badge color: 2–3 = orange (`.streak-hot`), 4–6 = red (`.streak-fire`), 7+ = gold with glow (`.streak-gold`).
+- **Leaderboard visual enhancements**: rows 1/2/3 get `.lb-row-gold/.lb-row-silver/.lb-row-bronze` (left border + tinted bg); 🥇 medal next to name for winner of latest non-archive round (`row.is_latest_round_winner`); mini 2px accuracy bar under name (`row.accuracy_pct` = hits/total as %).
+- **Match fill dots** (`.match-fill-dots`): shown below prediction inputs; one dot per non-bot user, green if filled, grey if not; `data.match_fill_counts` and `data.non_bot_total` from `_build()`; `data-me-filled` attr on card triggers optimistic update in JS.
+- **Fav team highlight**: if odds loaded, team with lower odds gets `.team-name-fav` (green) on scheduled match cards.
+- **Countdown progress bar** (`.bb-progress-bar`): inside `.bb-progress-wrap` in `.betting-bar`; width shrinks from 100% to 0% as timer counts down, updated each second.
+- **Live dot** (`.live-dot`): pulsing red dot inside the «Идёт» badge on live match cards.
 
 ### Comments (chat per match)
 - Each finished match has a scrollable comment section (`.mc-scroll`, max ~3 messages visible)

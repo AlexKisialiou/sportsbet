@@ -208,6 +208,26 @@ def index():
         for row in leaderboard:
             row['streak'] = _user_streaks.get(row['user'].id, 0)
 
+        # Accuracy: (exact + winner) / total featured finished predictions
+        _acc_q = (
+            db.session.query(Prediction.user_id, PredictionPoints.reason)
+            .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+            .join(Match, Prediction.match_id == Match.id)
+            .join(Tour, Match.tour_id == Tour.id)
+            .filter(Tour.league == league, Match.featured == True, Match.status == 'finished')
+            .all()
+        )
+        _acc_raw = {}
+        for _r in _acc_q:
+            if _r.user_id not in _acc_raw:
+                _acc_raw[_r.user_id] = [0, 0]
+            _acc_raw[_r.user_id][1] += 1
+            if _r.reason in ('exact', 'winner'):
+                _acc_raw[_r.user_id][0] += 1
+        for row in leaderboard:
+            _hits, _tot = _acc_raw.get(row['user'].id, [0, 0])
+            row['accuracy_pct'] = round(100 * _hits / _tot) if _tot > 0 else 0
+
         _rw_rounds = [r for r in pred_rounds if r != 0]
         _round_winners = {}
         if _rw_rounds:
@@ -239,6 +259,13 @@ def index():
                 _winners = [_user_map[_uid] for _uid, _pts in _entries if _pts == _max_pts and _uid in _user_map]
                 if _winners:
                     _round_winners[_rnd] = {'users': _winners, 'pts': _max_pts}
+
+        _latest_round = next((r for r in pred_rounds if r != 0), None)
+        _latest_winner_ids = set()
+        if _latest_round is not None and _round_winners.get(_latest_round):
+            _latest_winner_ids = {u.id for u in _round_winners[_latest_round]['users']}
+        for row in leaderboard:
+            row['is_latest_round_winner'] = row['user'].id in _latest_winner_ids
 
         _months_short = ["", "янв", "фев", "мар", "апр", "май", "июн",
                          "июл", "авг", "сен", "окт", "ноя", "дек"]
@@ -354,6 +381,13 @@ def index():
             filled = sum(1 for m in scheduled if (m.id, u.id) in all_preds_sched)
             user_fill_status.append({"user": u, "filled": filled, "total": scheduled_total})
 
+        non_bot_user_ids = [row["user"].id for row in leaderboard if not row["user"].is_bot]
+        non_bot_total = len(non_bot_user_ids)
+        match_fill_counts = {
+            m.id: sum(1 for uid in non_bot_user_ids if (m.id, uid) in all_preds_sched)
+            for m in scheduled
+        }
+
         return {
             "leaderboard": leaderboard,
             "pred_rounds": pred_rounds,
@@ -371,6 +405,8 @@ def index():
             "scheduled_total": scheduled_total,
             "unfilled_count": unfilled_count,
             "user_fill_status": user_fill_status,
+            "match_fill_counts": match_fill_counts,
+            "non_bot_total": non_bot_total,
         }
 
     league_order, league_enabled = _get_league_config()
