@@ -912,3 +912,81 @@ a { text-decoration: none; }
     margin-right: 2px;
     margin-bottom: 1px;
 }
+
+/* ── Collapsible leaderboard ── */
+.lb-toggle-btn {
+    cursor: pointer;
+    user-select: none;
+}
+.lb-toggle-btn:hover { background: rgba(255,255,255,.02); }
+.lb-chevron {
+    font-size: .72rem;
+    color: var(--text-muted);
+    transition: transform .22s ease;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 8px;
+}
+.lb-chev-closed { transform: rotate(-90deg); }
+.lb-body { overflow: hidden; }
+.lb-body.lb-collapsed { display: none; }
+@keyframes lbExpand {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.lb-body:not(.lb-collapsed) { animation: lbExpand .16s ease-out; }
+
+/* ── Mobile: league tab pills ── */
+@media (max-width: 700px) {
+    .tab-btn {
+        border-radius: 20px;
+        padding: 8px 14px;
+        font-size: .8rem;
+    }
+    .league-tabs { gap: 6px; }
+}
+
+/* ── Mobile: bigger prediction inputs ── */
+@media (max-width: 640px) {
+    .pred-input {
+        width: 54px;
+        padding: 9px 4px;
+        font-size: 1.08rem;
+        border-radius: 10px;
+    }
+    .pred-sep { font-size: 1.1rem; }
+    .prediction-row { margin-top: 12px; gap: 8px; }
+    .match-card { padding: 14px 14px; border-radius: 16px; }
+}
+
+/* ── Mobile: horizontal chip scroll ── */
+@media (max-width: 760px) {
+    .pred-chips-row {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 10px;
+        gap: 7px;
+    }
+    .pred-chips-row::-webkit-scrollbar { display: none; }
+    .pred-chip { flex-shrink: 0; }
+}
+
+/* ── Mobile: betting bar ── */
+@media (max-width: 640px) {
+    .betting-bar { padding: 10px 14px; border-radius: 12px; font-size: .85rem; }
+    .bb-progress-wrap { max-width: 100px; }
+}
+
+/* ── Mobile: col-section-title less padding ── */
+@media (max-width: 900px) {
+    .col-section-title { padding-bottom: 10px; }
+    .main-grid { gap: 18px; }
+}
+
+/* ── Mobile: match odds smaller ── */
+@media (max-width: 480px) {
+    .match-odds { gap: 3px; }
+    .odds-item { font-size: .6rem; padding: 2px 6px; }
+}

@@ -30,67 +30,77 @@
 
         {% if data.leaderboard %}
         <div class="leaderboard">
-            <div class="leaderboard-header">Турнирная таблица</div>
-            <div class="lb-col-row">
-                <span style="width:22px;flex-shrink:0;"></span>
-                <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                <span class="lb-name lb-col-label">Участник</span>
-                <span class="lb-pts lb-col-label">Всего</span>
-                {% for rnd in data.pred_rounds %}
-                <span class="lb-day lb-col-label" style="line-height:1.2;white-space:normal;text-align:center;">
-                    {% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}{% if data.round_date_short.get(rnd) %}<br><span style="font-size:.58rem;opacity:.7;">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
-                </span>
+            <div class="leaderboard-header lb-toggle-btn" onclick="toggleLb('lbm-{{ tab_id }}')">
+                Турнирная таблица
+                <span class="lb-chevron" id="lbm-{{ tab_id }}-chev">▾</span>
+            </div>
+            <div class="lb-body" id="lbm-{{ tab_id }}">
+                <div class="lb-col-row">
+                    <span style="width:22px;flex-shrink:0;"></span>
+                    <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
+                    <span class="lb-name lb-col-label">Участник</span>
+                    <span class="lb-pts lb-col-label">Всего</span>
+                    {% for rnd in data.pred_rounds %}
+                    <span class="lb-day lb-col-label" style="line-height:1.2;white-space:normal;text-align:center;">
+                        {% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}{% if data.round_date_short.get(rnd) %}<br><span style="font-size:.58rem;opacity:.7;">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% for row in data.leaderboard %}
+                {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
+                <div class="lb-row{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
+                    <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
+                    <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
+                    <span class="lb-name" style="min-width:0;">
+                        <div style="display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;">
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.user.display_name }}</span>
+                            {{ role_badge(row.user) }}
+                            {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
+                            {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
+                        </div>
+                        {% if row.accuracy_pct > 0 %}<div class="lb-acc-bar"><div class="lb-acc-fill" style="width:{{ row.accuracy_pct }}%;"></div></div>{% endif %}
+                    </span>
+                    <span class="lb-pts" data-target="{{ row.total }}">{{ row.total }}</span>
+                    {% for d in row.days %}
+                    {% if not d.has_pred %}
+                    <span class="lb-day" style="color:#8a8aaa;">0</span>
+                    {% elif d.pts == 0 %}
+                    <span class="lb-day" style="color:#8a8aaa;">0</span>
+                    {% else %}
+                    <span class="lb-day" style="color:#00c87a;">+{{ d.pts }}</span>
+                    {% endif %}
+                    {% endfor %}
+                </div>
                 {% endfor %}
             </div>
-            {% for row in data.leaderboard %}
-            {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
-            <div class="lb-row{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
-                <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
-                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name" style="min-width:0;">
-                    <div style="display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;">
-                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.user.display_name }}</span>
-                        {{ role_badge(row.user) }}
-                        {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
-                        {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
-                    </div>
-                    {% if row.accuracy_pct > 0 %}<div class="lb-acc-bar"><div class="lb-acc-fill" style="width:{{ row.accuracy_pct }}%;"></div></div>{% endif %}
-                </span>
-                <span class="lb-pts" data-target="{{ row.total }}">{{ row.total }}</span>
-                {% for d in row.days %}
-                {% if not d.has_pred %}
-                <span class="lb-day" style="color:#8a8aaa;">0</span>
-                {% elif d.pts == 0 %}
-                <span class="lb-day" style="color:#8a8aaa;">0</span>
-                {% else %}
-                <span class="lb-day" style="color:#00c87a;">+{{ d.pts }}</span>
-                {% endif %}
-                {% endfor %}
-            </div>
-            {% endfor %}
         </div>
         {% endif %}
 
         {% if data.user_fill_status and data.scheduled_total > 0 %}
         <div class="leaderboard">
-            <div class="leaderboard-header">Ставки на ближайшие матчи</div>
-            <div class="lb-col-row">
-                <span style="width:22px;flex-shrink:0;"></span>
-                <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                <span class="lb-name lb-col-label">Участник</span>
-                <span class="lb-day lb-col-label">Статус</span>
+            <div class="leaderboard-header lb-toggle-btn" onclick="toggleLb('lbf-{{ tab_id }}')">
+                Ставки на ближайшие матчи
+                <span class="lb-chevron" id="lbf-{{ tab_id }}-chev">▾</span>
             </div>
-            {% for row in data.user_fill_status %}
-            {% set done = row.filled == row.total %}
-            <div class="lb-row">
-                <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
-                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
-                <span class="lb-day" style="color:{% if done %}#00c87a{% else %}#d4a030{% endif %};">
-                    {% if done %}✓{% else %}{{ row.filled }}/{{ row.total }}{% endif %}
-                </span>
+            <div class="lb-body" id="lbf-{{ tab_id }}">
+                <div class="lb-col-row">
+                    <span style="width:22px;flex-shrink:0;"></span>
+                    <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
+                    <span class="lb-name lb-col-label">Участник</span>
+                    <span class="lb-day lb-col-label">Статус</span>
+                </div>
+                {% for row in data.user_fill_status %}
+                {% set done = row.filled == row.total %}
+                <div class="lb-row">
+                    <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
+                    <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
+                    <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
+                    <span class="lb-day" style="color:{% if done %}#00c87a{% else %}#d4a030{% endif %};">
+                        {% if done %}✓{% else %}{{ row.filled }}/{{ row.total }}{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
         </div>
         {% endif %}
     </div>
@@ -881,6 +891,16 @@ async function dismissAllNotifs() {
     }
 }
 
+function toggleLb(id) {
+    const body = document.getElementById(id);
+    const chev = document.getElementById(id + '-chev');
+    if (!body) return;
+    const isOpen = !body.classList.contains('lb-collapsed');
+    body.classList.toggle('lb-collapsed', isOpen);
+    if (chev) chev.classList.toggle('lb-chev-closed', isOpen);
+    try { sessionStorage.setItem('lb_' + id, isOpen ? '0' : '1'); } catch(e) {}
+}
+
 function jumpToComment(matchId, tabId) {
     switchTab(tabId);
     void document.body.offsetHeight;
@@ -944,6 +964,24 @@ document.addEventListener('DOMContentLoaded', () => {
     startCountdown('wc', WC_FIRST_MATCH);
     initMatchTimers();
     initAutoFetchTimer();
+
+    // Restore or auto-collapse leaderboards on mobile
+    ['ucl', 'pl', 'wc'].forEach(t => {
+        ['lbm', 'lbf'].forEach(prefix => {
+            const id = `${prefix}-${t}`;
+            const body = document.getElementById(id);
+            const chev = document.getElementById(id + '-chev');
+            if (!body) return;
+            let stored;
+            try { stored = sessionStorage.getItem('lb_' + id); } catch(e) {}
+            const isMobile = window.innerWidth < 900;
+            const collapse = stored !== null ? stored === '0' : isMobile;
+            if (collapse) {
+                body.classList.add('lb-collapsed');
+                if (chev) chev.classList.add('lb-chev-closed');
+            }
+        });
+    });
 
     // scroll all comment containers to bottom
     document.querySelectorAll('.mc-scroll').forEach(el => { el.scrollTop = el.scrollHeight; });
