@@ -85,6 +85,7 @@ class User(db.Model):
     avatar_color = db.Column(db.String(10), nullable=True)
     superadmin_note = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, nullable=True)
 
     predictions = db.relationship("Prediction", backref="user", lazy=True)
 

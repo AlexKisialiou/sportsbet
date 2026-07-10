@@ -521,6 +521,16 @@
     {% for t in prompt_templates %}
     <div id="prompt-panel-{{ t.tournament }}" style="display:none;">
 
+        <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #1a3a2a;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button onclick="triggerBenderPicks('{{ t.league }}')"
+                    id="bender-picks-btn-{{ t.league }}"
+                    style="font-size:.82rem;padding:6px 18px;border-radius:6px;cursor:pointer;
+                           background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;">
+                🤖 Запросить прогнозы
+            </button>
+            <span id="bender-picks-msg-{{ t.league }}" style="font-size:.8rem;color:#7a9a8a;"></span>
+        </div>
+
         {% if t.prompt %}
         <div style="margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
@@ -1676,6 +1686,35 @@ async function moveLeague(league, direction) {
     } catch {
         msg.innerHTML = '<span class="error-msg">Ошибка запроса.</span>';
     }
+}
+
+async function triggerBenderPicks(league) {
+    const btn = document.getElementById(`bender-picks-btn-${league}`);
+    const msg = document.getElementById(`bender-picks-msg-${league}`);
+    btn.disabled = true;
+    btn.textContent = '⏳ Запрос...';
+    msg.style.color = '#7a9a8a';
+    msg.textContent = '';
+    try {
+        const resp = await fetch('/api/admin/bender-picks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league }),
+        });
+        const d = await resp.json();
+        if (d.ok) {
+            msg.style.color = '#5db85d';
+            msg.textContent = d.started > 0 ? `Запущено для ${d.started} матчей` : 'Нет активных матчей';
+        } else {
+            msg.style.color = '#e06060';
+            msg.textContent = d.error || 'Ошибка';
+        }
+    } catch (e) {
+        msg.style.color = '#e06060';
+        msg.textContent = 'Ошибка сети';
+    }
+    btn.disabled = false;
+    btn.textContent = '🤖 Запросить прогнозы';
 }
 
 function switchPromptTab(tournament) {

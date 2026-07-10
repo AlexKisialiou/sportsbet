@@ -59,7 +59,29 @@ def _build_team_form_data(league, team_ids, limit):
     )
     match_ids = [m.id for m in matches]
     scores = {s.match_id: s for s in Score.query.filter(Score.match_id.in_(match_ids)).all()} if match_ids else {}
+
+    # Pre-pass: avg goals per team across full league for opponent strength weighting
+    league_rows = (
+        Match.query.join(Tour)
+        .filter(Tour.league == league, Match.status == "finished")
+        .with_entities(Match.id, Match.home_team_id, Match.away_team_id)
+        .all()
+    )
+    league_row_ids = [r.id for r in league_rows]
+    league_sc = {s.match_id: s for s in Score.query.filter(Score.match_id.in_(league_row_ids)).all()} if league_row_ids else {}
+    _lg = {}
+    for r in league_rows:
+        sc = league_sc.get(r.id)
+        if not sc:
+            continue
+        _lg.setdefault(r.home_team_id, []).append(sc.home_score)
+        _lg.setdefault(r.away_team_id, []).append(sc.away_score)
+    avg_goals_by_team = {tid: sum(g) / len(g) for tid, g in _lg.items() if g}
+    _all_g = [g for lst in _lg.values() for g in lst]
+    league_avg_goals = sum(_all_g) / len(_all_g) if _all_g else 1.5
+
     team_lists = {tid: [] for tid in team_ids}
+    team_stats_raw = {tid: {"scored": 0, "conceded": 0, "score_counts": {}, "w": 0, "d": 0, "l": 0, "eff_sum": 0.0} for tid in team_ids}
     for m in matches:
         score = scores.get(m.id)
         if not score:
@@ -67,13 +89,27 @@ def _build_team_form_data(league, team_ids, limit):
         for tid, is_home in ((m.home_team_id, True), (m.away_team_id, False)):
             if tid not in team_ids:
                 continue
+            tg = score.home_score if is_home else score.away_score
+            og = score.away_score if is_home else score.home_score
+            res = "W" if tg > og else ("D" if tg == og else "L")
+            opp_id = m.away_team_id if is_home else m.home_team_id
+            opp_avg = avg_goals_by_team.get(opp_id, league_avg_goals)
+            strength_mult = 1.0 + opp_avg / max(league_avg_goals, 0.1)
+            quality_mult = 1.0 + (tg - og) / (tg + og + 1)
+            result_pts = 3 if res == "W" else (1 if res == "D" else 0)
+            st = team_stats_raw[tid]
+            st["scored"] += tg
+            st["conceded"] += og
+            sc_key = f"{tg}:{og}"
+            st["score_counts"][sc_key] = st["score_counts"].get(sc_key, 0) + 1
+            if res == "W": st["w"] += 1
+            elif res == "D": st["d"] += 1
+            else: st["l"] += 1
+            st["eff_sum"] += result_pts * strength_mult * quality_mult
             lst = team_lists[tid]
             if limit > 0 and len(lst) >= limit:
                 continue
             opponent = m.away_team if is_home else m.home_team
-            tg = score.home_score if is_home else score.away_score
-            og = score.away_score if is_home else score.home_score
-            res = "W" if tg > og else ("D" if tg == og else "L")
             dt = (m.kickoff_time + timedelta(hours=3)).strftime("%d.%m") if m.kickoff_time else "—"
             score_str = f"{tg}:{og}"
             if score.win_type == "aet":
@@ -106,13 +142,197 @@ def _build_team_form_data(league, team_ids, limit):
         team = teams_map.get(tid)
         if not team:
             continue
+        st = team_stats_raw[tid]
+        total = st["w"] + st["d"] + st["l"]
+        if total > 0:
+            mc = max(st["score_counts"], key=st["score_counts"].get)
+            stats = {
+                "played": total,
+                "avg_scored": round(st["scored"] / total, 1),
+                "avg_conceded": round(st["conceded"] / total, 1),
+                "most_common": mc,
+                "most_common_count": st["score_counts"][mc],
+                "w": st["w"],
+                "d": st["d"],
+                "l": st["l"],
+                "efficiency_index": round(st["eff_sum"] / total, 1),
+            }
+        else:
+            stats = None
         result[f"{tid}_{league}"] = {
             "team_name": team.display_name,
             "team_crest": team.crest or "",
             "matches": team_lists[tid],
+            "stats": stats,
         }
     return result
 
+
+def _compute_all_team_stats(league):
+    matches = (
+        Match.query.join(Tour)
+        .filter(Tour.league == league, Match.status == "finished")
+        .all()
+    )
+    if not matches:
+        return []
+    match_ids = [m.id for m in matches]
+    scores = {s.match_id: s for s in Score.query.filter(Score.match_id.in_(match_ids)).all()}
+
+    all_team_ids = set()
+    for m in matches:
+        all_team_ids.add(m.home_team_id)
+        all_team_ids.add(m.away_team_id)
+
+    goals_by_team = {}
+    for m in matches:
+        sc = scores.get(m.id)
+        if not sc:
+            continue
+        goals_by_team.setdefault(m.home_team_id, []).append(sc.home_score)
+        goals_by_team.setdefault(m.away_team_id, []).append(sc.away_score)
+    avg_goals_by_team = {tid: sum(g) / len(g) for tid, g in goals_by_team.items() if g}
+    _all_g = [g for lst in goals_by_team.values() for g in lst]
+    league_avg = sum(_all_g) / len(_all_g) if _all_g else 1.5
+
+    raw = {tid: {"scored": 0, "conceded": 0, "sc": {}, "w": 0, "d": 0, "l": 0, "eff": 0.0}
+           for tid in all_team_ids}
+    for m in matches:
+        sc = scores.get(m.id)
+        if not sc:
+            continue
+        for tid, is_home in ((m.home_team_id, True), (m.away_team_id, False)):
+            tg = sc.home_score if is_home else sc.away_score
+            og = sc.away_score if is_home else sc.home_score
+            res = "W" if tg > og else ("D" if tg == og else "L")
+            opp_id = m.away_team_id if is_home else m.home_team_id
+            opp_avg = avg_goals_by_team.get(opp_id, league_avg)
+            st = raw[tid]
+            st["scored"] += tg
+            st["conceded"] += og
+            key = f"{tg}:{og}"
+            st["sc"][key] = st["sc"].get(key, 0) + 1
+            if res == "W": st["w"] += 1
+            elif res == "D": st["d"] += 1
+            else: st["l"] += 1
+            r_pts = 3 if res == "W" else (1 if res == "D" else 0)
+            st["eff"] += r_pts * (1.0 + opp_avg / max(league_avg, 0.1)) * (1.0 + (tg - og) / (tg + og + 1))
+
+    teams_map = {t.id: t for t in Team.query.filter(Team.id.in_(all_team_ids)).all()}
+    result = []
+    for tid, st in raw.items():
+        team = teams_map.get(tid)
+        if not team:
+            continue
+        total = st["w"] + st["d"] + st["l"]
+        if total == 0:
+            continue
+        mc = max(st["sc"], key=st["sc"].get)
+        result.append({
+            "team_name": team.display_name,
+            "team_crest": team.crest or "",
+            "played": total,
+            "w": st["w"], "d": st["d"], "l": st["l"],
+            "goals_scored": st["scored"],
+            "goals_conceded": st["conceded"],
+            "goal_diff": st["scored"] - st["conceded"],
+            "avg_scored": round(st["scored"] / total, 1),
+            "avg_conceded": round(st["conceded"] / total, 1),
+            "most_common": mc,
+            "most_common_count": st["sc"][mc],
+            "efficiency_index": round(st["eff"] / total, 1),
+        })
+    result.sort(key=lambda x: x["efficiency_index"], reverse=True)
+    return result
+
+
+_HOF_HISTORY = [
+    {"tournament": "Лига чемпионов 2024", "champion": "Колобок"},
+    {"tournament": "Евро 2024",           "champion": "Богоедов"},
+    {"tournament": "Лига чемпионов 2025", "champion": "Чел"},
+    {"tournament": "Лига чемпионов 2026", "champion": "Колобок"},
+]
+
+
+def _compute_hall_of_fame(enabled_leagues, users, league_names):
+    _months_short = ["", "янв", "фев", "мар", "апр", "май", "июн",
+                     "июл", "авг", "сен", "окт", "ноя", "дек"]
+    user_map = {u.id: u for u in users if not u.is_bot}
+    result = {}
+    for league in enabled_leagues:
+        pts_rows = (
+            db.session.query(
+                Prediction.user_id,
+                func.coalesce(func.sum(PredictionPoints.points), 0).label("pts"),
+                func.sum(sa_case((PredictionPoints.reason == "exact", 1), else_=0)).label("exact_count"),
+            )
+            .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+            .join(Match, Prediction.match_id == Match.id)
+            .join(Tour, Match.tour_id == Tour.id)
+            .filter(Match.status == "finished", Match.featured == True, Tour.league == league)
+            .group_by(Prediction.user_id)
+            .order_by(func.coalesce(func.sum(PredictionPoints.points), 0).desc())
+            .all()
+        )
+        podium = []
+        for r in pts_rows:
+            u = user_map.get(r.user_id)
+            if u:
+                podium.append({"user": u, "points": int(r.pts), "exact": int(r.exact_count)})
+        podium = podium[:3]
+
+        round_data = (
+            db.session.query(
+                Match.featured_round,
+                func.min(Match.kickoff_time).label("min_kt"),
+                Prediction.user_id,
+                func.coalesce(func.sum(PredictionPoints.points), 0).label("pts"),
+            )
+            .join(Tour, Match.tour_id == Tour.id)
+            .join(Prediction, Match.id == Prediction.match_id)
+            .join(PredictionPoints, Prediction.id == PredictionPoints.prediction_id)
+            .filter(
+                Match.status == "finished", Match.featured == True,
+                Match.featured_round.isnot(None), Match.featured_round != 0,
+                Tour.league == league,
+            )
+            .group_by(Match.featured_round, Prediction.user_id)
+            .all()
+        )
+        rounds_map = {}
+        for r in round_data:
+            rnd = r.featured_round
+            if rnd not in rounds_map:
+                rounds_map[rnd] = {"min_kt": r.min_kt, "players": []}
+            u = user_map.get(r.user_id)
+            if u:
+                rounds_map[rnd]["players"].append({"user": u, "pts": int(r.pts)})
+
+        game_days = []
+        for rnd in sorted(rounds_map.keys()):
+            data = rounds_map[rnd]
+            players = sorted(data["players"], key=lambda x: x["pts"], reverse=True)
+            if not players:
+                continue
+            max_pts = players[0]["pts"]
+            winners = [p for p in players if p["pts"] == max_pts]
+            date_label = ""
+            if data["min_kt"]:
+                d = (data["min_kt"] + timedelta(hours=3)).date()
+                date_label = f"{d.day} {_months_short[d.month]}"
+            runners = players[len(winners):len(winners) + 2]
+            game_days.append({
+                "round": rnd, "date_label": date_label,
+                "winners": winners, "all_players": players,
+                "runners": runners,
+            })
+
+        result[league] = {
+            "podium": podium,
+            "game_days": game_days,
+            "league_name": league_names.get(league, league),
+        }
+    return result
 
 
 @main_bp.route("/")
@@ -220,16 +440,21 @@ def index():
         _acc_raw = {}
         for _r in _acc_q:
             if _r.user_id not in _acc_raw:
-                _acc_raw[_r.user_id] = [0, 0]
+                _acc_raw[_r.user_id] = [0, 0, 0]  # [hits, total, exact]
             _acc_raw[_r.user_id][1] += 1
             if _r.reason in ('exact', 'winner'):
                 _acc_raw[_r.user_id][0] += 1
+            if _r.reason == 'exact':
+                _acc_raw[_r.user_id][2] += 1
         for row in leaderboard:
-            _hits, _tot = _acc_raw.get(row['user'].id, [0, 0])
+            _hits, _tot, _exact = _acc_raw.get(row['user'].id, [0, 0, 0])
             row['accuracy_pct'] = round(100 * _hits / _tot) if _tot > 0 else 0
+            row['exact_count'] = _exact
+            row['winner_count'] = _hits - _exact
 
         _rw_rounds = [r for r in pred_rounds if r != 0]
         _round_winners = {}
+        _user_round_pts = {}
         if _rw_rounds:
             _rw_q = (
                 db.session.query(
@@ -252,6 +477,7 @@ def index():
             _rw_by_round = defaultdict(list)
             for _r in _rw_q:
                 _rw_by_round[_r.featured_round].append((_r.user_id, int(_r.pts)))
+                _user_round_pts.setdefault(_r.user_id, {})[_r.featured_round] = int(_r.pts)
             for _rnd, _entries in _rw_by_round.items():
                 _max_pts = max(e[1] for e in _entries)
                 if _max_pts == 0:
@@ -260,12 +486,28 @@ def index():
                 if _winners:
                     _round_winners[_rnd] = {'users': _winners, 'pts': _max_pts}
 
+        if _rw_rounds:
+            _latest_rnd = _rw_rounds[0]
+            _prev_totals = [
+                (row['user'].id, row['total'] - _user_round_pts.get(row['user'].id, {}).get(_latest_rnd, 0))
+                for row in leaderboard
+            ]
+            _prev_rank = {uid: i + 1 for i, (uid, _) in enumerate(sorted(_prev_totals, key=lambda x: -x[1]))}
+            for i, row in enumerate(leaderboard):
+                curr_rank = i + 1
+                prev_rank = _prev_rank.get(row['user'].id, curr_rank)
+                row['trend'] = 'up' if curr_rank < prev_rank else ('down' if curr_rank > prev_rank else 'flat')
+        else:
+            for row in leaderboard:
+                row['trend'] = None
+
         _latest_round = next((r for r in pred_rounds if r != 0), None)
         _latest_winner_ids = set()
         if _latest_round is not None and _round_winners.get(_latest_round):
             _latest_winner_ids = {u.id for u in _round_winners[_latest_round]['users']}
         for row in leaderboard:
             row['is_latest_round_winner'] = row['user'].id in _latest_winner_ids
+            row['is_online'] = row['user'].id in _online_user_ids
 
         _months_short = ["", "янв", "фев", "мар", "апр", "май", "июн",
                          "июл", "авг", "сен", "окт", "ноя", "дек"]
@@ -365,6 +607,19 @@ def index():
             live_ids = [m.id for m in live_matches]
             for p in Prediction.query.filter(Prediction.match_id.in_(live_ids)).all():
                 live_pred_map[(p.match_id, p.user_id)] = p
+            for c in MatchComment.query.filter(MatchComment.match_id.in_(live_ids)).order_by(MatchComment.created_at.asc()).all():
+                comment_map.setdefault(c.match_id, []).append(c)
+            if user:
+                live_id_set = set(live_ids)
+                for r in CommentRead.query.filter(CommentRead.user_id == user.id, CommentRead.match_id.in_(live_ids)).all():
+                    reads_map[r.match_id] = r.last_read_comment_id
+                for mid, cmts in comment_map.items():
+                    if mid not in live_id_set:
+                        continue
+                    last_read = reads_map.get(mid, 0)
+                    n = sum(1 for c in cmts if c.id > last_read and c.user_id != user.id)
+                    if n:
+                        unread_map[mid] = n
 
         scheduled_total = len(scheduled)
         unfilled_count = sum(1 for m in scheduled if m.id not in predictions)
@@ -411,6 +666,14 @@ def index():
 
     league_order, league_enabled = _get_league_config()
 
+    _online_threshold = datetime.utcnow() - timedelta(minutes=5)
+    _online_user_ids = {
+        u.id for u in User.query.filter(
+            User.last_seen >= _online_threshold,
+            User.is_bot == False,
+        ).all()
+    }
+
     ucl_data = _build("UCL")
     pl_data = _build("PL")
     wc_data = _build("WC")
@@ -420,6 +683,7 @@ def index():
         if not user:
             return notifs
         match_lookup = {m.id: m for m in data["finished_recent"]}
+        match_lookup.update({m.id: m for m in data["live_matches"]})
         for mid, count in data["unread_map"].items():
             match = match_lookup.get(mid)
             if not match:
@@ -657,6 +921,7 @@ def superadmin():
                 PromptHint.query.filter_by(tournament=tournament_id).all()}
         prompt_templates.append({
             "tournament": tournament_id,
+            "league": league_code,
             "label": label,
             "prompt": rows.get("prompt"),
             "standings": rows.get("standings"),
@@ -767,17 +1032,31 @@ def stats():
     enabled_leagues = [lg for lg in league_order if league_enabled.get(lg)]
     league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ 2026"}
 
+    view = request.args.get("view", "players")
+    if view not in ("players", "teams", "hall"):
+        view = "players"
+
+    _empty = dict(users=users, overall_stats=[], chart_labels=[], chart_datasets=[],
+                  rank_datasets=[], bar_labels=[], bar_datasets=[], chart_player_stats=[],
+                  enabled_leagues=enabled_leagues, active_league=None,
+                  league_names=league_names, rounds_table=[],
+                  top_actual_scores=[], top_exact_scores=[], top_pred_scores=[],
+                  team_stats=[], hall_of_fame={}, hof_history=_HOF_HISTORY, view=view)
+
+    if view == "hall":
+        return render_template("stats.html", **_empty)
+
     active_league = request.args.get("league")
     if active_league not in enabled_leagues:
         active_league = enabled_leagues[0] if enabled_leagues else None
 
     if not active_league:
-        return render_template("stats.html", users=users, overall_stats=[],
-                               chart_labels=[], chart_datasets=[], rank_datasets=[],
-                               bar_labels=[], bar_datasets=[], chart_player_stats=[],
-                               enabled_leagues=[], active_league=None,
-                               league_names=league_names, rounds_table=[],
-                               top_actual_scores=[], top_exact_scores=[], top_pred_scores=[])
+        return render_template("stats.html", **_empty)
+
+    if view == "teams":
+        team_stats = _compute_all_team_stats(active_league)
+        return render_template("stats.html", **{**_empty,
+                               "active_league": active_league, "team_stats": team_stats})
 
     # ── Общая статистика по активной лиге ────────────────────────
     rows = (
@@ -1107,4 +1386,8 @@ def stats():
                            top_actual_scores=top_actual_scores,
                            top_exact_scores=top_exact_scores,
                            top_pred_scores=top_pred_scores,
-                           rounds_table=rounds_table)
+                           rounds_table=rounds_table,
+                           team_stats=[],
+                           hall_of_fame={},
+                           hof_history=_HOF_HISTORY,
+                           view=view)

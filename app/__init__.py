@@ -1,6 +1,6 @@
 import os
-from datetime import timedelta
-from flask import Flask, jsonify, request as flask_request, render_template
+from datetime import datetime, timedelta
+from flask import Flask, jsonify, request as flask_request, render_template, session as flask_session
 from dotenv import load_dotenv
 from .models import db
 
@@ -134,6 +134,8 @@ def create_app():
                 ("avatar_emoji",    "ALTER TABLE users ADD COLUMN avatar_emoji VARCHAR(10)"),
                 ("avatar_color",    "ALTER TABLE users ADD COLUMN avatar_color VARCHAR(10)"),
                 ("superadmin_note", "ALTER TABLE users ADD COLUMN superadmin_note VARCHAR(100)"),
+                ("created_at",     "ALTER TABLE users ADD COLUMN created_at TIMESTAMP"),
+                ("last_seen",      "ALTER TABLE users ADD COLUMN last_seen TIMESTAMP"),
             ]:
                 if col not in user_cols:
                     db.session.execute(text(ddl))
@@ -219,6 +221,22 @@ def create_app():
             current_theme=theme,
             APP_ENV=APP_ENV,
         )
+
+    @app.after_request
+    def update_last_seen(response):
+        user_id = flask_session.get("user_id")
+        if user_id:
+            from .models import User
+            now = datetime.utcnow()
+            try:
+                user = db.session.get(User, user_id)
+                if user and not user.is_bot:
+                    if user.last_seen is None or (now - user.last_seen).total_seconds() > 120:
+                        user.last_seen = now
+                        db.session.commit()
+            except Exception:
+                db.session.rollback()
+        return response
 
     # Security headers on every response
     @app.after_request

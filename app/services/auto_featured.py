@@ -131,28 +131,6 @@ def _do_apply(league, app, force=False):
         m.featured_round = next_round if m.id in new_set else None
     db.session.commit()
 
-    if not new_ids:
-        return 0
-
-    match_data = []
-    for mid in new_ids:
-        m = Match.query.get(mid)
-        if m:
-            match_data.append((
-                m.id,
-                m.home_team.display_name, m.away_team.display_name,
-                f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}",
-                m.home_team.name, m.away_team.name,
-            ))
-
-    if match_data:
-        import threading
-        threading.Thread(
-            target=_run_bender_and_odds,
-            args=(app, league, match_data),
-            daemon=True,
-        ).start()
-
     return len(new_ids)
 
 
@@ -160,6 +138,35 @@ def apply_featured_auto(league, app):
     """Scheduler entry point — wraps in app_context."""
     with app.app_context():
         return _do_apply(league, app)
+
+
+def run_bender_for_league(app, league):
+    """Collect current featured scheduled matches and start Bender + odds in background."""
+    with app.app_context():
+        from ..models import Match, Tour
+        matches = (
+            Match.query.join(Tour)
+            .filter(Tour.league == league, Match.status == "scheduled", Match.featured == True)
+            .all()
+        )
+        if not matches:
+            return 0
+        match_data = [
+            (
+                m.id,
+                m.home_team.display_name, m.away_team.display_name,
+                f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}",
+                m.home_team.name, m.away_team.name,
+            )
+            for m in matches
+        ]
+    import threading
+    threading.Thread(
+        target=_run_bender_and_odds,
+        args=(app, league, match_data),
+        daemon=True,
+    ).start()
+    return len(match_data)
 
 
 def _run_bender_and_odds(app, league, match_data):

@@ -11,105 +11,91 @@
     {% endif %}
 </div>
 {% endif %}
-<div class="main-grid" style="margin-bottom:32px;">
 
-    <!-- ── Left: Очки ── -->
-    <div class="col-scores">
+<!-- ══ CTA ══ -->
+{% if data.scheduled_matches %}
+<div class="pred-cta-row">
+    <button class="pred-open-btn" onclick="openPredModal('{{ tab_id }}')">
+        🎯&nbsp;Прогнозы{% if locked %}&nbsp;<span class="pred-open-lock">🔒</span>{% elif data.unfilled_count > 0 %}&nbsp;<span class="pred-open-badge">{{ data.unfilled_count }}</span>{% elif data.scheduled_total > 0 %}&nbsp;<span class="pred-open-done">✓</span>{% endif %}
+    </button>
+    {% if data.scheduled_total > 0 %}
+    {% if data.unfilled_count == 0 %}
+    <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
+    {% else %}
+    <span class="pred-status pred-status-warn">⚠ Осталось {{ data.unfilled_count }} из {{ data.scheduled_total }}</span>
+    {% endif %}
+    {% endif %}
+</div>
+{% elif data.scheduled_total > 0 %}
+<div class="pred-cta-row">
+    <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
+</div>
+{% endif %}
 
-        {% if data.scheduled_total > 0 %}
-        <div style="margin-bottom:14px;">
-            {% if data.unfilled_count == 0 %}
-            <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
-            {% else %}
-            <span class="pred-status pred-status-warn">⚠ Осталось {{ data.unfilled_count }} из {{ data.scheduled_total }}</span>
+<!-- ══ Таблица лидеров ══ -->
+{% if data.leaderboard %}
+<div class="lb-wrap-center">
+    <div class="lb-table" id="lb-acc-{{ tab_id }}">
+        <div class="lb-thead">
+            <div class="lb-th lb-th-name" title="Стрелка тренда: ↑ поднялся в таблице после последнего тура; ↓ опустился; → место не изменилось">Участник</div>
+            <div class="lb-th lb-th-total lb-sep" title="Сумма очков за все туры. 3 — точный счёт, 1 — угадал победителя, 0 — промах">Всего</div>
+            <div class="lb-th lb-th-exact" title="Количество точных счётов (3 очка) за все туры">🎯</div>
+            {% for rnd in data.pred_rounds %}
+            <div class="lb-th lb-th-day{% if loop.first %} lb-sep{% endif %}" title="Очки за {% if rnd == 0 %}архивные матчи{% else %}день {{ rnd }}{% endif %}">
+                <span>{% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}</span>
+                {% if data.round_date_labels.get(rnd) %}<span class="lb-th-date">{{ data.round_date_labels.get(rnd) }}</span>{% endif %}
+            </div>
+            {% endfor %}
+            {% if data.user_fill_status and data.scheduled_total > 0 %}<div class="lb-th lb-th-bet lb-sep" title="Сколько прогнозов сделано из доступных матчей текущего дня">Прогнозы / день</div>{% endif %}
+        </div>
+        {% for row in data.leaderboard %}
+        {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else 'var(--text-dim)')) %}
+        <div class="lb-tr{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
+            <div class="lb-td lb-td-name">
+                <span class="lba-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
+                {{ user_avatar(row.user) }}
+                <span class="lba-name">
+                    <span class="lba-name-text">{{ row.user.display_name }}</span>
+                    {% if row.trend == 'up' %}<span class="lb-trend lb-trend-up">↑</span>{% elif row.trend == 'down' %}<span class="lb-trend lb-trend-down">↓</span>{% elif row.trend == 'flat' %}<span class="lb-trend lb-trend-flat">→</span>{% endif %}
+                    {% if row.is_online %}<span class="online-dot" title="Онлайн"></span>{% endif %}
+                    {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
+                    {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
+                    {{ role_badge(row.user) }}
+                </span>
+            </div>
+            <div class="lb-td lb-td-total lb-sep">{{ row.total }}</div>
+            <div class="lb-td lb-td-exact">{{ row.exact_count }}</div>
+            {% for d in row.days %}
+            <div class="lb-td lb-td-day {% if loop.first %}lb-sep {% endif %}{% if d.pts > 0 %}lbd-exact{% elif not d.has_pred %}lbd-none{% else %}lbd-miss{% endif %}">
+                {% if d.pts > 0 %}+{{ d.pts }}{% elif not d.has_pred %}—{% else %}0{% endif %}
+            </div>
+            {% endfor %}
+            {% if data.user_fill_status and data.scheduled_total > 0 %}
+            <div class="lb-td lb-td-bet lb-sep">
+            {% for fr in data.user_fill_status %}{% if fr.user.id == row.user.id %}
+            {% set pct = (fr.filled / fr.total * 100) | int if fr.total > 0 else 0 %}
+            <div class="lba-fillbar{% if fr.filled == fr.total %} lba-fillbar-done{% endif %}">
+                <div class="lba-fillbar-track"><div class="lba-fillbar-fill" style="width:{{ pct }}%"></div></div>
+                <span class="lba-fillbar-pct">{{ fr.filled }}/{{ fr.total }}</span>
+            </div>
+            {% endif %}{% endfor %}
+            </div>
             {% endif %}
         </div>
-        {% endif %}
-
-        <div class="col-section-title">Очки</div>
-
-        {% if data.leaderboard %}
-        <div class="leaderboard">
-            <div class="leaderboard-header lb-toggle-btn" onclick="toggleLb('lbm-{{ tab_id }}')">
-                Турнирная таблица
-                <span class="lb-chevron" id="lbm-{{ tab_id }}-chev">▾</span>
-            </div>
-            <div class="lb-body" id="lbm-{{ tab_id }}">
-                <div class="lb-col-row">
-                    <span style="width:22px;flex-shrink:0;"></span>
-                    <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                    <span class="lb-name lb-col-label">Участник</span>
-                    <span class="lb-pts lb-col-label">Всего</span>
-                    {% for rnd in data.pred_rounds %}
-                    <span class="lb-day lb-col-label" style="line-height:1.2;white-space:normal;text-align:center;">
-                        {% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}{% if data.round_date_short.get(rnd) %}<br><span style="font-size:.58rem;opacity:.7;">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
-                    </span>
-                    {% endfor %}
-                </div>
-                {% for row in data.leaderboard %}
-                {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
-                <div class="lb-row{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
-                    <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
-                    <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                    <span class="lb-name" style="min-width:0;">
-                        <div style="display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;">
-                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.user.display_name }}</span>
-                            {{ role_badge(row.user) }}
-                            {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
-                            {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
-                        </div>
-                        {% if row.accuracy_pct > 0 %}<div class="lb-acc-bar"><div class="lb-acc-fill" style="width:{{ row.accuracy_pct }}%;"></div></div>{% endif %}
-                    </span>
-                    <span class="lb-pts" data-target="{{ row.total }}">{{ row.total }}</span>
-                    {% for d in row.days %}
-                    {% if not d.has_pred %}
-                    <span class="lb-day" style="color:#8a8aaa;">0</span>
-                    {% elif d.pts == 0 %}
-                    <span class="lb-day" style="color:#8a8aaa;">0</span>
-                    {% else %}
-                    <span class="lb-day" style="color:#00c87a;">+{{ d.pts }}</span>
-                    {% endif %}
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {% if data.user_fill_status and data.scheduled_total > 0 %}
-        <div class="leaderboard">
-            <div class="leaderboard-header lb-toggle-btn" onclick="toggleLb('lbf-{{ tab_id }}')">
-                Ставки на ближайшие матчи
-                <span class="lb-chevron" id="lbf-{{ tab_id }}-chev">▾</span>
-            </div>
-            <div class="lb-body" id="lbf-{{ tab_id }}">
-                <div class="lb-col-row">
-                    <span style="width:22px;flex-shrink:0;"></span>
-                    <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                    <span class="lb-name lb-col-label">Участник</span>
-                    <span class="lb-day lb-col-label">Статус</span>
-                </div>
-                {% for row in data.user_fill_status %}
-                {% set done = row.filled == row.total %}
-                <div class="lb-row">
-                    <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
-                    <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                    <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
-                    <span class="lb-day" style="color:{% if done %}#00c87a{% else %}#d4a030{% endif %};">
-                        {% if done %}✓{% else %}{{ row.filled }}/{{ row.total }}{% endif %}
-                    </span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
+        {% endfor %}
     </div>
+</div>
+{% endif %}
 
-    <!-- ── Right: Ставки ── -->
-    <div class="col-matches">
-        <div class="col-section-title">Прогнозы</div>
-
-        {% if data.scheduled_matches %}
+<!-- ══ Модальное окно: Прогнозы ══ -->
+{% if data.scheduled_matches %}
+<div class="pred-modal-overlay" id="pred-modal-{{ tab_id }}" onclick="closePredModal('{{ tab_id }}')">
+    <div class="pred-modal" onclick="event.stopPropagation()">
+        <div class="pred-modal-hdr">
+            <span class="pred-modal-title">🎯 Прогнозы</span>
+            <button class="pred-modal-close-btn" onclick="closePredModal('{{ tab_id }}')">✕</button>
+        </div>
+        <div class="pred-modal-body">
             {% set ns = namespace(cur_round='') %}
             {% for match in data.scheduled_matches %}
                 {% set mround = match.featured_round %}
@@ -169,28 +155,12 @@
                         <span class="odds-item odds-away">П2&nbsp;{{ "%.2f"|format(match.odds_away) }}</span>
                     </div>
                     {% endif %}
-                    {% if data.non_bot_total > 0 %}
-                    {% set filled_n = data.match_fill_counts.get(match.id, 0) %}
-                    <div class="match-fill-dots">
-                        {% for i in range(data.non_bot_total) %}
-                        <div class="fill-dot {% if i < filled_n %}fill-dot-filled{% else %}fill-dot-empty{% endif %}"></div>
-                        {% endfor %}
-                        <span class="fill-dots-label">{{ filled_n }}/{{ data.non_bot_total }}</span>
-                    </div>
-                    {% endif %}
                 </div>
             {% endfor %}
-        {% else %}
-            <div style="padding:32px 16px;text-align:center;">
-                <p style="color:#2e3a5a;margin-bottom:12px;font-size:.88rem;">Нет предстоящих матчей.</p>
-                {% if current_user and current_user.is_admin %}
-                <a href="/admin" style="color:#d4af37;font-size:.82rem;">Настроить матчи →</a>
-                {% endif %}
-            </div>
-        {% endif %}
+        </div>
     </div>
-
-</div><!-- .main-grid -->
+</div>
+{% endif %}
 
 <!-- ══ Идут сейчас ══ -->
 {% if reveal_live and data.live_matches %}
@@ -235,6 +205,38 @@
                 </div>
                 {% endfor %}
             </div>
+            {% set cmts = data.comment_map.get(match.id, []) %}
+            {% set unread = data.unread_map.get(match.id, 0) %}
+            {% if cmts or (current_user and not current_user.is_bot) %}
+            <div class="match-comments-section" data-match-id="{{ match.id }}"{% if unread %} data-has-unread="1"{% endif %}>
+                <div class="mc-header">
+                    <span class="mc-icon">💬</span>
+                    {% if unread %}<span class="mc-unread-badge" data-match="{{ match.id }}">{{ unread }}</span>{% endif %}
+                </div>
+                <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
+                    {% for cmt in cmts %}
+                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
+                        {{ user_avatar(cmt.user) }}
+                        <span class="mc-author">{{ cmt.user.display_name }}:</span>
+                        <span class="mc-text">{{ cmt.text }}</span>
+                        <span class="mc-time" title="{{ (cmt.created_at | minsk).strftime('%d.%m.%Y %H:%M') }}">{{ (cmt.created_at | minsk).strftime('%H:%M') }}</span>
+                        {% if current_user and cmt.user_id == current_user.id %}
+                        <button class="mc-del" onclick="deleteComment({{ match.id }}, {{ cmt.id }})">×</button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if current_user and not current_user.is_bot %}
+                <div class="match-comment-input">
+                    <input class="mc-inp" type="text" id="mc-inp-{{ match.id }}"
+                           maxlength="{{ comment_max_length }}"
+                           placeholder="Написать…"
+                           onkeydown="if(event.key==='Enter')saveComment({{ match.id }},{{ comment_max_length }})">
+                    <button class="mc-send" onclick="saveComment({{ match.id }},{{ comment_max_length }})">→</button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     {% endfor %}
 </div>
@@ -242,18 +244,21 @@
 
 <!-- ══ Предикты ══ -->
 {% if data.finished_recent %}
-<div style="margin-bottom:32px;">
+<div class="pred-section" style="margin-bottom:32px;">
     <div class="col-section-title">Прошедшие матчи</div>
-    {% set ns2 = namespace(cur_round='') %}
+    {% set ns2 = namespace(cur_round='__init__', group_open=False) %}
     {% for match in data.finished_recent %}
         {% set mround = match.featured_round %}
         {% if mround != ns2.cur_round %}
+            {% if ns2.group_open %}</div>{% endif %}
             {% set ns2.cur_round = mround %}
+            {% set ns2.group_open = True %}
+            <div class="day-group">
             <div class="pred-day-sep">
                 {%- if mround == 0 -%}
                     Архив{% if data.round_date_labels.get(0) %} ({{ data.round_date_labels.get(0) }}){% endif %}
                 {%- elif mround -%}
-                    Игровой день {{ mround }}{% if data.round_date_labels.get(mround) %} ({{ data.round_date_labels.get(mround) }}){% endif %}
+                    День {{ mround }}{% if data.round_date_labels.get(mround) %} · {{ data.round_date_labels.get(mround) }}{% endif %}
                 {%- else -%}—{%- endif -%}
                 {%- if mround and mround != 0 and data.round_winners is defined and data.round_winners.get(mround) -%}
                     {%- set w = data.round_winners.get(mround) -%}
@@ -331,7 +336,7 @@
                 </div>
                 <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
                     {% for cmt in cmts %}
-                    <div class="match-comment" id="mc-{{ cmt.id }}">
+                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
                         {{ user_avatar(cmt.user) }}
                         <span class="mc-author">{{ cmt.user.display_name }}:</span>
                         <span class="mc-text">{{ cmt.text }}</span>
@@ -355,8 +360,10 @@
             {% endif %}
         </div>
     {% endfor %}
+    {% if ns2.group_open %}</div>{% endif %}
 </div>
 {% endif %}
+
 {% endmacro %}
 
 {% block content %}
@@ -705,6 +712,21 @@ async function savePrediction(matchId) {
     }
 }
 
+function openPredModal(tabId) {
+    const overlay = document.getElementById(`pred-modal-${tabId}`);
+    if (!overlay) return;
+    overlay.classList.add('open');
+    document.body.classList.add('pred-modal-open');
+    const body = overlay.querySelector('.pred-modal-body');
+    if (body) body.scrollTop = 0;
+}
+
+function closePredModal(tabId) {
+    const overlay = document.getElementById(`pred-modal-${tabId}`);
+    if (overlay) overlay.classList.remove('open');
+    document.body.classList.remove('pred-modal-open');
+}
+
 function updatePredStatus() {
     const activePane = document.querySelector('.tab-pane.active');
     if (!activePane) return;
@@ -721,6 +743,21 @@ function updatePredStatus() {
         if (card) card.classList.toggle('match-unfilled', !ok);
     });
 
+    // update open button badge/done indicator
+    const openBtn = activePane.querySelector('.pred-open-btn');
+    if (openBtn && total > 0) {
+        let badgeEl = openBtn.querySelector('.pred-open-badge');
+        let doneEl = openBtn.querySelector('.pred-open-done');
+        if (unfilled > 0) {
+            if (doneEl) { doneEl.remove(); }
+            if (!badgeEl) { badgeEl = document.createElement('span'); badgeEl.className = 'pred-open-badge'; openBtn.appendChild(badgeEl); }
+            badgeEl.textContent = unfilled;
+        } else {
+            if (badgeEl) { badgeEl.remove(); }
+            if (!doneEl) { doneEl = document.createElement('span'); doneEl.className = 'pred-open-done'; doneEl.textContent = '✓'; openBtn.appendChild(doneEl); }
+        }
+    }
+
     if (!badge || total === 0) return;
     if (unfilled === 0) {
         badge.className = 'pred-status pred-status-done';
@@ -730,6 +767,8 @@ function updatePredStatus() {
         badge.textContent = `⚠ Осталось ${unfilled} из ${total}`;
     }
 }
+
+
 
 function switchTab(tabId) {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -818,7 +857,8 @@ function _buildCommentHtml(matchId, id, text, authorName, emoji, color, timeHM, 
     const bg = color ? `background:${color};` : '';
     const avatarHtml = `<span class="avatar avatar-sm" style="${bg}font-size:${fs};">${_escHtml(emoji || initial)}</span>`;
     const delBtn = isOwn ? `<button class="mc-del" onclick="deleteComment(${matchId},${id})">×</button>` : '';
-    return `<div class="match-comment" id="mc-${id}">${avatarHtml}<span class="mc-author">${_escHtml(authorName)}:</span><span class="mc-text">${_escHtml(text)}</span><span class="mc-time">${timeHM}</span>${delBtn}</div>`;
+    const mcColor = color ? ` style="--mc-color:${color};"` : '';
+    return `<div class="match-comment" id="mc-${id}"${mcColor}>${avatarHtml}<span class="mc-author">${_escHtml(authorName)}:</span><span class="mc-text">${_escHtml(text)}</span><span class="mc-time">${timeHM}</span>${delBtn}</div>`;
 }
 
 async function saveComment(matchId, maxLen) {
@@ -965,23 +1005,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initMatchTimers();
     initAutoFetchTimer();
 
-    // Restore or auto-collapse leaderboards on mobile
-    ['ucl', 'pl', 'wc'].forEach(t => {
-        ['lbm', 'lbf'].forEach(prefix => {
-            const id = `${prefix}-${t}`;
-            const body = document.getElementById(id);
-            const chev = document.getElementById(id + '-chev');
-            if (!body) return;
-            let stored;
-            try { stored = sessionStorage.getItem('lb_' + id); } catch(e) {}
-            const isMobile = window.innerWidth < 900;
-            const collapse = stored !== null ? stored === '0' : isMobile;
-            if (collapse) {
-                body.classList.add('lb-collapsed');
-                if (chev) chev.classList.add('lb-chev-closed');
-            }
-        });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.pred-modal-overlay.open').forEach(el => el.classList.remove('open'));
+            document.body.classList.remove('pred-modal-open');
+        }
     });
+
 
     // scroll all comment containers to bottom
     document.querySelectorAll('.mc-scroll').forEach(el => { el.scrollTop = el.scrollHeight; });
@@ -1094,6 +1124,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="${rc}">${m.result}</span>
                 </div>`;
             }).join('');
+        }
+        if (data.stats) {
+            const s = data.stats;
+            const mcX = s.most_common_count > 1 ? ` ×${s.most_common_count}` : '';
+            ttMatches.innerHTML += `<div class="tt-stats-sep"></div>
+<div class="tt-stats-row">
+  <span class="tt-stat-pos">+${s.avg_scored}</span><span class="tt-stat-dim">/</span><span class="tt-stat-neg">\u2212${s.avg_conceded}</span><span class="tt-stat-dim">&nbsp;г/мат</span>
+  <span class="tt-stat-dot">&middot;</span>
+  <span class="tt-w">${s.w}</span><span class="tt-stat-dim">/</span><span class="tt-d">${s.d}</span><span class="tt-stat-dim">/</span><span class="tt-l">${s.l}</span>
+</div>
+<div class="tt-stats-row">
+  <span class="tt-stat-dim">Счёт: </span><span class="tt-stat-val">${s.most_common}${mcX}</span><span class="tt-stat-dim">&nbsp;из ${s.played} м.</span>
+  <span class="tt-stat-dot">&middot;</span>
+  <span class="tt-stat-dim">ИЭ:&nbsp;</span><span class="tt-stat-ie">${s.efficiency_index}</span>
+</div>`;
         }
 
         ttEl.style.display = 'block';

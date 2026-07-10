@@ -148,9 +148,6 @@ def save_prediction():
 @admin_required
 @limiter.limit("10 per minute")
 def set_featured_matches():
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-
     data = request.get_json()
     featured_ids = set(data.get("match_ids", []))
     league = data.get("league", "UCL")
@@ -172,98 +169,14 @@ def set_featured_matches():
     lock_row = Setting.query.get(f"featured_manual_lock_{league}") or Setting(key=f"featured_manual_lock_{league}", value="0")
     lock_row.value = "1"
     db.session.merge(lock_row)
+    # Clear Bender fingerprint so the next scheduler run will re-generate picks
+    fp_row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
+    fp_row.value = ""
+    db.session.merge(fp_row)
     db.session.commit()
-
-    featured_matches = [m for m in matches if m.featured]
-
-    # Extract data before thread — ORM objects must not cross session boundaries
-    match_data = [
-        (m.id, m.home_team.display_name, m.away_team.display_name,
-         f"{league}:{m.home_team.display_name} vs {m.away_team.display_name}",
-         m.home_team.name, m.away_team.name)
-        for m in featured_matches
-    ]
 
     admin = get_current_user()
     log_action(admin.id if admin else None, "featured_set", f"Матчи для ставок: {len(featured_ids)} шт.")
-
-    if match_data:
-        app = current_app._get_current_object()
-
-        def generate_bender_async():
-            with app.app_context():
-                from ..services.groq_api import generate_bender_pick
-                from ..services.odds_api import fetch_odds_for_matches
-                from ..seed import BENDER_USERNAME
-
-                Commentary.query.filter(
-                    Commentary.match_label.like(f"{league}:%")
-                ).delete(synchronize_session=False)
-                db.session.commit()
-
-                bender = User.query.filter_by(username=BENDER_USERNAME).first()
-                bender_id = bender.id if bender else None
-
-                from ..seed import LEAGUE_TO_TOURNAMENT
-                tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
-
-                # Fetch odds first (unless disabled); use English team names for matching
-                odds_enabled_s = Setting.query.get("odds_fetch_enabled")
-                if odds_enabled_s is None or odds_enabled_s.value != "0":
-                    odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
-                    odds_map = fetch_odds_for_matches(odds_input, league)
-                else:
-                    odds_map = {}
-
-                # Persist odds to Match rows
-                if odds_map:
-                    for mid, odds in odds_map.items():
-                        m = Match.query.get(mid)
-                        if m:
-                            m.odds_home = odds.get("home")
-                            m.odds_draw = odds.get("draw")
-                            m.odds_away = odds.get("away")
-                    db.session.commit()
-
-                def call_groq(item):
-                    match_id, home, away, label, _hen, _aen = item
-                    with app.app_context():
-                        try:
-                            result = generate_bender_pick(
-                                home, away,
-                                tournament=tournament,
-                                odds=odds_map.get(match_id),
-                            )
-                            return (match_id, label, result)
-                        except Exception as e:
-                            print(f"[groq] bender skipped for {label}: {e}")
-                            return (match_id, label, None)
-
-                with ThreadPoolExecutor(max_workers=min(len(match_data), 5)) as executor:
-                    results = list(executor.map(call_groq, match_data))
-
-                for match_id, label, result in results:
-                    if not result:
-                        continue
-                    hs, as_, text = result
-                    if bender_id:
-                        pred = Prediction.query.filter_by(
-                            user_id=bender_id, match_id=match_id
-                        ).first()
-                        if pred:
-                            pred.home_score = hs
-                            pred.away_score = as_
-                        else:
-                            db.session.add(Prediction(
-                                user_id=bender_id, match_id=match_id,
-                                home_score=hs, away_score=as_,
-                            ))
-                    db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
-
-                db.session.commit()
-
-        threading.Thread(target=generate_bender_async, daemon=True).start()
-
     return jsonify({"ok": True, "featured": len(featured_ids)})
 
 
@@ -987,6 +900,37 @@ def update_prompt_hint(hint_id):
     return jsonify({"ok": True, "id": hint.id, "active": hint.active})
 
 
+@api_bp.route("/admin/bender-picks", methods=["POST"])
+@superuser_required
+@limiter.limit("10 per minute")
+def trigger_bender_picks():
+    data = request.get_json(silent=True) or {}
+    league = (data.get("league") or "").upper()
+    leagues = [league] if league in ("UCL", "PL", "WC") else ["UCL", "PL", "WC"]
+
+    app = current_app._get_current_object()
+    from ..services.auto_featured import run_bender_for_league
+
+    total = 0
+    for lg in leagues:
+        n = run_bender_for_league(app, lg)
+        if n:
+            featured = Match.query.join(Tour).filter(
+                Tour.league == lg, Match.featured == True, Match.status == "scheduled"
+            ).all()
+            ids_str = ",".join(str(m.id) for m in sorted(featured, key=lambda x: x.id))
+            fp_row = Setting.query.get(f"bender_fp_{lg}") or Setting(key=f"bender_fp_{lg}")
+            fp_row.value = ids_str
+            db.session.merge(fp_row)
+            total += n
+    db.session.commit()
+
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "bender_manual",
+               f"Ручной запрос прогнозов: {', '.join(leagues)}, {total} матчей")
+    return jsonify({"ok": True, "started": total})
+
+
 @api_bp.route("/settings/auto-fetch", methods=["POST"])
 @superuser_required
 def set_auto_fetch():
@@ -1176,7 +1120,7 @@ def set_team_form_count():
 def save_match_comment(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
-    if match.status != "finished":
+    if match.status not in ("finished", "live"):
         return jsonify({"error": "Матч ещё не завершён"}), 400
 
     data = request.get_json(silent=True) or {}

@@ -47,6 +47,28 @@ def _auto_fetch_job():
                     print(f"[scheduler] {ts} {league}: auto-featured {n} matches")
             except Exception as e:
                 print(f"[scheduler] {ts} {league} auto-featured failed: {e}")
+
+            try:
+                with _app.app_context():
+                    from .models import Match, Tour, Setting, db
+                    featured = (
+                        Match.query.join(Tour)
+                        .filter(Tour.league == league, Match.featured == True, Match.status == "scheduled")
+                        .all()
+                    )
+                    ids_str = ",".join(str(m.id) for m in sorted(featured, key=lambda x: x.id))
+                    fp_row = Setting.query.get(f"bender_fp_{league}")
+                    saved_fp = fp_row.value if fp_row else ""
+                    if ids_str and ids_str != saved_fp:
+                        row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
+                        row.value = ids_str
+                        db.session.merge(row)
+                        db.session.commit()
+                        from .services.auto_featured import run_bender_for_league
+                        run_bender_for_league(_app, league)
+                        print(f"[scheduler] {ts} {league}: Bender triggered (new featured set)")
+            except Exception as e:
+                print(f"[scheduler] {ts} {league} bender-check failed: {e}")
     print(f"[scheduler] {ts} — auto-fetch done")
 
 
