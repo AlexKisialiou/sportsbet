@@ -454,6 +454,8 @@
 
 </div><!-- .page-content-pad -->
 
+<div id="tip-popup" style="display:none;"></div>
+
 <div id="team-tooltip" style="display:none;">
     <div class="tt-header">
         <img id="tt-crest" style="width:18px;height:18px;object-fit:contain;" src="" alt="" onerror="this.style.display='none'">
@@ -1180,6 +1182,36 @@ document.addEventListener('DOMContentLoaded', () => {
             activeTouch = el;
             showTooltip(el);
         }
+    }, { passive: false });
+})();
+
+(function() {
+    const popup = document.getElementById('tip-popup');
+    if (!popup) return;
+    let activeTip = null;
+    const SEL = '.lb-th[title], .lb-day-winner[title], .online-dot[title], .streak-badge[title]';
+    document.addEventListener('touchstart', e => {
+        const el = e.target.closest(SEL);
+        if (!el) {
+            if (popup.style.display !== 'none') { popup.style.display = 'none'; activeTip = null; }
+            return;
+        }
+        e.preventDefault();
+        if (activeTip === el && popup.style.display !== 'none') {
+            popup.style.display = 'none'; activeTip = null; return;
+        }
+        activeTip = el;
+        popup.textContent = el.getAttribute('title');
+        popup.style.display = 'block';
+        requestAnimationFrame(() => {
+            const rect = el.getBoundingClientRect();
+            const pw = popup.offsetWidth, ph = popup.offsetHeight;
+            let left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+            let top = rect.bottom + 8;
+            if (top + ph > window.innerHeight - 8) top = rect.top - ph - 8;
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+        });
     }, { passive: false });
 })();
 </script>

@@ -965,6 +965,22 @@ body.pred-modal-open { overflow: hidden; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
 
+/* ── Generic tap tooltip (mobile title replacement) ── */
+#tip-popup {
+    position: fixed;
+    z-index: 9998;
+    background: var(--surface-hi);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 13px;
+    font-size: .8rem;
+    color: var(--text);
+    max-width: 260px;
+    line-height: 1.45;
+    box-shadow: 0 4px 20px rgba(0,0,0,.55);
+    pointer-events: none;
+}
+
 /* ── Team form tooltip ── */
 .team-hover { cursor: default; }
 #team-tooltip {
