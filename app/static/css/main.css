@@ -1097,8 +1097,11 @@ body.pred-modal-open { overflow: hidden; }
     font-size: .6rem;
     color: var(--text);
     font-weight: 400;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.2;
     margin-top: 2px;
+    text-align: center;
 }
 .lb-th-hits { width: 56px; color: var(--text-muted); font-size: 0.72rem; }
 .lb-th-bet { width: 56px; }
@@ -1247,18 +1250,12 @@ body.pred-modal-open { overflow: hidden; }
     .match-card { padding: 14px 14px; border-radius: 16px; }
 }
 
-/* ── Mobile: horizontal chip scroll ── */
+/* ── Mobile: chip wrap (no horizontal scroll) ── */
 @media (max-width: 760px) {
     .pred-chips-row {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 10px;
-        gap: 7px;
+        flex-wrap: wrap;
+        gap: 6px;
     }
-    .pred-chips-row::-webkit-scrollbar { display: none; }
-    .pred-chip { flex-shrink: 0; }
 }
 
 /* ── Mobile: betting bar ── */

@@ -43,7 +43,7 @@
             {% for rnd in data.pred_rounds %}
             <div class="lb-th lb-th-day{% if loop.first %} lb-sep{% endif %}" title="Очки за {% if rnd == 0 %}архивные матчи{% else %}день {{ rnd }}{% endif %}">
                 <span>{% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}</span>
-                {% if data.round_date_labels.get(rnd) %}<span class="lb-th-date">{{ data.round_date_labels.get(rnd) }}</span>{% endif %}
+                {% if data.round_date_short.get(rnd) %}<span class="lb-th-date">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
             </div>
             {% endfor %}
             {% if data.user_fill_status and data.scheduled_total > 0 %}<div class="lb-th lb-th-bet lb-sep" title="Сколько прогнозов сделано из доступных матчей текущего дня">Прогнозы / день</div>{% endif %}
