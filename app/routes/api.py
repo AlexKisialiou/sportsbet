@@ -185,9 +185,10 @@ def set_featured_matches():
     lock_row.value = "1"
     db.session.merge(lock_row)
     # Обновляем fingerprint под новый набор, чтобы скедулер не дублировал запуск
+    import hashlib
     ids_str = ",".join(str(i) for i in sorted(featured_ids))
     fp_row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
-    fp_row.value = ids_str
+    fp_row.value = hashlib.md5(ids_str.encode()).hexdigest()
     db.session.merge(fp_row)
     db.session.commit()
 

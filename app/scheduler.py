@@ -58,12 +58,14 @@ def _auto_fetch_job():
                         .filter(Tour.league == league, Match.featured == True, Match.status == "scheduled")
                         .all()
                     )
+                    import hashlib
                     ids_str = ",".join(str(m.id) for m in sorted(featured, key=lambda x: x.id))
+                    ids_hash = hashlib.md5(ids_str.encode()).hexdigest()
                     fp_row = Setting.query.get(f"bender_fp_{league}")
                     saved_fp = fp_row.value if fp_row else ""
-                    if ids_str and ids_str != saved_fp:
+                    if ids_str and ids_hash != saved_fp:
                         row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
-                        row.value = ids_str
+                        row.value = ids_hash
                         db.session.merge(row)
                         db.session.commit()
                         from .services.auto_featured import run_bender_for_league
