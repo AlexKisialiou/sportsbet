@@ -140,8 +140,10 @@ def apply_featured_auto(league, app):
         return _do_apply(league, app)
 
 
-def run_bender_for_league(app, league):
-    """Collect current featured scheduled matches and start Bender + odds in background."""
+def run_bender_for_league(app, league, active_only=False):
+    """Запустить Бендера для лиги.
+    active_only=True — только активный игровой день (минимальный featured_round).
+    """
     with app.app_context():
         from ..models import Match, Tour
         matches = (
@@ -151,6 +153,17 @@ def run_bender_for_league(app, league):
         )
         if not matches:
             return 0
+
+        if active_only:
+            # Берём только матчи активного дня — минимальный featured_round среди scheduled
+            rounds = [m.featured_round for m in matches if m.featured_round is not None]
+            if rounds:
+                min_round = min(rounds)
+                matches = [m for m in matches if m.featured_round == min_round]
+            else:
+                # Матчи без round — все показываем
+                matches = [m for m in matches if m.featured_round is None]
+
         match_data = [
             (
                 m.id,

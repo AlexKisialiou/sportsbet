@@ -191,10 +191,10 @@ def set_featured_matches():
     db.session.merge(fp_row)
     db.session.commit()
 
-    # Запускаем Бендера сразу, не ждём скедулера
+    # Запускаем Бендера сразу только для активного дня — остальные подтянет скедулер
     if featured_ids:
         from ..services.auto_featured import run_bender_for_league
-        run_bender_for_league(current_app._get_current_object(), league)
+        run_bender_for_league(current_app._get_current_object(), league, active_only=True)
 
     admin = get_current_user()
     log_action(admin.id if admin else None, "featured_set", f"Матчи для ставок: {len(featured_ids)} шт.")
