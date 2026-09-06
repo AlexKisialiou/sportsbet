@@ -45,6 +45,10 @@ class Match(db.Model):
     kickoff_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default="scheduled")  # scheduled / live / finished
     featured = db.Column(db.Boolean, default=False, nullable=False)
+    featured_round = db.Column(db.Integer, nullable=True)
+    odds_home = db.Column(db.Float, nullable=True)
+    odds_draw = db.Column(db.Float, nullable=True)
+    odds_away = db.Column(db.Float, nullable=True)
 
     home_team = db.relationship("Team", foreign_keys=[home_team_id])
     away_team = db.relationship("Team", foreign_keys=[away_team_id])
@@ -58,6 +62,11 @@ class Score(db.Model):
     match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, unique=True)
     home_score = db.Column(db.Integer, nullable=False, default=0)
     away_score = db.Column(db.Integer, nullable=False, default=0)
+    win_type = db.Column(db.String(3), nullable=True)  # 'aet' or 'pen', None = regular
+    extra_time_home = db.Column(db.Integer, nullable=True)
+    extra_time_away = db.Column(db.Integer, nullable=True)
+    penalties_home = db.Column(db.Integer, nullable=True)
+    penalties_away = db.Column(db.Integer, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     manual_lock = db.Column(db.Boolean, default=False, nullable=False)
 
@@ -76,6 +85,7 @@ class User(db.Model):
     avatar_color = db.Column(db.String(10), nullable=True)
     superadmin_note = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, nullable=True)
 
     predictions = db.relationship("Prediction", backref="user", lazy=True)
 
@@ -158,6 +168,30 @@ class ReleaseNote(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
 
 
+class MatchComment(db.Model):
+    __tablename__ = "match_comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    text = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship("User")
+
+
+class CommentRead(db.Model):
+    __tablename__ = "comment_reads"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False)
+    last_read_comment_id = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (db.UniqueConstraint("user_id", "match_id"),)
+
+
 class ActivityLog(db.Model):
     __tablename__ = "activity_log"
 
@@ -169,3 +203,12 @@ class ActivityLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", backref="activity_logs")
+
+
+class HofEntry(db.Model):
+    __tablename__ = "hof_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tournament = db.Column(db.String(200), nullable=False)
+    champion = db.Column(db.String(100), nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)

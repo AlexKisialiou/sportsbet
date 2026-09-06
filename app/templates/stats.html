@@ -1,0 +1,827 @@
+{% extends "base.html" %}
+{% from '_macros.html' import user_avatar %}
+{% block title %}Статистика — {{ APP_NAME }}{% endblock %}
+
+{% block extra_styles %}
+<style>
+.stats-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 0 8px;
+    flex-wrap: wrap;
+}
+.stats-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: .03em;
+}
+.league-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+.league-tab {
+    padding: 5px 16px;
+    border-radius: 20px;
+    font-size: .8rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all .15s;
+    background: var(--surface);
+}
+.league-tab:hover { border-color: var(--accent); color: var(--accent); }
+.league-tab.active {
+    background: rgba(var(--accent-rgb), .15);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.stats-section-title {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-sub);
+}
+.stats-table-wrap {
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-deep) 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+.stats-th {
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-label);
+    padding: 8px 14px;
+    text-align: right;
+    background: var(--surface-deep);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.stats-th:first-child, .stats-th:nth-child(2) { text-align: left; }
+.stats-table { width: 100%; border-collapse: collapse; }
+.stats-table tr:hover td { background: rgba(var(--accent-rgb), .04); }
+.stats-td {
+    padding: 9px 14px;
+    font-size: .85rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border-sub);
+    text-align: right;
+    white-space: nowrap;
+}
+.stats-td:first-child { text-align: center; width: 36px; }
+.stats-pts { font-weight: 700; color: #fff; }
+.stats-exact { color: #00c87a; font-weight: 600; }
+.stats-winner { color: var(--accent); }
+.stats-miss { color: var(--text-label); }
+.pct-bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.pct-bar { width: 44px; height: 4px; background: var(--surface-hi); border-radius: 2px; overflow: hidden; }
+.pct-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+.stats-pct { font-size: .78rem; color: var(--text-label); }
+@media (max-width: 599px) {
+  .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .stats-scroll .stats-table-wrap { overflow: visible; }
+  .stats-scroll .stats-table { width: auto; }
+  .stats-th { padding: 7px 10px; font-size: .6rem; }
+  .stats-td { padding: 8px 10px; font-size: .8rem; }
+  .league-tabs { gap: 4px; }
+  .league-tab { padding: 5px 12px; font-size: .75rem; }
+}
+.chart-wrap {
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-deep) 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 20px 16px;
+    margin-bottom: 32px;
+    position: relative;
+}
+.chart-empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: .85rem;
+    padding: 32px 0;
+}
+.top-scores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 32px;
+}
+@media (max-width: 900px) { .top-scores-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .top-scores-grid { grid-template-columns: 1fr; } }
+.gd-badge {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: rgba(var(--accent-rgb), .18);
+    color: var(--accent);
+    border: 1px solid rgba(var(--accent-rgb), .35);
+    border-radius: 20px;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+.gd-date { font-size: .78rem; color: var(--text-muted); }
+.mm-table { width: 100%; }
+.mm-group-row td {
+    background: var(--surface-deep);
+    padding: 7px 14px;
+    border-top: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.mm-th-match { text-align: left !important; min-width: 180px; }
+.mm-th-score { min-width: 46px; }
+.mm-th-user  { min-width: 72px; }
+.mm-td-match { text-align: left !important; }
+.mm-td-score { font-weight: 700; color: #fff; text-align: center !important; }
+.mm-td-cell  { text-align: center !important; padding: 6px 8px !important; vertical-align: middle; }
+.mm-team { font-size: .82rem; }
+.mm-vs { color: var(--text-dim); font-size: .75rem; }
+.mm-pred { font-size: .84rem; font-weight: 600; line-height: 1.2; }
+.mm-pts-line { font-size: .68rem; margin-top: 2px; }
+.mm-exact .mm-pred, .mm-exact .mm-pts-line { color: #00c87a; }
+.mm-winner .mm-pred, .mm-winner .mm-pts-line { color: var(--accent); }
+.mm-none .mm-pred { color: var(--text-muted); }
+.mm-none .mm-pts-line { color: var(--text-dim); }
+.mm-nopred { color: var(--text-dim); font-size: .85rem; }
+/* Collapsible predictions */
+/* Column highlight */
+.mm-table td.col-hl, .mm-table th.col-hl {
+    background: rgba(var(--accent-rgb), .10) !important;
+    outline: none;
+}
+.mm-table th.col-hl {
+    background: rgba(var(--accent-rgb), .18) !important;
+}
+.mm-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-bottom: 16px;
+    transition: border-color .15s, color .15s;
+    width: 100%;
+    text-align: left;
+}
+.mm-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+.mm-toggle-arrow { margin-left: auto; transition: transform .2s; font-style: normal; }
+.mm-toggle-btn.open .mm-toggle-arrow { transform: rotate(90deg); }
+.mm-body { display: none; }
+.mm-body.open { display: block; }
+.ts-th:hover .ts-arr { color: var(--accent); }
+.ts-active-desc { color: #a78bfa !important; }
+.ts-arr { font-style: normal; font-size: .7em; opacity: .7; margin-left: 2px; }
+.ts-info { position: relative; display: inline-block; margin-left: 4px; cursor: help; }
+.ts-info-icon { font-size: .68rem; color: #4a5a80; border: 1px solid #2a3a5a; border-radius: 50%; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; line-height: 1; vertical-align: middle; }
+.ts-info:hover .ts-info-icon { color: #a78bfa; border-color: #a78bfa; }
+.ts-info-tip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 250px;
+    background: #0e1624;
+    border: 1px solid #2a3a5a;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: .75rem;
+    font-weight: 400;
+    color: #8a9ab5;
+    line-height: 1.5;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: normal;
+    z-index: 10000;
+    box-shadow: 0 6px 20px rgba(0,0,0,.7);
+    pointer-events: none;
+}
+.ts-info-tip strong { color: #a78bfa; font-weight: 700; }
+.ts-info:hover .ts-info-tip { display: block; }
+/* ── View tabs ── */
+.view-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+.view-tab {
+    padding: 6px 18px; border-radius: 20px; font-size: .83rem; font-weight: 700;
+    border: 1px solid var(--border); color: var(--text-muted); text-decoration: none;
+    transition: all .15s; background: var(--surface);
+}
+.view-tab:hover { border-color: var(--accent); color: var(--accent); }
+.view-tab.active { background: rgba(var(--accent-rgb),.18); border-color: var(--accent); color: var(--accent); }
+/* ── Hall of Fame ── */
+.hof-league-section { margin-bottom: 48px; }
+.hof-league-title {
+    font-size: .82rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 20px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-sub);
+}
+.hof-podium { display: flex; gap: 10px; justify-content: center; align-items: flex-end; margin-bottom: 28px; }
+.hof-place {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    flex: 1; max-width: 200px; padding: 16px 12px 14px;
+    border-radius: 14px; border: 1px solid var(--border); background: var(--surface);
+    text-align: center;
+}
+.hof-place-1 { border-color: #d4af37; background: linear-gradient(160deg, rgba(212,175,55,.08) 0%, var(--surface-deep) 100%); min-height: 176px; order: 2; }
+.hof-place-2 { border-color: #a0a0a0; background: linear-gradient(160deg, rgba(160,160,160,.05) 0%, var(--surface-deep) 100%); min-height: 148px; order: 1; }
+.hof-place-3 { border-color: #cd7f32; background: linear-gradient(160deg, rgba(205,127,50,.05) 0%, var(--surface-deep) 100%); min-height: 138px; order: 3; }
+.hof-medal { font-size: 1.8rem; line-height: 1; }
+.hof-place-name { font-size: .85rem; font-weight: 700; color: var(--text); }
+.hof-place-pts { font-size: 1.5rem; font-weight: 800; line-height: 1.1; }
+.hof-pts-1 { color: #d4af37; }
+.hof-pts-2 { color: #a0a0a0; }
+.hof-pts-3 { color: #cd7f32; }
+.hof-place-sub { font-size: .68rem; color: var(--text-dim); }
+.hof-empty { color: var(--text-dim); font-size: .85rem; text-align: center; padding: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.hof-days-title { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-label); margin-bottom: 10px; }
+.hof-day-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--border-sub); flex-wrap: wrap;
+}
+.hof-day-num {
+    font-size: .68rem; font-weight: 700; color: var(--accent); letter-spacing: .06em;
+    text-transform: uppercase; background: rgba(var(--accent-rgb),.1);
+    border: 1px solid rgba(var(--accent-rgb),.25); border-radius: 20px;
+    padding: 2px 9px; white-space: nowrap; flex-shrink: 0;
+}
+.hof-day-date { font-size: .72rem; color: var(--text-dim); min-width: 44px; flex-shrink: 0; }
+.hof-day-winners { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
+.hof-winner-chip {
+    display: flex; align-items: center; gap: 5px;
+    background: rgba(212,175,55,.08); border: 1px solid rgba(212,175,55,.2);
+    border-radius: 20px; padding: 3px 10px;
+}
+.hof-winner-name { font-size: .82rem; font-weight: 700; color: var(--text); }
+.hof-winner-pts { font-size: .75rem; font-weight: 700; color: #d4af37; }
+.hof-runners { font-size: .72rem; color: var(--text-dim); margin-left: auto; }
+/* History table */
+.hof-history-section { margin-bottom: 40px; }
+.hof-history-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 16px; border-bottom: 1px solid var(--border-sub);
+}
+.hof-history-row:last-child { border-bottom: none; }
+.hof-history-tournament { flex: 1; font-size: .85rem; color: var(--text-muted); }
+.hof-history-champion {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .9rem; font-weight: 700; color: #d4af37;
+}
+@media (max-width: 600px) {
+    .hof-podium { gap: 6px; }
+    .hof-place { padding: 12px 8px 10px; }
+    .hof-place-pts { font-size: 1.2rem; }
+    .hof-place-name { font-size: .78rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stats-header">
+    <a href="/" style="font-size:.8rem;color:var(--text-muted);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;">← Назад</a>
+    <span class="stats-title">📊 Статистика</span>
+</div>
+
+<!-- View tabs -->
+<div class="view-tabs">
+    <a href="/stats?view=players{% if active_league and view != 'hall' %}&league={{ active_league }}{% endif %}" class="view-tab {% if view == 'players' %}active{% endif %}">📊 Игроки</a>
+    <a href="/stats?view=teams{% if active_league and view != 'hall' %}&league={{ active_league }}{% endif %}" class="view-tab {% if view == 'teams' %}active{% endif %}">🏟 Команды</a>
+    <a href="/stats?view=hall" class="view-tab {% if view == 'hall' %}active{% endif %}">🏆 Зал Славы</a>
+</div>
+
+<!-- League tabs (not shown for Hall of Fame) -->
+{% if view != 'hall' %}
+<div class="league-tabs">
+    {% for lg in enabled_leagues %}
+    <a href="/stats?view={{ view }}&league={{ lg }}" class="league-tab {% if active_league == lg %}active{% endif %}">{{ league_names[lg] }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if view == 'players' %}
+
+<!-- ── Общая статистика ── -->
+<div class="stats-section-title">Общая статистика</div>
+<div class="stats-scroll"><div class="stats-table-wrap">
+<table class="stats-table">
+    <thead>
+        <tr>
+            <th class="stats-th">#</th>
+            <th class="stats-th" style="text-align:left;">Игрок</th>
+            <th class="stats-th">Очки</th>
+            <th class="stats-th">Точных ⚽</th>
+            <th class="stats-th">Результат ✓</th>
+            <th class="stats-th">Промахов</th>
+            <th class="stats-th">Всего</th>
+            <th class="stats-th">Точных %</th>
+            <th class="stats-th">Точность</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for s in overall_stats %}
+    <tr>
+        <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+        <td class="stats-td" style="text-align:left;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                {{ user_avatar(s.user) }}
+                <span>{{ s.user.display_name }}</span>
+            </div>
+        </td>
+        <td class="stats-td stats-pts">{{ s.points }}</td>
+        <td class="stats-td stats-exact">{{ s.exact }}</td>
+        <td class="stats-td stats-winner">{{ s.winner }}</td>
+        <td class="stats-td stats-miss">{{ s.none }}</td>
+        <td class="stats-td" style="color:var(--text-muted);">{{ s.total }}</td>
+        <td class="stats-td">
+            <div class="pct-bar-wrap">
+                <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ s.exact_accuracy }}%;background:#00c87a;"></div></div>
+                <span class="stats-pct" style="color:#00c87a;">{{ s.exact_accuracy }}%</span>
+            </div>
+        </td>
+        <td class="stats-td">
+            <div class="pct-bar-wrap">
+                <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ s.accuracy }}%;"></div></div>
+                <span class="stats-pct">{{ s.accuracy }}%</span>
+            </div>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="9" class="stats-td" style="text-align:center;color:var(--text-dim);padding:24px;">Нет данных</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+<!-- ── Рейтинг точности ── -->
+<div class="stats-section-title">Рейтинг точности</div>
+<div class="chart-wrap">
+{% if overall_stats and overall_stats | selectattr('total', 'gt', 0) | list %}
+    <canvas id="accuracyChart" style="max-height:260px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет данных</div>
+{% endif %}
+</div>
+
+<!-- ── Динамика очков по турам ── -->
+<div class="stats-section-title">Динамика очков по турам</div>
+<div class="chart-wrap">
+{% if chart_labels %}
+    <canvas id="pointsChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+<!-- ── Очки по игровым дням ── -->
+<div class="stats-section-title">Очки по игровым дням</div>
+<div class="chart-wrap">
+{% if bar_labels %}
+    <canvas id="barChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+<!-- ── Отклонение от среднего ── -->
+{% if bar_labels %}
+<div class="stats-section-title">Отклонение от среднего по дням</div>
+<div class="chart-wrap">
+    <canvas id="divergingChart" style="max-height:320px;"></canvas>
+</div>
+{% endif %}
+
+<!-- ── Динамика мест ── -->
+<div class="stats-section-title">Динамика мест в таблице лидеров</div>
+<div class="chart-wrap">
+{% if chart_labels %}
+    <canvas id="rankChart" style="max-height:320px;"></canvas>
+{% else %}
+    <div class="chart-empty">Нет завершённых матчей для отображения</div>
+{% endif %}
+</div>
+
+<!-- ── Топ счётов ── -->
+<div class="top-scores-grid">
+    <div>
+        <div class="stats-section-title">Топ-10 счётов матчей</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Матчей</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_actual_scores %}
+                {% set max_val = top_actual_scores[0].count %}
+                {% for s in top_actual_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-pts">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-dim);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div>
+        <div class="stats-section-title">Топ-10 угаданных счётов ⚽</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Угадано</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_exact_scores %}
+                {% set max_val = top_exact_scores[0].count %}
+                {% for s in top_exact_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-label);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-exact">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;background:#00c87a;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-label);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div>
+        <div class="stats-section-title">Топ-10 прогнозов игроков</div>
+        <div class="stats-table-wrap">
+        <table class="stats-table">
+            <thead><tr>
+                <th class="stats-th">#</th>
+                <th class="stats-th" style="text-align:left;">Счёт</th>
+                <th class="stats-th">Прогнозов</th>
+                <th class="stats-th"></th>
+            </tr></thead>
+            <tbody>
+            {% if top_pred_scores %}
+                {% set max_val = top_pred_scores[0].count %}
+                {% for s in top_pred_scores %}
+                <tr>
+                    <td class="stats-td" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+                    <td class="stats-td" style="text-align:left;font-weight:600;">{{ s.score }}</td>
+                    <td class="stats-td stats-exact">{{ s.count }}</td>
+                    <td class="stats-td" style="width:60px;">
+                        <div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:{{ (s.count / max_val * 100)|int }}%;"></div></div></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="4" class="stats-td" style="text-align:center;color:var(--text-dim);">Нет данных</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<!-- ── Прогнозы по матчам (сворачиваемые) ── -->
+{% if rounds_table %}
+<div class="stats-section-title">Прогнозы по матчам</div>
+<button class="mm-toggle-btn" id="mm-toggle" onclick="toggleMatrix()">
+    📋 Показать историю прогнозов
+    <i class="mm-toggle-arrow">›</i>
+</button>
+<div class="mm-body" id="mm-body">
+<div class="stats-scroll"><div class="stats-table-wrap" style="margin-bottom:32px;">
+<table class="stats-table mm-table">
+    <thead>
+        <tr>
+            <th class="stats-th mm-th-match" style="text-align:left;">Матч</th>
+            <th class="stats-th mm-th-score">Счёт</th>
+            {% for u in users %}
+            <th class="stats-th mm-th-user">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:2px 0;">
+                    {{ user_avatar(u) }}
+                    <span style="font-size:.6rem;color:var(--text-muted);text-transform:none;letter-spacing:0;white-space:nowrap;">{{ u.display_name }}</span>
+                </div>
+            </th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for rd in rounds_table %}
+        <tr class="mm-group-row">
+            <td colspan="{{ users|length + 2 }}">
+                <span class="gd-badge">{% if rd.index == 0 %}Архив{% else %}Игровой день {{ rd.index }}{% endif %}</span>
+                {% if rd.date_label %}<span class="gd-date" style="margin-left:8px;">{{ rd.date_label }}</span>{% endif %}
+            </td>
+        </tr>
+        {% for m in rd.matches %}
+        <tr>
+            <td class="stats-td mm-td-match">
+                <span class="mm-team">{{ m.home }}</span>
+                <span class="mm-vs"> — </span>
+                <span class="mm-team">{{ m.away }}</span>
+            </td>
+            <td class="stats-td mm-td-score">{{ m.score }}</td>
+            {% for cell in m.user_cells %}
+            <td class="stats-td mm-td-cell{% if cell.reason == 'exact' %} mm-exact{% elif cell.reason == 'winner' %} mm-winner{% elif cell.reason == 'none' %} mm-none{% endif %}">
+                {% if cell.pred %}
+                    <div class="mm-pred">{{ cell.pred }}</div>
+                    <div class="mm-pts-line">
+                        {% if cell.reason == 'exact' %}+{{ cell.points }} ⚽
+                        {% elif cell.reason == 'winner' %}+{{ cell.points }} ✓
+                        {% elif cell.reason == 'none' %}0 ✗
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <span class="mm-nopred">—</span>
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+</div><!-- /mm-body -->
+{% endif %}
+
+{% elif view == 'teams' %}
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+    <div class="stats-section-title" style="margin-bottom:0;border-bottom:none;padding-bottom:0;">Статистика команд</div>
+    <span class="ts-info"><i class="ts-info-icon">i</i><div class="ts-info-tip"><strong>Индекс эффективности (ИЭ)</strong><br>Средний балл за матч с учётом силы соперника и разницы голов.<br><br>Победа над атакующей командой ценится больше, чем над слабой. Крупная победа — больше, чем минимальная. Ничьи и поражения дают меньше очков.</div></span>
+</div>
+<div style="height:1px;background:var(--border-sub);margin-bottom:12px;"></div>
+<div class="stats-scroll"><div class="stats-table-wrap">
+<table class="stats-table" id="team-stats-table">
+    <thead><tr>
+        <th class="stats-th">#</th>
+        <th class="stats-th ts-th" data-col="0" style="text-align:left;cursor:pointer;user-select:none;">Команда <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="1" style="cursor:pointer;user-select:none;">М <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="2" style="cursor:pointer;user-select:none;color:#00c87a;">В <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="3" style="cursor:pointer;user-select:none;color:#d4af37;">Н <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="4" style="cursor:pointer;user-select:none;color:#e05555;">П <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="5" style="cursor:pointer;user-select:none;">Г+ <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="6" style="cursor:pointer;user-select:none;">Г− <span class="ts-arr">↕</span></th>
+        <th class="stats-th ts-th" data-col="7" style="cursor:pointer;user-select:none;">±Г <span class="ts-arr">↕</span></th>
+        <th class="stats-th">Счёт</th>
+        <th class="stats-th ts-th ts-active-desc" data-col="8" style="cursor:pointer;user-select:none;color:#a78bfa;">ИЭ <span class="ts-arr">↓</span></th>
+    </tr></thead>
+    <tbody>
+    {% for t in team_stats %}
+    <tr>
+        <td class="stats-td ts-rank" style="color:var(--text-dim);font-size:.75rem;">{{ loop.index }}</td>
+        <td class="stats-td" style="text-align:left;"><div style="display:flex;align-items:center;gap:7px;">{% if t.team_crest %}<img src="{{ t.team_crest }}" style="width:18px;height:18px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">{% endif %}<span>{{ t.team_name }}</span></div></td>
+        <td class="stats-td" data-val="{{ t.played }}" style="color:var(--text-muted);">{{ t.played }}</td>
+        <td class="stats-td" data-val="{{ t.w }}" style="color:#00c87a;font-weight:600;">{{ t.w }}</td>
+        <td class="stats-td" data-val="{{ t.d }}" style="color:#d4af37;">{{ t.d }}</td>
+        <td class="stats-td" data-val="{{ t.l }}" style="color:#e05555;">{{ t.l }}</td>
+        <td class="stats-td" data-val="{{ t.avg_scored }}" style="color:#00c87a;">+{{ t.avg_scored }}</td>
+        <td class="stats-td" data-val="{{ t.avg_conceded }}" style="color:#e05555;">−{{ t.avg_conceded }}</td>
+        <td class="stats-td" data-val="{{ t.goal_diff }}" style="font-weight:{% if t.goal_diff != 0 %}600{% else %}400{% endif %};color:{% if t.goal_diff > 0 %}#00c87a{% elif t.goal_diff < 0 %}#e05555{% else %}var(--text-muted){% endif %};">{{ '+' if t.goal_diff > 0 else '' }}{{ t.goal_diff }}</td>
+        <td class="stats-td" style="color:var(--text-muted);font-size:.78rem;">{{ t.most_common }}{% if t.most_common_count > 1 %} ×{{ t.most_common_count }}{% endif %}</td>
+        <td class="stats-td" data-val="{{ t.efficiency_index }}" style="color:#a78bfa;font-weight:700;">{{ t.efficiency_index }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="stats-td" style="text-align:center;color:var(--text-dim);padding:24px;">Нет данных</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% elif view == 'hall' %}
+<!-- ── История ── -->
+{% if hof_history %}
+<div class="hof-history-section">
+<div class="hof-league-title">🏆 История чемпионов</div>
+<div class="stats-table-wrap">
+{% for entry in hof_history %}
+<div class="hof-history-row">
+    <span class="hof-history-tournament">{{ entry.tournament }}</span>
+    <span class="hof-history-champion">🥇 {{ entry.champion }}</span>
+</div>
+{% endfor %}
+</div>
+</div>
+{% endif %}
+{% endif %}{# /view #}
+
+{% set _any_chart = (view == 'players') and (chart_labels or bar_labels or (overall_stats | selectattr('total', 'gt', 0) | list)) %}
+{% if _any_chart %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const GRID = '#1a1a2e';
+    const TICK = '#6a6a9a';
+    const LEG  = { position: 'bottom', labels: { color: '#a0a0c0', font: { size: 12 }, boxWidth: 14, padding: 16 } };
+    const TIP  = { backgroundColor: '#0e1220', borderColor: '#2a2a4a', borderWidth: 1, titleColor: '#c0c0e0', bodyColor: '#a0a0c0', padding: 10 };
+
+    function dayTick(val) {
+        const label = this.getLabelForValue(val);
+        if (window.innerWidth < 600) { const m = label.match(/День (\d+)/); return m ? 'Д.' + m[1] : label; }
+        return label;
+    }
+
+    {% if chart_labels %}
+    const lineLabels = {{ chart_labels | tojson }};
+    const lineSrc    = {{ chart_datasets | tojson }};
+    const rankSrc    = {{ rank_datasets | tojson }};
+
+    const mkLine = src => src.map(d => ({
+        label: d.label, data: d.data,
+        borderColor: d.color, backgroundColor: d.color + '22',
+        pointBackgroundColor: d.color, pointRadius: 4, pointHoverRadius: 6,
+        borderWidth: 2.5, tension: 0.25, fill: false,
+    }));
+    const lineOpts = extra => ({
+        responsive: true, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: LEG, tooltip: TIP },
+        scales: {
+            x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+            y: Object.assign({ ticks: { color: TICK, font: { size: 11 }, stepSize: 1 }, grid: { color: GRID } }, extra),
+        }
+    });
+    new Chart(document.getElementById('pointsChart'), { type: 'line', data: { labels: lineLabels, datasets: mkLine(lineSrc) }, options: lineOpts({ beginAtZero: true }) });
+    const numPlayers = rankSrc.length || 1;
+    new Chart(document.getElementById('rankChart'), { type: 'line', data: { labels: lineLabels, datasets: mkLine(rankSrc) }, options: lineOpts({
+        reverse: true, min: 1, max: numPlayers,
+        ticks: { color: TICK, font: { size: 11 }, stepSize: 1, callback: v => Number.isInteger(v) ? v + ' место' : '' },
+    }) });
+    {% endif %}
+
+    {% if bar_labels %}
+    const barLabels = {{ bar_labels | tojson }};
+    const barSrc    = {{ bar_datasets | tojson }};
+
+    const barEl = document.getElementById('barChart');
+    if (barEl) {
+        new Chart(barEl, {
+            type: 'bar',
+            data: { labels: barLabels, datasets: barSrc.map(d => ({
+                label: d.label, data: d.data,
+                backgroundColor: d.color + 'bb', borderColor: d.color, borderWidth: 1, borderRadius: 4,
+            })) },
+            options: {
+                responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: TIP },
+                scales: {
+                    x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+                    y: { beginAtZero: true, ticks: { color: TICK, font: { size: 11 }, stepSize: 1 }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+
+    const divEl = document.getElementById('divergingChart');
+    if (divEl) {
+        const avgPerDay = barLabels.map((_, di) => {
+            const vals = barSrc.map(d => d.data[di] || 0);
+            return vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+        });
+        new Chart(divEl, {
+            type: 'bar',
+            data: { labels: barLabels, datasets: barSrc.map(d => ({
+                label: d.label,
+                data: d.data.map((pts, di) => +(pts - avgPerDay[di]).toFixed(2)),
+                backgroundColor: d.data.map((pts, di) => pts - avgPerDay[di] >= 0 ? d.color + 'cc' : d.color + '44'),
+                borderColor: d.color, borderWidth: 1, borderRadius: 4,
+            })) },
+            options: {
+                responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: Object.assign({}, TIP, {
+                    callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw >= 0 ? '+' : ''}${ctx.raw}` }
+                }) },
+                scales: {
+                    x: { ticks: { color: TICK, font: { size: 11 }, maxRotation: 35, callback: dayTick }, grid: { color: GRID } },
+                    y: { ticks: { color: TICK, font: { size: 11 } }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    const players = {{ chart_player_stats | tojson }};
+
+    const accEl = document.getElementById('accuracyChart');
+    if (accEl && players.some(p => p.total > 0)) {
+        const sorted = [...players].filter(p => p.total > 0).sort((a, b) => b.accuracy - a.accuracy);
+        new Chart(accEl, {
+            type: 'bar',
+            data: {
+                labels: sorted.map(p => p.name),
+                datasets: [
+                    { label: 'Точный счёт ⚽', data: sorted.map(p => p.exact_accuracy), backgroundColor: '#00c87acc', borderRadius: 0 },
+                    { label: 'Исход ✓',        data: sorted.map(p => p.accuracy - p.exact_accuracy), backgroundColor: '#7c7cffaa', borderRadius: 0 },
+                    { label: 'Промахи ✗',      data: sorted.map(p => 100 - p.accuracy), backgroundColor: '#ffffff15', borderRadius: 0 },
+                ]
+            },
+            options: {
+                indexAxis: 'y', responsive: true, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: LEG, tooltip: Object.assign({}, TIP, { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Math.round(ctx.raw)}%` } }) },
+                scales: {
+                    x: { stacked: true, max: 100, ticks: { color: TICK, font: { size: 11 }, callback: v => v + '%' }, grid: { color: GRID } },
+                    y: { stacked: true, ticks: { color: '#a0a0c0', font: { size: 12 } }, grid: { color: GRID } },
+                }
+            }
+        });
+    }
+})();
+
+function initColHighlight() {
+    const tbl = document.querySelector('.mm-table');
+    if (!tbl || tbl.dataset.hlInit) return;
+    tbl.dataset.hlInit = '1';
+    tbl.querySelectorAll('tr').forEach(row => {
+        Array.from(row.cells).forEach((cell, ci) => {
+            cell.dataset.col = ci;
+            cell.addEventListener('mouseenter', () => {
+                tbl.querySelectorAll(`[data-col="${ci}"]`).forEach(c => c.classList.add('col-hl'));
+            });
+            cell.addEventListener('mouseleave', () => {
+                tbl.querySelectorAll('.col-hl').forEach(c => c.classList.remove('col-hl'));
+            });
+        });
+    });
+}
+
+function toggleMatrix() {
+    const btn  = document.getElementById('mm-toggle');
+    const body = document.getElementById('mm-body');
+    const open = body.classList.toggle('open');
+    btn.classList.toggle('open', open);
+    btn.querySelector('i').textContent = '›';
+    btn.childNodes[0].textContent = open ? '📋 Скрыть историю прогнозов' : '📋 Показать историю прогнозов';
+    if (open) initColHighlight();
+}
+
+
+</script>
+{% endif %}
+{% if view == 'teams' and team_stats %}
+<script>
+(function() {
+    const tbl = document.getElementById('team-stats-table');
+    if (!tbl) return;
+    const colToTd = [1, 2, 3, 4, 5, 6, 7, 8, 10];
+    let sortCol = 8, sortDir = -1;
+    tbl.querySelectorAll('th.ts-th').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = +th.dataset.col;
+            sortDir = col === sortCol ? -sortDir : -1;
+            sortCol = col;
+            applySort();
+            tbl.querySelectorAll('th.ts-th').forEach(h => {
+                const arr = h.querySelector('.ts-arr');
+                const active = +h.dataset.col === sortCol;
+                arr.textContent = active ? (sortDir === -1 ? '↓' : '↑') : '↕';
+                h.classList.toggle('ts-active-desc', active);
+                if (!active) h.style.color = '';
+            });
+        });
+    });
+    function applySort() {
+        const tbody = tbl.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => {
+            const tdIdx = colToTd[sortCol];
+            const ca = a.cells[tdIdx], cb = b.cells[tdIdx];
+            if (!ca || !cb) return 0;
+            if (ca.dataset.val !== undefined)
+                return (parseFloat(ca.dataset.val) - parseFloat(cb.dataset.val)) * sortDir;
+            return ca.textContent.trim().localeCompare(cb.textContent.trim(), 'ru') * sortDir;
+        });
+        rows.forEach((r, i) => { const rk = r.querySelector('.ts-rank'); if (rk) rk.textContent = i + 1; tbody.appendChild(r); });
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

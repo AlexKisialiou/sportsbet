@@ -1,13 +1,14 @@
 import os
-from datetime import timedelta
-from flask import Flask, jsonify, request as flask_request, render_template
+from datetime import datetime, timedelta
+from flask import Flask, jsonify, request as flask_request, render_template, session as flask_session
 from dotenv import load_dotenv
 from .models import db
 
 load_dotenv()
 
 IS_PRODUCTION = bool(os.environ.get("RENDER"))
-DB_SCHEMA = "bet"
+APP_ENV = os.environ.get("APP_ENV", "production")
+DB_SCHEMA = "bet_develop" if APP_ENV == "sandbox" else "bet"
 
 
 def create_app():
@@ -40,7 +41,9 @@ def create_app():
     # Pin all connections to the sportsbet schema (PostgreSQL only)
     if is_postgres:
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-            "connect_args": {"options": f"-csearch_path={DB_SCHEMA}"}
+            "connect_args": {"options": f"-csearch_path={DB_SCHEMA}"},
+            "pool_pre_ping": True,
+            "pool_recycle": 280,
         }
 
     # Trust the Render proxy for real client IPs
@@ -74,6 +77,16 @@ def create_app():
                 ))
                 db.session.commit()
                 print("[migration] added matches.featured column")
+            for col, ddl in [
+                ("odds_home", "ALTER TABLE matches ADD COLUMN odds_home FLOAT"),
+                ("odds_draw", "ALTER TABLE matches ADD COLUMN odds_draw FLOAT"),
+                ("odds_away", "ALTER TABLE matches ADD COLUMN odds_away FLOAT"),
+                ("featured_round", "ALTER TABLE matches ADD COLUMN featured_round INTEGER"),
+            ]:
+                if col not in cols:
+                    db.session.execute(text(ddl))
+                    db.session.commit()
+                    print(f"[migration] added matches.{col} column")
         except Exception as e:
             db.session.rollback()
             print(f"[migration] matches skipped: {e}")
@@ -86,6 +99,17 @@ def create_app():
                 ))
                 db.session.commit()
                 print("[migration] added scores.manual_lock column")
+            for col, ddl in [
+                ("win_type",          "ALTER TABLE scores ADD COLUMN win_type VARCHAR(3)"),
+                ("extra_time_home",   "ALTER TABLE scores ADD COLUMN extra_time_home INTEGER"),
+                ("extra_time_away",   "ALTER TABLE scores ADD COLUMN extra_time_away INTEGER"),
+                ("penalties_home",    "ALTER TABLE scores ADD COLUMN penalties_home INTEGER"),
+                ("penalties_away",    "ALTER TABLE scores ADD COLUMN penalties_away INTEGER"),
+            ]:
+                if col not in score_cols:
+                    db.session.execute(text(ddl))
+                    db.session.commit()
+                    print(f"[migration] added scores.{col} column")
         except Exception as e:
             db.session.rollback()
             print(f"[migration] scores skipped: {e}")
@@ -110,6 +134,8 @@ def create_app():
                 ("avatar_emoji",    "ALTER TABLE users ADD COLUMN avatar_emoji VARCHAR(10)"),
                 ("avatar_color",    "ALTER TABLE users ADD COLUMN avatar_color VARCHAR(10)"),
                 ("superadmin_note", "ALTER TABLE users ADD COLUMN superadmin_note VARCHAR(100)"),
+                ("created_at",     "ALTER TABLE users ADD COLUMN created_at TIMESTAMP"),
+                ("last_seen",      "ALTER TABLE users ADD COLUMN last_seen TIMESTAMP"),
             ]:
                 if col not in user_cols:
                     db.session.execute(text(ddl))
@@ -129,29 +155,51 @@ def create_app():
             db.session.rollback()
             print(f"[migration] users skipped: {e}")
 
+        try:
+            if is_postgres:
+                db.session.execute(text(
+                    "ALTER TABLE match_comments DROP CONSTRAINT IF EXISTS match_comments_match_id_user_id_key"
+                ))
+                db.session.commit()
+                print("[migration] dropped match_comments unique constraint (if existed)")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] match_comments constraint skipped: {e}")
+
         from .seed import run as seed, seed_prompt_hints
         seed()
         seed_prompt_hints()
-        from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
+        from .models import HofEntry as _HofEntry
+        if _HofEntry.query.count() == 0:
+            _initial_hof = [
+                {"tournament": "Лига чемпионов 2024", "champion": "Колобок"},
+                {"tournament": "Евро 2024",           "champion": "Богоедов"},
+                {"tournament": "Лига чемпионов 2025", "champion": "Чел"},
+                {"tournament": "Лига чемпионов 2026", "champion": "Колобок"},
+            ]
+            for i, e in enumerate(_initial_hof):
+                db.session.add(_HofEntry(tournament=e["tournament"], champion=e["champion"], sort_order=i))
+            db.session.commit()
+        from .services.football_api import (fetch_and_save_cl_matches, fetch_and_save_pl_matches,
+                                             fetch_and_save_wc_matches, fetch_and_save_ucl2627_matches)
         from .services.standings import maybe_generate_standings
-        try:
-            added, updated = fetch_and_save_cl_matches()
-            print(f"[startup] CL matches: +{added} added, {updated} updated")
-            maybe_generate_standings("UCL", app)
-        except Exception as e:
-            print(f"[startup] CL fetch skipped: {e}")
-        try:
-            added, updated = fetch_and_save_pl_matches()
-            print(f"[startup] PL matches: +{added} added, {updated} updated")
-            maybe_generate_standings("PL", app)
-        except Exception as e:
-            print(f"[startup] PL fetch skipped: {e}")
-        try:
-            added, updated = fetch_and_save_wc_matches()
-            print(f"[startup] WC matches: +{added} added, {updated} updated")
-            maybe_generate_standings("WC", app)
-        except Exception as e:
-            print(f"[startup] WC fetch skipped: {e}")
+        from .models import Setting as _Setting
+        for _fn, _league, _label in [
+            (fetch_and_save_cl_matches,     "UCL",     "CL"),
+            (fetch_and_save_ucl2627_matches,"UCL2627", "CL-2627"),
+            (fetch_and_save_pl_matches,     "PL",      "PL"),
+            (fetch_and_save_wc_matches,     "WC",      "WC"),
+        ]:
+            _s = _Setting.query.get(f"league_enabled_{_league}")
+            if _s is not None and _s.value == "0":
+                print(f"[startup] {_label} matches: skipped (disabled)")
+                continue
+            try:
+                added, updated, existing = _fn()
+                print(f"[startup] {_label} matches: {existing} existing, +{added} new, {updated} changed")
+                maybe_generate_standings(_league, app)
+            except Exception as e:
+                print(f"[startup] {_label} fetch skipped: {e}")
 
     from .routes.main import main_bp
     from .routes.api import api_bp
@@ -184,7 +232,24 @@ def create_app():
             APP_NAME=app_config.APP_NAME,
             APP_VERSION=app_config.APP_VERSION,
             current_theme=theme,
+            APP_ENV=APP_ENV,
         )
+
+    @app.after_request
+    def update_last_seen(response):
+        user_id = flask_session.get("user_id")
+        if user_id:
+            from .models import User
+            now = datetime.utcnow()
+            try:
+                user = db.session.get(User, user_id)
+                if user and not user.is_bot:
+                    if user.last_seen is None or (now - user.last_seen).total_seconds() > 120:
+                        user.last_seen = now
+                        db.session.commit()
+            except Exception:
+                db.session.rollback()
+        return response
 
     # Security headers on every response
     @app.after_request
@@ -205,6 +270,9 @@ def create_app():
         if flask_request.path.startswith("/api/"):
             return jsonify({"error": "Слишком много запросов. Подожди немного."}), 429
         return render_template("429.html"), 429
+
+    from .scheduler import init_scheduler
+    init_scheduler(app)
 
     return app
 

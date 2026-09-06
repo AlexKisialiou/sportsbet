@@ -5,101 +5,115 @@
 {% macro render_tab(tab_id, data, locked=false, first_match_iso=none, reveal_live=false) %}
 {% if first_match_iso or locked %}
 <div class="betting-bar{% if locked %} locked{% endif %}" id="betting-bar-{{ tab_id }}">
-    <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До закрытия ставок:{% endif %}</span>
-    {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>{% endif %}
+    <span class="bb-label">{% if locked %}🔒 Ставки закрыты{% else %}⏳ До следующего матча:{% endif %}</span>
+    {% if not locked %}<span class="bb-timer" id="bb-timer-{{ tab_id }}">—</span>
+    <div class="bb-progress-wrap"><div class="bb-progress-bar" id="bb-progress-{{ tab_id }}" style="width:100%;"></div></div>
+    {% endif %}
 </div>
 {% endif %}
-<div class="main-grid" style="margin-bottom:32px;">
 
-    <!-- ── Left: Очки ── -->
-    <div class="col-scores">
+<!-- ══ CTA ══ -->
+{% if data.scheduled_matches %}
+<div class="pred-cta-row">
+    <button class="pred-open-btn" onclick="openPredModal('{{ tab_id }}')">
+        🎯&nbsp;Прогнозы{% if locked %}&nbsp;<span class="pred-open-lock">🔒</span>{% elif data.unfilled_count > 0 %}&nbsp;<span class="pred-open-badge">{{ data.unfilled_count }}</span>{% elif data.scheduled_total > 0 %}&nbsp;<span class="pred-open-done">✓</span>{% endif %}
+    </button>
+    {% if data.scheduled_total > 0 %}
+    {% if data.unfilled_count == 0 %}
+    <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
+    {% else %}
+    <span class="pred-status pred-status-warn">⚠ Осталось {{ data.unfilled_count }} из {{ data.scheduled_total }}</span>
+    {% endif %}
+    {% endif %}
+</div>
+{% elif data.scheduled_total > 0 %}
+<div class="pred-cta-row">
+    <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
+</div>
+{% endif %}
 
-        {% if data.scheduled_total > 0 %}
-        <div style="margin-bottom:14px;">
-            {% if data.unfilled_count == 0 %}
-            <span class="pred-status pred-status-done">✓ Все ставки сделаны</span>
-            {% else %}
-            <span class="pred-status pred-status-warn">⚠ Осталось {{ data.unfilled_count }} из {{ data.scheduled_total }}</span>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        <div class="col-section-title">Очки</div>
-
-        {% if data.leaderboard %}
-        <div class="leaderboard">
-            <div class="leaderboard-header">Турнирная таблица</div>
-            <div class="lb-col-row">
-                <span style="width:22px;flex-shrink:0;"></span>
-                <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                <span class="lb-name lb-col-label">Участник</span>
-                <span class="lb-pts lb-col-label">Всего</span>
-                {% for day in data.pred_days %}
-                <span class="lb-day lb-col-label">{{ day.strftime('%d.%m') }}</span>
-                {% endfor %}
-            </div>
-            {% for row in data.leaderboard %}
-            {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else '#2e3a5a')) %}
-            <div class="lb-row" {% if loop.index == 1 %}style="background:rgba(212,175,55,.03);"{% endif %}>
-                <span class="lb-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
-                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
-                <span class="lb-pts">{{ row.total }}</span>
-                {% for d in row.days %}
-                {% if not d.has_pred %}
-                <span class="lb-day" style="color:#8a8aaa;">0</span>
-                {% elif d.pts == 0 %}
-                <span class="lb-day" style="color:#8a8aaa;">0</span>
-                {% else %}
-                <span class="lb-day" style="color:#00c87a;">+{{ d.pts }}</span>
-                {% endif %}
-                {% endfor %}
+<!-- ══ Таблица лидеров ══ -->
+{% if data.leaderboard %}
+<div class="lb-wrap-center">
+    <div class="lb-table" id="lb-acc-{{ tab_id }}">
+        <div class="lb-thead">
+            <div class="lb-th lb-th-name" title="Стрелка тренда: ↑ поднялся в таблице после последнего тура; ↓ опустился; → место не изменилось">Участник</div>
+            <div class="lb-th lb-th-total lb-sep" title="Сумма очков за все туры. 3 — точный счёт, 1 — угадал победителя, 0 — промах">Всего</div>
+            <div class="lb-th lb-th-exact" title="Количество точных счётов (3 очка) за все туры">🎯</div>
+            {% for rnd in data.pred_rounds %}
+            <div class="lb-th lb-th-day{% if loop.first %} lb-sep{% endif %}" title="Очки за {% if rnd == 0 %}архивные матчи{% else %}день {{ rnd }}{% endif %}">
+                <span>{% if rnd == 0 %}Архив{% else %}День {{ rnd }}{% endif %}</span>
+                {% if data.round_date_short.get(rnd) %}<span class="lb-th-date">{{ data.round_date_short.get(rnd) }}</span>{% endif %}
             </div>
             {% endfor %}
+            {% if data.user_fill_status and data.scheduled_total > 0 %}<div class="lb-th lb-th-bet lb-sep" title="Сколько прогнозов сделано из доступных матчей текущего дня">Прогнозы / день</div>{% endif %}
         </div>
-        {% endif %}
-
-        {% if data.user_fill_status and data.scheduled_total > 0 %}
-        <div class="leaderboard">
-            <div class="leaderboard-header">Ставки на ближайшие матчи</div>
-            <div class="lb-col-row">
-                <span style="width:22px;flex-shrink:0;"></span>
-                <span style="width:28px;flex-shrink:0;margin-right:8px;"></span>
-                <span class="lb-name lb-col-label">Участник</span>
-                <span class="lb-day lb-col-label">Статус</span>
-            </div>
-            {% for row in data.user_fill_status %}
-            {% set done = row.filled == row.total %}
-            <div class="lb-row">
-                <span class="lb-rank" style="color:#2e3a5a;">{{ loop.index }}</span>
-                <span style="margin-right:8px;">{{ user_avatar(row.user) }}</span>
-                <span class="lb-name">{{ row.user.display_name }} {{ role_badge(row.user) }}</span>
-                <span class="lb-day" style="color:{% if done %}#00c87a{% else %}#d4a030{% endif %};">
-                    {% if done %}✓{% else %}{{ row.filled }}/{{ row.total }}{% endif %}
+        {% for row in data.leaderboard %}
+        {% set rank_color = '#d4af37' if loop.index == 1 else ('#9baab8' if loop.index == 2 else ('#c47c3a' if loop.index == 3 else 'var(--text-dim)')) %}
+        <div class="lb-tr{% if loop.index == 1 %} lb-row-gold{% elif loop.index == 2 %} lb-row-silver{% elif loop.index == 3 %} lb-row-bronze{% endif %}">
+            <div class="lb-td lb-td-name">
+                <span class="lba-rank" style="color:{{ rank_color }};">{{ loop.index }}</span>
+                {{ user_avatar(row.user) }}
+                <span class="lba-name">
+                    <span class="lba-name-text">{{ row.user.display_name }}</span>
+                    {% if row.trend == 'up' %}<span class="lb-trend lb-trend-up">↑</span>{% elif row.trend == 'down' %}<span class="lb-trend lb-trend-down">↓</span>{% elif row.trend == 'flat' %}<span class="lb-trend lb-trend-flat">→</span>{% endif %}
+                    {% if row.is_online %}<span class="online-dot" title="Онлайн"></span>{% endif %}
+                    {% if row.streak >= 2 %}<span class="streak-badge {% if row.streak >= 7 %}streak-gold{% elif row.streak >= 4 %}streak-fire{% else %}streak-hot{% endif %}">🔥{{ row.streak }}</span>{% endif %}
+                    {% if row.is_latest_round_winner %}<span class="lb-day-winner" title="Победитель последнего дня">🥇</span>{% endif %}
+                    {{ role_badge(row.user) }}
                 </span>
             </div>
+            <div class="lb-td lb-td-total lb-sep">{{ row.total }}</div>
+            <div class="lb-td lb-td-exact">{{ row.exact_count }}</div>
+            {% for d in row.days %}
+            <div class="lb-td lb-td-day {% if loop.first %}lb-sep {% endif %}{% if d.pts > 0 %}lbd-exact{% elif not d.has_pred %}lbd-none{% else %}lbd-miss{% endif %}">
+                {% if d.pts > 0 %}+{{ d.pts }}{% elif not d.has_pred %}—{% else %}0{% endif %}
+            </div>
             {% endfor %}
+            {% if data.user_fill_status and data.scheduled_total > 0 %}
+            <div class="lb-td lb-td-bet lb-sep">
+            {% for fr in data.user_fill_status %}{% if fr.user.id == row.user.id %}
+            {% set pct = (fr.filled / fr.total * 100) | int if fr.total > 0 else 0 %}
+            <div class="lba-fillbar{% if fr.filled == fr.total %} lba-fillbar-done{% endif %}">
+                <div class="lba-fillbar-track"><div class="lba-fillbar-fill" style="width:{{ pct }}%"></div></div>
+                <span class="lba-fillbar-pct">{{ fr.filled }}/{{ fr.total }}</span>
+            </div>
+            {% endif %}{% endfor %}
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
+        {% endfor %}
     </div>
+</div>
+{% endif %}
 
-    <!-- ── Right: Ставки ── -->
-    <div class="col-matches">
-        <div class="col-section-title">Ставки</div>
-
-        {% if data.scheduled_matches %}
-            {% set ns = namespace(current_stage='') %}
+<!-- ══ Модальное окно: Прогнозы ══ -->
+{% if data.scheduled_matches %}
+<div class="pred-modal-overlay" id="pred-modal-{{ tab_id }}" onclick="closePredModal('{{ tab_id }}')">
+    <div class="pred-modal" onclick="event.stopPropagation()">
+        <div class="pred-modal-hdr">
+            <span class="pred-modal-title">🎯 Прогнозы</span>
+            <button class="pred-modal-close-btn" onclick="closePredModal('{{ tab_id }}')">✕</button>
+        </div>
+        <div class="pred-modal-body">
+            {% set ns = namespace(cur_round='') %}
             {% for match in data.scheduled_matches %}
-                {% set stage = match.tour.name %}
-                {% if stage != ns.current_stage %}
-                    {% set ns.current_stage = stage %}
-                    <div class="stage-header">{{ stage }} · {{ match.tour.season }}</div>
+                {% set mround = match.featured_round %}
+                {% if mround != ns.cur_round %}
+                    {% set ns.cur_round = mround %}
+                    <div class="pred-day-sep">
+                        {%- if mround -%}
+                            Игровой день {{ mround }}{% if data.round_date_labels.get(mround) %} ({{ data.round_date_labels.get(mround) }}){% endif %}
+                        {%- else -%}
+                            {{ match.tour.name }} · {{ match.tour.season }}
+                        {%- endif -%}
+                    </div>
                 {% endif %}
                 {% set pred = predictions.get(match.id) %}
-                <div class="match-card" data-match-id="{{ match.id }}" style="flex-direction:column;align-items:stretch;">
+                <div class="match-card" data-match-id="{{ match.id }}" data-kickoff="{{ match.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if match.kickoff_time else '' }}" data-me-filled="{{ 1 if pred is not none else 0 }}" style="flex-direction:column;align-items:stretch;">
                     <div style="display:flex;align-items:center;">
-                        <div class="team-wrap team-wrap-home">
-                            <span class="team-name">{{ match.home_team.display_name }}</span>
+                        <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
+                            <span class="team-name{% if match.odds_home and match.odds_away and match.odds_home < match.odds_away %} team-name-fav{% endif %}">{{ match.home_team.display_name }}</span>
                             {% if match.home_team.crest %}
                             <img src="{{ match.home_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
                             {% endif %}
@@ -108,12 +122,13 @@
                             <div class="score-time">{{ (match.kickoff_time | minsk).strftime('%H:%M') if match.kickoff_time else '—' }}</div>
                             <div class="mt-1"><span class="status-badge badge-scheduled">Скоро</span></div>
                             <div class="match-date">{{ (match.kickoff_time | minsk).strftime('%d.%m.%Y') if match.kickoff_time else '' }}</div>
+                            <div style="font-size:.6rem;color:#3a5a7a;margin-top:2px;white-space:nowrap;">{{ match.tour.name }}</div>
                         </div>
-                        <div class="team-wrap team-wrap-away">
+                        <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                             {% if match.away_team.crest %}
                             <img src="{{ match.away_team.crest }}" alt="" class="team-crest" onerror="this.style.display='none'">
                             {% endif %}
-                            <span class="team-name">{{ match.away_team.display_name }}</span>
+                            <span class="team-name{% if match.odds_home and match.odds_away and match.odds_away < match.odds_home %} team-name-fav{% endif %}">{{ match.away_team.display_name }}</span>
                         </div>
                     </div>
                     <div class="prediction-row" style="padding-left:4px;">
@@ -129,19 +144,23 @@
                                {% if locked %}disabled{% endif %}>
                         <span class="pred-saved" id="ps-{{ match.id }}">✓</span>
                     </div>
+                    {% if match.odds_home and match.odds_away %}
+                    <div class="match-odds">
+                        <span class="odds-item odds-home">П1&nbsp;{{ "%.2f"|format(match.odds_home) }}</span>
+                        {% if match.odds_draw %}
+                        <span class="odds-sep">·</span>
+                        <span class="odds-item odds-draw">X&nbsp;{{ "%.2f"|format(match.odds_draw) }}</span>
+                        {% endif %}
+                        <span class="odds-sep">·</span>
+                        <span class="odds-item odds-away">П2&nbsp;{{ "%.2f"|format(match.odds_away) }}</span>
+                    </div>
+                    {% endif %}
                 </div>
             {% endfor %}
-        {% else %}
-            <div style="padding:32px 16px;text-align:center;">
-                <p style="color:#2e3a5a;margin-bottom:12px;font-size:.88rem;">Нет предстоящих матчей.</p>
-                {% if current_user and current_user.is_admin %}
-                <a href="/admin" style="color:#d4af37;font-size:.82rem;">Настроить матчи →</a>
-                {% endif %}
-            </div>
-        {% endif %}
+        </div>
     </div>
-
-</div><!-- .main-grid -->
+</div>
+{% endif %}
 
 <!-- ══ Идут сейчас ══ -->
 {% if reveal_live and data.live_matches %}
@@ -150,8 +169,8 @@
     {% for match in data.live_matches %}
         <div class="pred-match-card">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
-                <div class="team-wrap team-wrap-home">
-                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -162,13 +181,13 @@
                     {% else %}
                     <div class="score" style="font-size:1rem;">— : —</div>
                     {% endif %}
-                    <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;">Идёт</span></div>
+                    <div><span class="status-badge badge-live" style="font-size:.52rem;padding:1px 6px;"><span class="live-dot"></span>Идёт</span></div>
                 </div>
-                <div class="team-wrap team-wrap-away">
+                <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
-                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.display_name }}</span>
                 </div>
             </div>
             <div class="pred-chips-row">
@@ -186,6 +205,38 @@
                 </div>
                 {% endfor %}
             </div>
+            {% set cmts = data.comment_map.get(match.id, []) %}
+            {% set unread = data.unread_map.get(match.id, 0) %}
+            {% if cmts or (current_user and not current_user.is_bot) %}
+            <div class="match-comments-section" data-match-id="{{ match.id }}"{% if unread %} data-has-unread="1"{% endif %}>
+                <div class="mc-header">
+                    <span class="mc-icon">💬</span>
+                    {% if unread %}<span class="mc-unread-badge" data-match="{{ match.id }}">{{ unread }}</span>{% endif %}
+                </div>
+                <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
+                    {% for cmt in cmts %}
+                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
+                        {{ user_avatar(cmt.user) }}
+                        <span class="mc-author">{{ cmt.user.display_name }}:</span>
+                        <span class="mc-text">{{ cmt.text }}</span>
+                        <span class="mc-time" title="{{ (cmt.created_at | minsk).strftime('%d.%m.%Y %H:%M') }}">{{ (cmt.created_at | minsk).strftime('%H:%M') }}</span>
+                        {% if current_user and cmt.user_id == current_user.id %}
+                        <button class="mc-del" onclick="deleteComment({{ match.id }}, {{ cmt.id }})">×</button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if current_user and not current_user.is_bot %}
+                <div class="match-comment-input">
+                    <input class="mc-inp" type="text" id="mc-inp-{{ match.id }}"
+                           maxlength="{{ comment_max_length }}"
+                           placeholder="Написать…"
+                           onkeydown="if(event.key==='Enter')saveComment({{ match.id }},{{ comment_max_length }})">
+                    <button class="mc-send" onclick="saveComment({{ match.id }},{{ comment_max_length }})">→</button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     {% endfor %}
 </div>
@@ -193,21 +244,32 @@
 
 <!-- ══ Предикты ══ -->
 {% if data.finished_recent %}
-{% set months = ['','января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'] %}
-<div style="margin-bottom:32px;">
-    <div class="col-section-title">Предикты</div>
-    {% set ns2 = namespace(cur_date='') %}
+<div class="pred-section" style="margin-bottom:32px;">
+    <div class="col-section-title">Прошедшие матчи</div>
+    {% set ns2 = namespace(cur_round='__init__', group_open=False) %}
     {% for match in data.finished_recent %}
-        {% set mdate = (match.kickoff_time | minsk).strftime('%d.%m') if match.kickoff_time else '' %}
-        {% if mdate != ns2.cur_date %}
-            {% set ns2.cur_date = mdate %}
-            {% set mdt = match.kickoff_time | minsk %}
-            <div class="pred-day-sep">{{ mdt.day }} {{ months[mdt.month] }}</div>
+        {% set mround = match.featured_round %}
+        {% if mround != ns2.cur_round %}
+            {% if ns2.group_open %}</div>{% endif %}
+            {% set ns2.cur_round = mround %}
+            {% set ns2.group_open = True %}
+            <div class="day-group">
+            <div class="pred-day-sep">
+                {%- if mround == 0 -%}
+                    Архив{% if data.round_date_labels.get(0) %} ({{ data.round_date_labels.get(0) }}){% endif %}
+                {%- elif mround -%}
+                    День {{ mround }}{% if data.round_date_labels.get(mround) %} · {{ data.round_date_labels.get(mround) }}{% endif %}
+                {%- else -%}—{%- endif -%}
+                {%- if mround and mround != 0 and data.round_winners is defined and data.round_winners.get(mround) -%}
+                    {%- set w = data.round_winners.get(mround) -%}
+                    <span class="day-winner-badge">👑 {{ w.users | map(attribute='display_name') | join(', ') }} · {{ w.pts }} оч.</span>
+                {%- endif -%}
+            </div>
         {% endif %}
-        <div class="pred-match-card">
+        <div class="pred-match-card" id="match-{{ match.id }}">
             <div style="display:flex;align-items:center;padding:10px 14px;gap:0;">
-                <div class="team-wrap team-wrap-home">
-                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.short_name or match.home_team.display_name }}</span>
+                <div class="team-wrap team-wrap-home team-hover" data-team-id="{{ match.home_team.id }}" data-league="{{ tab_id | upper }}">
+                    <span class="team-name" style="font-size:.82rem;">{{ match.home_team.display_name }}</span>
                     {% if match.home_team.crest %}
                     <img src="{{ match.home_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
@@ -216,13 +278,23 @@
                     {% if match.score %}
                     <div class="score" style="font-size:1rem;">{{ match.score.home_score }}:{{ match.score.away_score }}</div>
                     {% endif %}
-                    <div><span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span></div>
+                    <div>
+                        <span class="status-badge badge-finished" style="font-size:.52rem;padding:1px 6px;">Финал</span>
+                        {% if match.score and match.score.win_type == 'aet' %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(д.в.{% if match.score.extra_time_home is not none %} {{ match.score.extra_time_home }}:{{ match.score.extra_time_away }}{% endif %})</span>
+                        {% elif match.score and match.score.win_type == 'pen' %}
+                        {% if match.score.extra_time_home is not none and (match.score.extra_time_home > 0 or match.score.extra_time_away > 0) %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(д.в. {{ match.score.home_score + match.score.extra_time_home }}:{{ match.score.away_score + match.score.extra_time_away }})</span>
+                        {% endif %}
+                        <span style="font-size:.52rem;color:var(--text-muted);white-space:nowrap;">(пен.{% if match.score.penalties_home is not none %} {{ match.score.penalties_home }}:{{ match.score.penalties_away }}{% endif %})</span>
+                        {% endif %}
+                    </div>
                 </div>
-                <div class="team-wrap team-wrap-away">
+                <div class="team-wrap team-wrap-away team-hover" data-team-id="{{ match.away_team.id }}" data-league="{{ tab_id | upper }}">
                     {% if match.away_team.crest %}
                     <img src="{{ match.away_team.crest }}" alt="" class="team-crest" style="width:24px;height:24px;" onerror="this.style.display='none'">
                     {% endif %}
-                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.short_name or match.away_team.display_name }}</span>
+                    <span class="team-name" style="font-size:.82rem;">{{ match.away_team.display_name }}</span>
                 </div>
             </div>
             <div class="pred-chips-row">
@@ -254,26 +326,124 @@
                 </div>
                 {% endfor %}
             </div>
+            {% set cmts = data.comment_map.get(match.id, []) %}
+            {% set unread = data.unread_map.get(match.id, 0) %}
+            {% if cmts or (current_user and not current_user.is_bot) %}
+            <div class="match-comments-section" data-match-id="{{ match.id }}"{% if unread %} data-has-unread="1"{% endif %}>
+                <div class="mc-header">
+                    <span class="mc-icon">💬</span>
+                    {% if unread %}<span class="mc-unread-badge" data-match="{{ match.id }}">{{ unread }}</span>{% endif %}
+                </div>
+                <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
+                    {% for cmt in cmts %}
+                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
+                        {{ user_avatar(cmt.user) }}
+                        <span class="mc-author">{{ cmt.user.display_name }}:</span>
+                        <span class="mc-text">{{ cmt.text }}</span>
+                        <span class="mc-time" title="{{ (cmt.created_at | minsk).strftime('%d.%m.%Y %H:%M') }}">{{ (cmt.created_at | minsk).strftime('%H:%M') }}</span>
+                        {% if current_user and cmt.user_id == current_user.id %}
+                        <button class="mc-del" onclick="deleteComment({{ match.id }}, {{ cmt.id }})">×</button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if current_user and not current_user.is_bot %}
+                <div class="match-comment-input">
+                    <input class="mc-inp" type="text" id="mc-inp-{{ match.id }}"
+                           maxlength="{{ comment_max_length }}"
+                           placeholder="Написать…"
+                           onkeydown="if(event.key==='Enter')saveComment({{ match.id }},{{ comment_max_length }})">
+                    <button class="mc-send" onclick="saveComment({{ match.id }},{{ comment_max_length }})">→</button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     {% endfor %}
+    {% if ns2.group_open %}</div>{% endif %}
 </div>
 {% endif %}
+
 {% endmacro %}
 
 {% block content %}
 <div class="page-content-pad" style="padding-top:8px;">
 
 {% set _lmeta = {
-    'UCL': {'tab_id': 'ucl', 'label': '🏆 Лига Чемпионов', 'data': ucl, 'first_match_iso': ucl_first_match_iso},
-    'PL':  {'tab_id': 'pl',  'label': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ',          'data': pl,  'first_match_iso': pl_first_match_iso},
-    'WC':  {'tab_id': 'wc',  'label': '🌍 ЧМ 2026',       'data': wc,  'first_match_iso': wc_first_match_iso}
+    'UCL':    {'tab_id': 'ucl',    'label': '🏆 Лига Чемпионов',    'data': ucl,    'first_match_iso': ucl_first_match_iso},
+    'UCL2627':{'tab_id': 'ucl2627','label': '🏆 ЛЧ 26/27',          'data': ucl2627,'first_match_iso': ucl2627_first_match_iso},
+    'PL':     {'tab_id': 'pl',     'label': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ',          'data': pl,     'first_match_iso': pl_first_match_iso},
+    'WC':     {'tab_id': 'wc',     'label': '🌍 ЧМ 2026',           'data': wc,     'first_match_iso': wc_first_match_iso}
 } %}
+
+{% if day_winner_info and current_user %}
+<div class="day-winner-banner" id="day-winner-banner" style="display:none;">
+    <span id="day-winner-text"></span>
+    <button class="day-winner-close" id="day-winner-close" aria-label="Закрыть">✕</button>
+</div>
+<script>
+(function(){
+    const info = {{ day_winner_info | tojson }};
+    const isWinner = {{ 'true' if user_is_day_winner else 'false' }};
+    const dismissKey = 'dwb_' + info.league + '_' + info.round;
+
+    if (localStorage.getItem(dismissKey)) return;
+
+    const banner = document.getElementById('day-winner-banner');
+    const textEl = document.getElementById('day-winner-text');
+
+    if (isWinner) {
+        const name = {{ current_user.display_name | tojson }};
+        const msgs = [
+            '🔥 ' + name + ', ты сделал всех в этом игровом дне!',
+            '👑 ' + name + ' — король игрового дня. Остальные просто участвовали.',
+            '💀 ' + name + ' порвал игровой день. Расходимся.',
+            '😤 ' + name + ', признайся — ты смотрел матчи заранее?',
+            '🐐 ' + name + ' — лучший игрового дня. Просто лучший. Всё.',
+            '🏆 ' + name + ' уничтожил игровой день. Медаль в студию.',
+        ];
+        const idxKey = 'dwb_idx_' + info.league + '_' + info.round;
+        let idx = parseInt(localStorage.getItem(idxKey) ?? '-1');
+        if (idx < 0) {
+            idx = Math.floor(Math.random() * msgs.length);
+            localStorage.setItem(idxKey, idx);
+        }
+        textEl.textContent = msgs[idx];
+    } else {
+        const names = info.names.join(', ');
+        textEl.textContent = '👑 ' + names + ' — лучший в игровом дне ' + info.round + '! (' + info.pts + ' оч.)';
+    }
+
+    banner.style.display = '';
+
+    document.getElementById('day-winner-close').addEventListener('click', function() {
+        localStorage.setItem(dismissKey, '1');
+        banner.style.display = 'none';
+    });
+})();
+</script>
+{% endif %}
+
+{% if unread_notifications %}
+<div class="unread-notif-bar" id="unread-notif-bar">
+    <span class="unread-notif-label">💬 Новые комментарии:</span>
+    {% for n in unread_notifications %}
+    <span class="unread-notif-chip" id="unc-{{ n.match_id }}" onclick="jumpToComment({{ n.match_id }}, '{{ n.tab_id }}')">
+        {{ n.home }} — {{ n.away }}
+        <span class="unc-authors">от {{ n.authors | join(', ') if n.authors | length == 1 else 'нескольких' }}</span>
+        <button class="unc-close" onclick="event.stopPropagation();dismissNotif({{ n.match_id }})">×</button>
+    </span>
+    {% endfor %}
+    <button class="unc-close-all" onclick="dismissAllNotifs()">✕ все прочитаны</button>
+</div>
+{% endif %}
 
 <!-- Tab switcher -->
 <div class="league-tabs">
     {% for lg in league_order %}{% if league_enabled[lg] %}
     <button class="tab-btn" data-tab="{{ _lmeta[lg].tab_id }}">{{ _lmeta[lg].label }}</button>
     {% endif %}{% endfor %}
+    <span id="auto-fetch-chip" class="auto-fetch-chip" style="display:none;"></span>
 </div>
 
 {% for lg in league_order %}{% if league_enabled[lg] %}
@@ -284,6 +454,16 @@
 {% endif %}{% endfor %}
 
 </div><!-- .page-content-pad -->
+
+<div id="tip-popup" style="display:none;"></div>
+
+<div id="team-tooltip" style="display:none;">
+    <div class="tt-header">
+        <img id="tt-crest" style="width:18px;height:18px;object-fit:contain;" src="" alt="" onerror="this.style.display='none'">
+        <span id="tt-name"></span>
+    </div>
+    <div id="tt-matches"></div>
+</div>
 
 <div id="bender-backdrop" class="bender-backdrop" onclick="benderCloseAll()"></div>
 
@@ -311,6 +491,18 @@
 </div>
 {% endif %}
 
+{% if ucl2627_standings and league_enabled['UCL2627'] %}
+<div id="bender-standings-ucl2627" class="bender-panel bender-panel-gold">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📊 Бендер об очках · ЛЧ 26/27</span>
+        <button class="bender-close-btn" onclick="benderToggle('standings-ucl2627')">×</button>
+    </div>
+    <div class="bender-panel-body" style="padding:14px 16px;">
+        <div style="font-size:.83rem;color:#b89840;line-height:1.7;">{{ ucl2627_standings.text }}</div>
+    </div>
+</div>
+{% endif %}
+
 {% if pl_standings and league_enabled['PL'] %}
 <div id="bender-standings-pl" class="bender-panel bender-panel-gold">
     <div class="bender-panel-hdr">
@@ -331,6 +523,23 @@
     </div>
     <div class="bender-panel-body">
         {% for c in ucl_commentaries %}
+        <div style="padding:12px 16px;border-bottom:{% if not loop.last %}1px solid #0d1a0d{% else %}none{% endif %};">
+            <div style="font-size:.68rem;color:#306030;font-weight:700;margin-bottom:5px;letter-spacing:.04em;">{{ c.match_label.split(':', 1)[1] if ':' in c.match_label else c.match_label }}</div>
+            <div style="font-size:.82rem;color:#90b890;line-height:1.6;">{{ c.text }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if ucl2627_commentaries and league_enabled['UCL2627'] %}
+<div id="bender-match-ucl2627" class="bender-panel bender-panel-green">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📋 Прогноз · ЛЧ 26/27</span>
+        <button class="bender-close-btn" onclick="benderToggle('match-ucl2627')">×</button>
+    </div>
+    <div class="bender-panel-body">
+        {% for c in ucl2627_commentaries %}
         <div style="padding:12px 16px;border-bottom:{% if not loop.last %}1px solid #0d1a0d{% else %}none{% endif %};">
             <div style="font-size:.68rem;color:#306030;font-weight:700;margin-bottom:5px;letter-spacing:.04em;">{{ c.match_label.split(':', 1)[1] if ':' in c.match_label else c.match_label }}</div>
             <div style="font-size:.82rem;color:#90b890;line-height:1.6;">{{ c.text }}</div>
@@ -391,13 +600,16 @@
         {% if ucl_standings and league_enabled['UCL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-ucl')">📊 ЛЧ</button>
         {% endif %}
+        {% if ucl2627_standings and league_enabled['UCL2627'] %}
+        <button class="bender-chip chip-gold" onclick="benderToggle('standings-ucl2627')">📊 ЛЧ 26/27</button>
+        {% endif %}
         {% if pl_standings and league_enabled['PL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-pl')">📊 АПЛ</button>
         {% endif %}
         {% if wc_standings and league_enabled['WC'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-wc')">📊 ЧМ</button>
         {% endif %}
-        {% if (not ucl_standings or not league_enabled['UCL']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
+        {% if (not ucl_standings or not league_enabled['UCL']) and (not ucl2627_standings or not league_enabled['UCL2627']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
         <div class="bender-chip-spacer"></div>
         {% endif %}
     </div>
@@ -410,6 +622,9 @@
         {% if ucl_commentaries and league_enabled['UCL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-ucl')">📋 ЛЧ</button>
         {% endif %}
+        {% if ucl2627_commentaries and league_enabled['UCL2627'] %}
+        <button class="bender-chip chip-green" onclick="benderToggle('match-ucl2627')">📋 ЛЧ 26/27</button>
+        {% endif %}
         {% if pl_commentaries and league_enabled['PL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-pl')">📋 АПЛ</button>
         {% endif %}
@@ -419,10 +634,20 @@
     </div>
 </div>
 
+{% if user_is_day_winner %}
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+{% endif %}
 <script>
-const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
-const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
-const WC_FIRST_MATCH  = {{ wc_first_match_iso  | tojson }};
+const UCL_FIRST_MATCH    = {{ ucl_first_match_iso    | tojson }};
+const UCL2627_FIRST_MATCH= {{ ucl2627_first_match_iso | tojson }};
+const PL_FIRST_MATCH     = {{ pl_first_match_iso     | tojson }};
+const WC_FIRST_MATCH     = {{ wc_first_match_iso     | tojson }};
+const TEAM_FORM_DATA  = {{ team_form_data | tojson }};
+{% if current_user and not current_user.is_bot %}
+const _ME = { name: {{ current_user.display_name | tojson }}, emoji: {{ (current_user.avatar_emoji or '') | tojson }}, color: {{ (current_user.avatar_color or '') | tojson }} };
+{% else %}
+const _ME = null;
+{% endif %}
 let _bettingLocked = {{ 'true' if betting_locked else 'false' }};
 const _lockedTabs = new Set({{ (['ucl', 'pl', 'wc'] if betting_locked else []) | tojson }});
 
@@ -462,23 +687,50 @@ function startCountdown(tabId, isoTime) {
     if (!isoTime || _lockedTabs.has(tabId)) return;
     const target = new Date(isoTime).getTime();
     const el = document.getElementById(`bb-timer-${tabId}`);
+    const prog = document.getElementById(`bb-progress-${tabId}`);
+    const totalMs = target - Date.now();
     function tick() {
         const diff = target - Date.now();
-        if (diff <= 0) { lockTab(tabId); return; }
+        if (diff <= 0) {
+            if (el) el.textContent = '—';
+            if (prog) prog.style.width = '0%';
+            return;
+        }
         if (el) el.textContent = formatCountdown(diff);
+        if (prog) prog.style.width = Math.max(0, Math.min(100, (diff / totalMs) * 100)) + '%';
         setTimeout(tick, 1000);
     }
     tick();
 }
 
+const _lockedMatches = new Set();
+
+function lockMatch(matchId) {
+    if (_lockedMatches.has(matchId)) return;
+    _lockedMatches.add(matchId);
+    const card = document.querySelector(`.match-card[data-match-id="${matchId}"]`);
+    if (!card) return;
+    card.querySelectorAll('.pred-input').forEach(inp => {
+        inp.disabled = true;
+        inp.classList.add('readonly');
+        inp.removeAttribute('onchange');
+    });
+}
+
+function initMatchTimers() {
+    document.querySelectorAll('.match-card[data-kickoff]').forEach(card => {
+        const matchId = parseInt(card.dataset.matchId);
+        const iso = card.dataset.kickoff;
+        if (!iso || !matchId) return;
+        const diff = new Date(iso).getTime() - Date.now();
+        if (diff <= 0) { lockMatch(matchId); return; }
+        setTimeout(() => lockMatch(matchId), diff);
+    });
+}
+
 async function savePrediction(matchId) {
-    if (_bettingLocked) return;
-    const inp = document.getElementById(`ph-${matchId}`);
-    if (inp) {
-        const pane = inp.closest('.tab-pane');
-        if (pane && _lockedTabs.has(pane.id.replace('tab-', ''))) return;
-    }
-    const home = inp ? inp.value : '';
+    if (_bettingLocked || _lockedMatches.has(matchId)) return;
+    const home = document.getElementById(`ph-${matchId}`)?.value ?? '';
     const away = document.getElementById(`pa-${matchId}`)?.value ?? '';
     if (home === '' || away === '') return;
 
@@ -493,9 +745,25 @@ async function savePrediction(matchId) {
         saved.classList.add('show');
         setTimeout(() => saved.classList.remove('show'), 1500);
         updatePredStatus();
+        updateFillDots(matchId);
     } else if (resp.status === 423) {
-        lockBetting();
+        lockMatch(matchId);
     }
+}
+
+function openPredModal(tabId) {
+    const overlay = document.getElementById(`pred-modal-${tabId}`);
+    if (!overlay) return;
+    overlay.classList.add('open');
+    document.body.classList.add('pred-modal-open');
+    const body = overlay.querySelector('.pred-modal-body');
+    if (body) body.scrollTop = 0;
+}
+
+function closePredModal(tabId) {
+    const overlay = document.getElementById(`pred-modal-${tabId}`);
+    if (overlay) overlay.classList.remove('open');
+    document.body.classList.remove('pred-modal-open');
 }
 
 function updatePredStatus() {
@@ -514,6 +782,21 @@ function updatePredStatus() {
         if (card) card.classList.toggle('match-unfilled', !ok);
     });
 
+    // update open button badge/done indicator
+    const openBtn = activePane.querySelector('.pred-open-btn');
+    if (openBtn && total > 0) {
+        let badgeEl = openBtn.querySelector('.pred-open-badge');
+        let doneEl = openBtn.querySelector('.pred-open-done');
+        if (unfilled > 0) {
+            if (doneEl) { doneEl.remove(); }
+            if (!badgeEl) { badgeEl = document.createElement('span'); badgeEl.className = 'pred-open-badge'; openBtn.appendChild(badgeEl); }
+            badgeEl.textContent = unfilled;
+        } else {
+            if (badgeEl) { badgeEl.remove(); }
+            if (!doneEl) { doneEl = document.createElement('span'); doneEl.className = 'pred-open-done'; doneEl.textContent = '✓'; openBtn.appendChild(doneEl); }
+        }
+    }
+
     if (!badge || total === 0) return;
     if (unfilled === 0) {
         badge.className = 'pred-status pred-status-done';
@@ -523,6 +806,8 @@ function updatePredStatus() {
         badge.textContent = `⚠ Осталось ${unfilled} из ${total}`;
     }
 }
+
+
 
 function switchTab(tabId) {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -597,6 +882,155 @@ window.addEventListener('resize', () => {
 })();
 {% endif %}
 
+function _escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _minskyHM(isoUtc) {
+    const d = new Date(isoUtc + (isoUtc.endsWith('Z') ? '' : 'Z'));
+    const off = new Date(d.getTime() + 3 * 3600000);
+    return off.toISOString().slice(11, 16);
+}
+function _buildCommentHtml(matchId, id, text, authorName, emoji, color, timeHM, isOwn) {
+    const initial = authorName ? authorName[0].toUpperCase() : '?';
+    const fs = emoji ? '1rem' : '.7rem';
+    const bg = color ? `background:${color};` : '';
+    const avatarHtml = `<span class="avatar avatar-sm" style="${bg}font-size:${fs};">${_escHtml(emoji || initial)}</span>`;
+    const delBtn = isOwn ? `<button class="mc-del" onclick="deleteComment(${matchId},${id})">×</button>` : '';
+    const mcColor = color ? ` style="--mc-color:${color};"` : '';
+    return `<div class="match-comment" id="mc-${id}"${mcColor}>${avatarHtml}<span class="mc-author">${_escHtml(authorName)}:</span><span class="mc-text">${_escHtml(text)}</span><span class="mc-time">${timeHM}</span>${delBtn}</div>`;
+}
+
+async function saveComment(matchId, maxLen) {
+    const inp = document.getElementById(`mc-inp-${matchId}`);
+    if (!inp || !_ME) return;
+    const text = inp.value.trim();
+    if (!text) return;
+    if (text.length > maxLen) { inp.style.borderColor = '#e05555'; return; }
+    inp.style.borderColor = '';
+    inp.disabled = true;
+    const resp = await fetch(`/api/match/${matchId}/comment`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text})
+    });
+    inp.disabled = false;
+    if (!resp.ok) { inp.style.borderColor = '#e05555'; return; }
+    const data = await resp.json();
+    inp.value = '';
+    const scroll = document.getElementById(`mc-scroll-${matchId}`);
+    if (scroll) {
+        scroll.insertAdjacentHTML('beforeend', _buildCommentHtml(matchId, data.id, text, _ME.name, _ME.emoji, _ME.color, _minskyHM(data.created_at), true));
+        scroll.scrollTop = scroll.scrollHeight;
+    }
+    // hide unread badge since we're actively posting here
+    _clearUnreadBadge(matchId);
+}
+
+async function deleteComment(matchId, commentId) {
+    const resp = await fetch(`/api/match/${matchId}/comment/${commentId}`, {method: 'DELETE'});
+    if (resp.ok) {
+        const el = document.getElementById(`mc-${commentId}`);
+        if (el) el.remove();
+    }
+}
+
+async function markAsRead(matchId) {
+    const section = document.querySelector(`.match-comments-section[data-match-id="${matchId}"]`);
+    if (!section || !section.dataset.hasUnread) return;
+    await fetch(`/api/match/${matchId}/comments/read`, {method: 'POST'});
+    _clearUnreadBadge(matchId);
+}
+
+function _clearUnreadBadge(matchId) {
+    const section = document.querySelector(`.match-comments-section[data-match-id="${matchId}"]`);
+    if (section) delete section.dataset.hasUnread;
+    const badge = document.querySelector(`.mc-unread-badge[data-match="${matchId}"]`);
+    if (badge) badge.remove();
+    dismissNotif(matchId);
+}
+
+function dismissNotif(matchId) {
+    const chip = document.getElementById(`unc-${matchId}`);
+    if (chip) chip.remove();
+    const bar = document.getElementById('unread-notif-bar');
+    if (bar && !bar.querySelector('.unread-notif-chip')) bar.remove();
+}
+
+async function dismissAllNotifs() {
+    const bar = document.getElementById('unread-notif-bar');
+    if (!bar) return;
+    const matchIds = [...bar.querySelectorAll('.unread-notif-chip')].map(el => parseInt(el.id.replace('unc-', '')));
+    bar.remove();
+    for (const mid of matchIds) {
+        const section = document.querySelector(`.match-comments-section[data-match-id="${mid}"]`);
+        if (section) delete section.dataset.hasUnread;
+        const badge = document.querySelector(`.mc-unread-badge[data-match="${mid}"]`);
+        if (badge) badge.remove();
+        fetch(`/api/match/${mid}/comments/read`, {method: 'POST'});
+    }
+}
+
+function toggleLb(id) {
+    const body = document.getElementById(id);
+    const chev = document.getElementById(id + '-chev');
+    if (!body) return;
+    const isOpen = !body.classList.contains('lb-collapsed');
+    body.classList.toggle('lb-collapsed', isOpen);
+    if (chev) chev.classList.toggle('lb-chev-closed', isOpen);
+    try { sessionStorage.setItem('lb_' + id, isOpen ? '0' : '1'); } catch(e) {}
+}
+
+function jumpToComment(matchId, tabId) {
+    switchTab(tabId);
+    void document.body.offsetHeight;
+    const card = document.getElementById(`match-${matchId}`);
+if (!card) return;
+    card.scrollIntoView({block: 'center'});
+    card.classList.add('mc-flash');
+    setTimeout(() => card.classList.remove('mc-flash'), 1400);
+}
+
+let _autoFetchTimerId = null;
+function initAutoFetchTimer() {
+    const el = document.getElementById('auto-fetch-chip');
+    if (!el) return;
+    fetch('/api/scheduler/status')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.enabled || !data.next_run_ts) { el.style.display = 'none'; return; }
+            el.style.display = '';
+            el.innerHTML = '<span class="afc-label">обновление матчей через</span> <span class="afc-time" id="afc-time">—</span>';
+            const timeEl = el.querySelector('#afc-time');
+            if (_autoFetchTimerId) clearInterval(_autoFetchTimerId);
+            _autoFetchTimerId = setInterval(() => {
+                const diff = Math.floor(data.next_run_ts - Date.now() / 1000);
+                if (diff <= 0) {
+                    clearInterval(_autoFetchTimerId);
+                    el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
+                    setTimeout(initAutoFetchTimer, 12000);
+                } else {
+                    const m = Math.floor(diff / 60), s = diff % 60;
+                    timeEl.textContent = m + ':' + String(s).padStart(2, '0');
+                }
+            }, 1000);
+        })
+        .catch(() => { const el2 = document.getElementById('auto-fetch-chip'); if (el2) el2.style.display = 'none'; });
+}
+
+function updateFillDots(matchId) {
+    const card = document.querySelector(`.match-card[data-match-id="${matchId}"]`);
+    if (!card || card.dataset.meFilled === '1') return;
+    card.dataset.meFilled = '1';
+    const dotsWrap = card.querySelector('.match-fill-dots');
+    if (!dotsWrap) return;
+    const firstEmpty = dotsWrap.querySelector('.fill-dot-empty');
+    if (!firstEmpty) return;
+    firstEmpty.classList.replace('fill-dot-empty', 'fill-dot-filled');
+    const filled = dotsWrap.querySelectorAll('.fill-dot-filled').length;
+    const label = dotsWrap.querySelector('.fill-dots-label');
+    if (label) label.textContent = `${filled}/${dotsWrap.querySelectorAll('.fill-dot').length}`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -605,8 +1039,218 @@ document.addEventListener('DOMContentLoaded', () => {
     const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
     switchTab(saved && document.getElementById('tab-' + saved) ? saved : firstTab);
     startCountdown('ucl', UCL_FIRST_MATCH);
+    startCountdown('ucl2627', UCL2627_FIRST_MATCH);
     startCountdown('pl', PL_FIRST_MATCH);
     startCountdown('wc', WC_FIRST_MATCH);
+    initMatchTimers();
+    initAutoFetchTimer();
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.pred-modal-overlay.open').forEach(el => el.classList.remove('open'));
+            document.body.classList.remove('pred-modal-open');
+        }
+    });
+
+
+    // scroll all comment containers to bottom
+    document.querySelectorAll('.mc-scroll').forEach(el => { el.scrollTop = el.scrollHeight; });
+
+    // mark as read when section is visible for 1s
+    if ('IntersectionObserver' in window) {
+        const readObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const matchId = parseInt(entry.target.dataset.matchId);
+                    entry.target._readTimer = setTimeout(() => {
+                        markAsRead(matchId);
+                        readObserver.unobserve(entry.target);
+                    }, 1000);
+                } else if (entry.target._readTimer) {
+                    clearTimeout(entry.target._readTimer);
+                    entry.target._readTimer = null;
+                }
+            });
+        }, { threshold: 0.6 });
+        document.querySelectorAll('.match-comments-section[data-has-unread]').forEach(el => readObserver.observe(el));
+    }
+
+    // count-up: lb-pts animate 0 → target in 600ms
+    (function() {
+        const dur = 600;
+        document.querySelectorAll('.lb-pts[data-target]').forEach(el => {
+            const target = parseInt(el.dataset.target, 10) || 0;
+            if (target === 0) return;
+            el.textContent = '0';
+            const start = performance.now();
+            function step(now) {
+                const t = Math.min((now - start) / dur, 1);
+                el.textContent = Math.round(t * t * target);
+                if (t < 1) requestAnimationFrame(step);
+                else el.textContent = target;
+            }
+            requestAnimationFrame(step);
+        });
+    })();
+
+    // pulse on exact score cells when they enter viewport
+    if ('IntersectionObserver' in window) {
+        const pulseObs = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('pulse-anim');
+                    pulseObs.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+        document.querySelectorAll('.pred-exact').forEach(el => pulseObs.observe(el));
+    }
+
+    // confetti once per day winner (stored in localStorage per round)
+    {% if user_is_day_winner and day_winner_info %}
+    (function(){
+        const ck = 'confetti_{{ day_winner_info.league }}_{{ day_winner_info.round }}';
+        if (typeof confetti !== 'undefined' && !localStorage.getItem(ck)) {
+            localStorage.setItem(ck, '1');
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
+            setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { x: 0.1, y: 0.6 } }), 300);
+            setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { x: 0.9, y: 0.6 } }), 500);
+        }
+    })();
+    {% endif %}
 });
+
+(function() {
+    const ttEl = document.getElementById('team-tooltip');
+    const ttName = document.getElementById('tt-name');
+    const ttCrest = document.getElementById('tt-crest');
+    const ttMatches = document.getElementById('tt-matches');
+    let timer = null;
+
+    function positionTooltip(anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const w = ttEl.offsetWidth || 240;
+        const h = ttEl.offsetHeight || 160;
+        let left = rect.right + 10;
+        let top = rect.top - 4;
+        if (left + w > window.innerWidth - 8) left = rect.left - w - 10;
+        if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+        if (left < 8) left = 8;
+        if (top < 8) top = 8;
+        ttEl.style.left = left + 'px';
+        ttEl.style.top = top + 'px';
+    }
+
+    function renderTooltip(data, anchor) {
+        ttName.textContent = data.team_name;
+        if (data.team_crest) { ttCrest.src = data.team_crest; ttCrest.style.display = ''; }
+        else ttCrest.style.display = 'none';
+
+        if (!data.matches || data.matches.length === 0) {
+            ttMatches.innerHTML = '<div class="tt-empty">Матчей не найдено</div>';
+        } else {
+            ttMatches.innerHTML = data.matches.map(m => {
+                const rc = m.result === 'W' ? 'tt-w' : (m.result === 'D' ? 'tt-d' : 'tt-l');
+                const ha = m.is_home ? 'Д' : 'Г';
+                const crestHtml = m.opponent_crest
+                    ? `<img src="${m.opponent_crest}" style="width:13px;height:13px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">`
+                    : '';
+                return `<div class="tt-row">
+                    <span class="tt-date">${m.date}</span>
+                    <span class="tt-ha">${ha}</span>
+                    ${crestHtml}
+                    <span class="tt-opp">${m.opponent}</span>
+                    <span class="tt-score">${m.score}</span>
+                    <span class="${rc}">${m.result}</span>
+                </div>`;
+            }).join('');
+        }
+        if (data.stats) {
+            const s = data.stats;
+            const mcX = s.most_common_count > 1 ? ` ×${s.most_common_count}` : '';
+            ttMatches.innerHTML += `<div class="tt-stats-sep"></div>
+<div class="tt-stats-row">
+  <span class="tt-stat-pos">+${s.avg_scored}</span><span class="tt-stat-dim">/</span><span class="tt-stat-neg">\u2212${s.avg_conceded}</span><span class="tt-stat-dim">&nbsp;г/мат</span>
+  <span class="tt-stat-dot">&middot;</span>
+  <span class="tt-w">${s.w}</span><span class="tt-stat-dim">/</span><span class="tt-d">${s.d}</span><span class="tt-stat-dim">/</span><span class="tt-l">${s.l}</span>
+</div>
+<div class="tt-stats-row">
+  <span class="tt-stat-dim">Счёт: </span><span class="tt-stat-val">${s.most_common}${mcX}</span><span class="tt-stat-dim">&nbsp;из ${s.played} м.</span>
+  <span class="tt-stat-dot">&middot;</span>
+  <span class="tt-stat-dim">ИЭ:&nbsp;</span><span class="tt-stat-ie">${s.efficiency_index}</span>
+</div>`;
+        }
+
+        ttEl.style.display = 'block';
+        requestAnimationFrame(() => positionTooltip(anchor));
+    }
+
+    function showTooltip(anchor) {
+        const key = `${anchor.dataset.teamId}_${anchor.dataset.league}`;
+        const data = TEAM_FORM_DATA[key];
+        if (data) renderTooltip(data, anchor);
+    }
+
+    document.addEventListener('mouseover', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => showTooltip(el), 180);
+    });
+
+    document.addEventListener('mouseout', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => { ttEl.style.display = 'none'; }, 120);
+    });
+
+    let activeTouch = null;
+    document.addEventListener('touchstart', e => {
+        const el = e.target.closest('.team-hover[data-team-id]');
+        if (!el) {
+            if (ttEl.style.display !== 'none') { ttEl.style.display = 'none'; activeTouch = null; }
+            return;
+        }
+        e.preventDefault();
+        if (activeTouch === el && ttEl.style.display !== 'none') {
+            ttEl.style.display = 'none';
+            activeTouch = null;
+        } else {
+            activeTouch = el;
+            showTooltip(el);
+        }
+    }, { passive: false });
+})();
+
+(function() {
+    const popup = document.getElementById('tip-popup');
+    if (!popup) return;
+    let activeTip = null;
+    const SEL = '.lb-th[title], .lb-day-winner[title], .online-dot[title], .streak-badge[title]';
+    document.addEventListener('touchstart', e => {
+        const el = e.target.closest(SEL);
+        if (!el) {
+            if (popup.style.display !== 'none') { popup.style.display = 'none'; activeTip = null; }
+            return;
+        }
+        e.preventDefault();
+        if (activeTip === el && popup.style.display !== 'none') {
+            popup.style.display = 'none'; activeTip = null; return;
+        }
+        activeTip = el;
+        popup.textContent = el.getAttribute('title');
+        popup.style.display = 'block';
+        requestAnimationFrame(() => {
+            const rect = el.getBoundingClientRect();
+            const pw = popup.offsetWidth, ph = popup.offsetHeight;
+            let left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+            let top = rect.bottom + 8;
+            if (top + ph > window.innerHeight - 8) top = rect.top - ph - 8;
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+        });
+    }, { passive: false });
+})();
 </script>
 {% endblock %}

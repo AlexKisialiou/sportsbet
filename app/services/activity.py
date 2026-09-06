@@ -15,7 +15,8 @@ ACTION_LABELS = {
     'user_created':         'Создание пользователя',
     'user_deleted':         'Удаление пользователя',
     'pl_matches_loaded':    'Загрузка матчей АПЛ',
-    'cl_matches_loaded':    'Загрузка матчей ЛЧ',
+    'cl_matches_loaded':     'Загрузка матчей ЛЧ',
+    'ucl2627_matches_loaded':'Загрузка матчей ЛЧ 26/27',
     'wc_matches_loaded':    'Загрузка матчей ЧМ',
     'logout':               'Выход из системы',
     'note_set':             'Заметка на пользователя',
@@ -32,6 +33,18 @@ ACTION_LABELS = {
     'teams_ru_translated':  'Перевод через Groq',
     'prompt_hint_updated':  'Хинт для Бендера изменён',
     'prompt_hint_applied':  'Хинт добавлен в промпт Бендера',
+    'team_form_count_changed': 'Подсказка форма команды',
+    'auto_fetch_changed':   'Автообновление матчей',
+    'reveal_live_predictions': 'Ставки во время матча',
+    'comment_set':             'Комментарий к матчу',
+    'comment_deleted':         'Удаление комментария',
+    'comment_max_length_changed': 'Макс. длина комментария',
+    'match_live_set':            'Матч: статус «идёт»',
+    'match_live_cleared':        'Матч: статус «запланирован»',
+    'copy_prod_to_sandbox':      'Копирование прод → сэндбокс',
+    'tg_remind':                 'TG-напоминание о ставках',
+    'tg_remind_settings':        'Настройки TG-напоминания',
+    'bender_manual':             'Ручной запрос прогнозов Бендера',
 }
 
 

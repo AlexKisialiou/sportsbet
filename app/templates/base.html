@@ -17,8 +17,14 @@
             <div style="display:flex;align-items:center;gap:8px;">
                 <a href="/" class="navbar-brand">{{ APP_NAME }}</a>
                 <span class="app-version">{{ APP_VERSION }}</span>
+                {% if APP_ENV == 'sandbox' %}
+                <span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#2a1a00;color:#f0a030;border:1px solid #7a4a00;letter-spacing:.05em;">SANDBOX</span>
+                {% endif %}
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;">
+                {% if current_user and current_user.is_admin %}
+                <a href="/stats" class="nav-stats-link">📊</a>
+                {% endif %}
                 {% if current_user and current_user.is_admin %}
                 <a href="/admin" class="nav-link-admin">Админ панель</a>
                 {% endif %}
@@ -40,6 +46,11 @@
         </div>
     </div>
 </nav>
+{% if APP_ENV == 'sandbox' %}
+<div style="background:#1a0d00;border-bottom:2px solid #7a4a00;text-align:center;padding:5px 0;font-size:.78rem;font-weight:700;color:#f0a030;letter-spacing:.08em;">
+    ⚠ SANDBOX — тестовая среда, данные не настоящие
+</div>
+{% endif %}
 
 <div class="container-fluid" style="max-width:1400px;padding:0 20px;">
     {% block content %}{% endblock %}

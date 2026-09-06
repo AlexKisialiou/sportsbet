@@ -1,12 +1,10 @@
 import threading
 from collections import defaultdict
-from datetime import timedelta, date as date_type
-from sqlalchemy import func as sqlfunc
 
 
 def maybe_generate_standings(league, app):
     """
-    After a fetch: check if all featured matches for the latest game day are finished.
+    After a fetch: check if all featured matches for the latest game round are finished.
     If yes and not yet processed, generate Bender standings commentary in background.
     """
     def _run():
@@ -14,7 +12,8 @@ def maybe_generate_standings(league, app):
             from ..models import Match, Tour, Setting, Commentary, db
             from .points import get_leaderboard
             from .groq_api import (generate_bender_standings,
-                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
+                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_UCL2627,
+                                   STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
             from ..seed import LEAGUE_TO_TOURNAMENT
 
             featured = (Match.query.join(Tour)
@@ -23,41 +22,39 @@ def maybe_generate_standings(league, app):
             if not featured:
                 return
 
-            # Group by Minsk date (UTC+3)
-            day_matches = defaultdict(list)
+            # Group by featured_round; skip matches without a round assigned
+            round_matches = defaultdict(list)
             for m in featured:
-                if m.kickoff_time:
-                    day = (m.kickoff_time + timedelta(hours=3)).date()
-                    day_matches[day].append(m)
+                if m.featured_round is not None:
+                    round_matches[m.featured_round].append(m)
 
-            if not day_matches:
+            if not round_matches:
                 return
 
-            # Latest day where ALL featured matches are finished
-            complete_days = sorted(
-                [day for day, matches in day_matches.items()
+            # Latest round where ALL matches are finished
+            complete_rounds = sorted(
+                [rnd for rnd, matches in round_matches.items()
                  if all(m.status == 'finished' for m in matches)],
                 reverse=True
             )
-            if not complete_days:
+            if not complete_rounds:
                 return
 
-            latest_str = complete_days[0].isoformat()
+            latest_round = complete_rounds[0]
             setting_key = f"standings_day_{league.lower()}"
             s = Setting.query.get(setting_key)
-            if s and s.value == latest_str:
-                return  # already generated for this game day
+            if s and s.value == str(latest_round):
+                return  # already generated for this round
 
-            # Mark as processed before generating (avoid duplicate runs)
             if not s:
                 s = Setting(key=setting_key)
-            s.value = latest_str
+            s.value = str(latest_round)
             db.session.add(s)
             db.session.commit()
 
-            # Build standings text
-            league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ"}
-            label_keys = {"UCL": STANDINGS_LABEL_UCL, "PL": STANDINGS_LABEL_PL, "WC": STANDINGS_LABEL_WC}
+            league_names = {"UCL": "ЛЧ", "UCL2627": "ЛЧ 26/27", "PL": "АПЛ", "WC": "ЧМ"}
+            label_keys = {"UCL": STANDINGS_LABEL_UCL, "UCL2627": STANDINGS_LABEL_UCL2627,
+                          "PL": STANDINGS_LABEL_PL, "WC": STANDINGS_LABEL_WC}
             league_name = league_names.get(league, league)
             label_key = label_keys.get(league, f"__standings_{league.lower()}__")
 
@@ -67,32 +64,21 @@ def maybe_generate_standings(league, app):
                 if not row["user"].is_bot:
                     lines.append(f"  {i}. {row['user'].display_name} — {row['total']} очков")
 
-            # Last game day breakdown (UTC date from DB)
-            day_row = (
-                db.session.query(sqlfunc.date(Match.kickoff_time))
-                .join(Tour, Match.tour_id == Tour.id)
-                .filter(Match.status == "finished", Tour.league == league,
-                        Match.featured == True)
-                .group_by(sqlfunc.date(Match.kickoff_time))
-                .order_by(sqlfunc.date(Match.kickoff_time).desc())
-                .first()
-            )
-            if day_row:
-                last_day = day_row[0]
-                lb_day = get_leaderboard(
-                    last_days=[date_type.fromisoformat(last_day)
-                               if isinstance(last_day, str) else last_day],
-                    league=league
-                )
-                lines.append(f"\nПоследний игровой день:")
-                for row in lb_day:
-                    if row["user"].is_bot:
-                        continue
-                    d = row["days"][0] if row["days"] else {"pts": 0, "has_pred": False}
-                    if d["has_pred"]:
-                        lines.append(f"  {row['user'].display_name}: +{d['pts']}")
-                    else:
-                        lines.append(f"  {row['user'].display_name}: не ставил")
+            lb_round = get_leaderboard(last_rounds=[latest_round], league=league)
+            lines.append(f"\nИгровой день {latest_round}:")
+            for row in lb_round:
+                if row["user"].is_bot:
+                    continue
+                d = row["days"][0] if row["days"] else {"pts": 0, "has_pred": False}
+                if d["has_pred"]:
+                    lines.append(f"  {row['user'].display_name}: +{d['pts']}")
+                else:
+                    lines.append(f"  {row['user'].display_name}: не ставил")
+
+            standings_s = Setting.query.get("bender_standings_enabled")
+            if standings_s is None or standings_s.value != "1":
+                print(f"[standings] bender standings disabled for {league}, skipping")
+                return
 
             try:
                 text = generate_bender_standings("\n".join(lines),
@@ -101,7 +87,7 @@ def maybe_generate_standings(league, app):
                     Commentary.query.filter_by(match_label=label_key).delete()
                     db.session.add(Commentary(match_label=label_key, text=text))
                     db.session.commit()
-                    print(f"[standings] generated for {league} game day {latest_str}")
+                    print(f"[standings] generated for {league} round {latest_round}")
             except Exception as e:
                 print(f"[standings] generation failed for {league}: {e}")
 
