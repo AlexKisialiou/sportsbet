@@ -291,14 +291,12 @@ def fetch_and_save_ucl2627_matches():
     if not api_key:
         raise ValueError("FOOTBALL_API_KEY not set")
 
-    url = "https://api.football-data.org/v4/competitions/CL/matches"
+    url = "https://api.football-data.org/v4/competitions/CL/matches?season=2026"
     req = urllib.request.Request(url, headers={"X-Auth-Token": api_key})
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read().decode())
 
-    season = data.get("competition", {}).get("currentSeason", {}).get("startDate", "2026")[:4]
-    season_str = f"{season}/{int(season) + 1}"
-    return _save_matches(data.get("matches", []), season_str, league="UCL2627", stage_map=STAGE_MAP_2627)
+    return _save_matches(data.get("matches", []), "2026/2027", league="UCL2627", stage_map=STAGE_MAP_2627)
 
 
 def _get_or_create_team(team_data):
