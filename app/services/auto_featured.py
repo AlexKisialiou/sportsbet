@@ -205,15 +205,17 @@ def _run_bender_and_odds(app, league, match_data):
                 Match.query.get(mid).odds_home is not None for mid in match_ids
             )
             if already_have_odds:
-                print(f"[odds] {league}: all matches already have odds, skipping fetch")
+                print(f"[odds] {league}: коэффициенты уже есть у всех матчей, пропускаем запрос")
                 odds_map = {mid: {"home": Match.query.get(mid).odds_home,
                                   "draw": Match.query.get(mid).odds_draw,
                                   "away": Match.query.get(mid).odds_away}
                             for mid in match_ids}
             else:
+                print(f"[odds] {league}: запрашиваем коэффициенты для {len(match_ids)} матчей")
                 odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
                 odds_map = fetch_odds_for_matches(odds_input, league)
         else:
+            print(f"[odds] {league}: запросы отключены в настройках (odds_fetch_enabled=0)")
             odds_map = {}
 
         if odds_map:
