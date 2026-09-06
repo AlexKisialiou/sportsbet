@@ -109,6 +109,15 @@ TEAMS_RU = {
 
     # Турция
     "Galatasaray SK"                    : "Галатасарай",
+    "Fenerbahçe SK"                     : "Фенербахче",
+
+    # Франция (дополнение)
+    "Racing Club de Lens"               : "Ланс",
+
+    # Англия (дополнение)
+    "Coventry City FC"                  : "Ковентри Сити",
+    "Hull City AFC"                     : "Халл Сити",
+    "Ipswich Town FC"                   : "Ипсвич Таун",
 
     # Норвегия
     "FK Bodø/Glimt"                     : "Будё/Глимт",
