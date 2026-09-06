@@ -367,7 +367,10 @@ def _save_matches(raw_matches, season, league="UCL", stage_map=None):
             hs, as_ = _regular_time_score(m["score"])
             win_type, et_home, et_away, pen_home, pen_away = _score_outcome(m["score"])
 
-            existing = Match.query.filter_by(external_id=ext_id).first()
+            # Ищем только внутри своей лиги: UCL и UCL2627 тянут одни ext_id, не должны пересекаться
+            existing = (Match.query.join(Tour)
+                        .filter(Match.external_id == ext_id, Tour.league == league)
+                        .first())
             if existing:
                 existing_count += 1
                 changed = existing.status != status
