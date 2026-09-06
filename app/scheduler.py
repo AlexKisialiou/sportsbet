@@ -96,14 +96,22 @@ def _auto_odds_job():
             if s is not None and s.value == "0":
                 continue
 
-            featured = (
+            all_featured = (
                 Match.query.join(Tour)
                 .filter(Tour.league == league, Match.status == "scheduled", Match.featured == True)
                 .all()
             )
-            if not featured:
+            if not all_featured:
                 print(f"[odds-scheduler] {ts} {league}: no featured matches, skipped")
                 continue
+
+            # Только активный игровой день — The Odds API даёт коэффициенты ~на 7 дней вперёд
+            rounds = [m.featured_round for m in all_featured if m.featured_round is not None]
+            if rounds:
+                min_round = min(rounds)
+                featured = [m for m in all_featured if m.featured_round == min_round]
+            else:
+                featured = all_featured
 
             odds_input = [(m.id, m.home_team.name, m.away_team.name) for m in featured]
             try:
