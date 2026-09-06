@@ -1045,7 +1045,7 @@ def activity_log():
 
 
 @main_bp.route("/stats")
-@admin_required
+@login_required
 def stats():
     users = User.query.order_by(User.id).all()
 
