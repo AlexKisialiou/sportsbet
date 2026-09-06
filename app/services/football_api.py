@@ -16,6 +16,16 @@ STAGE_MAP = {
     "FINAL":          ("ЛЧ Финал",          400),
 }
 
+STAGE_MAP_2627 = {
+    "LEAGUE_PHASE":   ("ЛЧ 26/27 Лиговый этап", 0),
+    "GROUP_STAGE":    ("ЛЧ 26/27 Лиговый этап", 0),
+    "LAST_16":        ("ЛЧ 26/27 1/8 финала",   100),
+    "ROUND_OF_16":    ("ЛЧ 26/27 1/8 финала",   100),
+    "QUARTER_FINALS": ("ЛЧ 26/27 1/4 финала",   200),
+    "SEMI_FINALS":    ("ЛЧ 26/27 1/2 финала",   300),
+    "FINAL":          ("ЛЧ 26/27 Финал",         400),
+}
+
 WC_STAGE_MAP = {
     "GROUP_STAGE":    ("ЧМ Групповой этап", 0),
     "ROUND_OF_16":    ("ЧМ 1/8 финала",     100),
@@ -276,6 +286,21 @@ def fetch_and_save_cl_matches():
     return _save_matches(data.get("matches", []), season_str)
 
 
+def fetch_and_save_ucl2627_matches():
+    api_key = os.environ.get("FOOTBALL_API_KEY", "")
+    if not api_key:
+        raise ValueError("FOOTBALL_API_KEY not set")
+
+    url = "https://api.football-data.org/v4/competitions/CL/matches"
+    req = urllib.request.Request(url, headers={"X-Auth-Token": api_key})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+
+    season = data.get("competition", {}).get("currentSeason", {}).get("startDate", "2026")[:4]
+    season_str = f"{season}/{int(season) + 1}"
+    return _save_matches(data.get("matches", []), season_str, league="UCL2627", stage_map=STAGE_MAP_2627)
+
+
 def _get_or_create_team(team_data):
     ext_id = team_data.get("id")
     if not ext_id:
@@ -302,21 +327,24 @@ def _get_or_create_team(team_data):
     return team
 
 
-def _get_or_create_tour(stage, matchday, season):
-    name_base, round_base = STAGE_MAP.get(stage, (f"ЛЧ {stage}", 500))
+def _get_or_create_tour(stage, matchday, season, league="UCL", stage_map=None):
+    if stage_map is None:
+        stage_map = STAGE_MAP
+    name_base, round_base = stage_map.get(stage, (f"ЛЧ {stage}", 500))
     round_number = round_base + (matchday or 0)
-    name = f"{name_base} - Тур {matchday}" if stage == "GROUP_STAGE" and matchday else name_base
+    is_phase = stage in ("GROUP_STAGE", "LEAGUE_PHASE")
+    name = f"{name_base} - Тур {matchday}" if is_phase and matchday else name_base
 
-    tour = Tour.query.filter_by(league="UCL", round_number=round_number, season=season).first()
+    tour = Tour.query.filter_by(league=league, round_number=round_number, season=season).first()
     if not tour:
         tour = Tour(name=name, season=season, round_number=round_number,
-                    league="UCL", status="active")
+                    league=league, status="active")
         db.session.add(tour)
         db.session.flush()
     return tour
 
 
-def _save_matches(raw_matches, season):
+def _save_matches(raw_matches, season, league="UCL", stage_map=None):
     added = updated = existing_count = 0
 
     groups = defaultdict(list)
@@ -324,7 +352,7 @@ def _save_matches(raw_matches, season):
         groups[(m["stage"], m.get("matchday"))].append(m)
 
     for (stage, matchday), matches in groups.items():
-        tour = _get_or_create_tour(stage, matchday, season)
+        tour = _get_or_create_tour(stage, matchday, season, league=league, stage_map=stage_map)
 
         for m in matches:
             if not m["homeTeam"].get("name") or not m["awayTeam"].get("name"):

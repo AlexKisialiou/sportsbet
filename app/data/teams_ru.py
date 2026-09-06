@@ -81,4 +81,74 @@ TEAMS_RU = {
 
     # Дания
     "FC Copenhagen"                     : "Копенгаген",
+    "FC København"                      : "Копенгаген",
+
+    # Англия (дополнение)
+    "AFC Bournemouth"                   : "Борнмут",
+    "Aston Villa FC"                    : "Астон Вилла",
+    "Brentford FC"                      : "Брентфорд",
+    "Brighton & Hove Albion FC"         : "Брайтон",
+    "Burnley FC"                        : "Бёрнли",
+    "Crystal Palace FC"                 : "Кристал Пэлас",
+    "Everton FC"                        : "Эвертон",
+    "Fulham FC"                         : "Фулхэм",
+    "Leeds United FC"                   : "Лидс Юнайтед",
+    "Nottingham Forest FC"              : "Ноттингем Форест",
+    "Sunderland AFC"                    : "Сандерленд",
+    "West Ham United FC"                : "Вест Хэм",
+    "Wolverhampton Wanderers FC"        : "Вулверхэмптон",
+
+    # Франция (дополнение)
+    "Lille OSC"                         : "Лилль",
+
+    # Португалия (дополнение)
+    "Sporting Clube de Portugal"        : "Спортинг",
+
+    # Нидерланды (дополнение)
+    "PSV"                               : "ПСВ",
+
+    # Турция
+    "Galatasaray SK"                    : "Галатасарай",
+
+    # Норвегия
+    "FK Bodø/Glimt"                     : "Будё/Глимт",
+    "Viking FK"                         : "Викинг",
+
+    # Чехия (дополнение)
+    "SK Slavia Praha"                   : "Славия Прага",
+
+    # Словакия
+    "ŠK Slovan Bratislava"              : "Слован Братислава",
+
+    # Греция
+    "PAE AEK"                           : "АЕК",
+    "PAE Olympiakos SFP"                : "Олимпиакос",
+
+    # Бельгия (дополнение)
+    "Royale Union Saint-Gilloise"       : "Юнион Сент-Жиллуаз",
+
+    # Испания (дополнение)
+    "Real Betis Balompié"               : "Реал Бетис",
+
+    # Австрия (дополнение)
+    "LASK Linz"                         : "ЛАСК Линц",
+
+    # Кипр
+    "Paphos FC"                         : "Пафос",
+
+    # Азербайджан
+    "Qarabağ Ağdam FK"                  : "Карабах",
+    "Sabah FK"                          : "Сабах",
+
+    # Казахстан
+    "FK Kairat"                         : "Кайрат",
+
+    # Украина
+    "FK Shakhtar Donetsk"               : "Шахтёр Донецк",
+    "FC Dynamo Kyiv"                    : "Динамо Киев",
+
+    # Италия (дополнение)
+    "Como 1907"                         : "Комо 1907",
+    "SS Lazio"                          : "Лацио",
+    "Bologna FC 1909"                   : "Болонья",
 }

@@ -5,9 +5,10 @@ from urllib.parse import urlencode
 from difflib import SequenceMatcher
 
 LEAGUE_SPORT_KEY = {
-    "UCL": "soccer_uefa_champs_league",
-    "PL":  "soccer_epl",
-    "WC":  "soccer_fifa_world_cup",
+    "UCL":    "soccer_uefa_champs_league",
+    "UCL2627":"soccer_uefa_champs_league",
+    "PL":     "soccer_epl",
+    "WC":     "soccer_fifa_world_cup",
 }
 
 
@@ -18,10 +19,14 @@ def _sim(a, b):
 def _find_match(home_en, away_en, odds_list):
     best, best_item = 0.0, None
     for item in odds_list:
-        score = (_sim(home_en, item["home_team"]) + _sim(away_en, item["away_team"])) / 2
+        h = _sim(home_en, item["home_team"])
+        a = _sim(away_en, item["away_team"])
+        if h < 0.30 or a < 0.30:
+            continue
+        score = (h + a) / 2
         if score > best:
             best, best_item = score, item
-    return best_item if best >= 0.50 else None
+    return best_item if best >= 0.45 else None
 
 
 def _extract_avg_odds(item):

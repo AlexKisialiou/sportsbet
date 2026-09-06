@@ -1,6 +1,7 @@
 import os
 
 STANDINGS_LABEL_UCL = "__standings_ucl__"
+STANDINGS_LABEL_UCL2627 = "__standings_ucl2627__"
 STANDINGS_LABEL_PL = "__standings_pl__"
 STANDINGS_LABEL_WC = "__standings_wc__"
 
@@ -78,7 +79,7 @@ def generate_bender_pick(home_team, away_team, tournament="UCL", odds=None):
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.3-70b-versatile",
+        model="qwen/qwen3.8-27b",
     )
     raw = resp.choices[0].message.content.strip()
 
@@ -117,7 +118,7 @@ def translate_team_names(team_names):
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant",
+        model="qwen/qwen3.6-27b",
     )
     raw = resp.choices[0].message.content.strip()
 
@@ -155,6 +156,6 @@ def generate_bender_standings(standings_text, tournament="UCL"):
 
     resp = _client().chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant",
+        model="qwen/qwen3.6-27b",
     )
     return resp.choices[0].message.content.strip()

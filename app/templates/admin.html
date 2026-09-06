@@ -37,7 +37,7 @@
 {% block content %}
 <h5 class="fw-bold text-white mb-4">Админ панель</h5>
 
-{% set _atabs = {'UCL': ('ucl', '🏆 Лига Чемпионов'), 'PL': ('pl', '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ'), 'WC': ('wc', '🌍 ЧМ 2026')} %}
+{% set _atabs = {'UCL': ('ucl', '🏆 Лига Чемпионов'), 'UCL2627': ('ucl2627', '🏆 ЛЧ 26/27'), 'PL': ('pl', '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ'), 'WC': ('wc', '🌍 ЧМ 2026')} %}
 <div class="league-tabs" style="margin-bottom:20px;">
     {% for lg in league_order %}{% if league_enabled[lg] %}{% set tid, lbl = _atabs[lg] %}
     <button class="tab-btn" data-tab="{{ tid }}" onclick="switchAdminTab('{{ tid }}')">{{ lbl }}</button>
@@ -194,6 +194,73 @@
     </div>
 
 </div><!-- #admin-tab-ucl -->
+{% endif %}
+
+<!-- ── UCL2627 Tab ── -->
+{% if league_enabled['UCL2627'] %}
+<div class="tab-pane" id="admin-tab-ucl2627">
+
+    <div class="admin-card">
+        <h6>Загрузить матчи из API</h6>
+        <div class="fetch-warn">⚠️ Скедулер обновляет данные автоматически. Загружайте вручную только при необходимости.</div>
+        <p class="text-secondary mb-3" style="font-size:.85rem;">
+            Загрузить матчи Лиги Чемпионов 2026/27 из football-data.org (season=2026).<br>
+            Новые матчи добавятся, существующие обновятся.
+        </p>
+        <button class="btn-action" id="fetchUcl2627Btn" onclick="loadUcl2627Matches()">Загрузить матчи ЛЧ 26/27</button>
+        <div class="spinner" id="ucl2627Spinner"></div>
+        <div class="result-msg" id="ucl2627Msg"></div>
+    </div>
+
+    <div class="admin-card">
+        <div class="manual-section-toggle" onclick="toggleManual('ucl2627')" style="margin-bottom:12px;">
+            <span id="manual-arrow-ucl2627">▶</span>
+            <span style="text-transform:uppercase;letter-spacing:.07em;font-size:.75rem;">Ручная настройка матчей</span>
+        </div>
+        <div id="manual-body-ucl2627" style="display:none">
+            <p class="text-secondary mb-3" style="font-size:.85rem;">Тонкая настройка: выбери матчи вручную.</p>
+            {% if ucl2627_scheduled %}
+            <form id="featuredFormUcl2627">
+                {% set ns = namespace(cur_date='') %}
+                {% for m in ucl2627_scheduled %}
+                    {% set mdate = (m.kickoff_time | minsk).strftime('%d.%m.%Y') if m.kickoff_time else '—' %}
+                    {% if mdate != ns.cur_date %}
+                        {% set ns.cur_date = mdate %}
+                        <div style="font-size:.7rem;color:#5a7a9a;text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;">{{ mdate }}</div>
+                    {% endif %}
+                    <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2d3d;cursor:pointer;">
+                        <input type="checkbox" name="featured" value="{{ m.id }}"
+                               {% if m.featured %}checked{% endif %}
+                               style="width:16px;height:16px;accent-color:#5db85d;cursor:pointer;"
+                               onchange="toggleRoundInput(this)">
+                        <span style="flex:1;font-size:.88rem;color:#c0c8d0;">
+                            {{ m.home_team.display_name }} — {{ m.away_team.display_name }}
+                        </span>
+                        <span style="font-size:.78rem;color:#4a6a8a;white-space:nowrap;">
+                            {{ (m.kickoff_time | minsk).strftime('%H:%M') if m.kickoff_time else '' }}
+                        </span>
+                        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+                            <span style="font-size:.72rem;color:#4a6a8a;">День</span>
+                            <input type="number" class="round-input" min="1" max="20"
+                                   value="{{ m.featured_round or next_round['UCL2627'] }}"
+                                   {% if not m.featured %}disabled{% endif %}
+                                   style="width:42px;background:#0f1a28;border:1px solid {% if m.featured %}#3a5a7a{% else %}#1e2d3d{% endif %};color:{% if m.featured %}#7ab4e0{% else %}#3a4a5a{% endif %};padding:2px 4px;border-radius:4px;font-size:.78rem;text-align:center;-moz-appearance:textfield;"
+                                   onclick="event.stopPropagation()">
+                        </span>
+                    </label>
+                {% endfor %}
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+                    <button type="button" class="btn-action" onclick="saveFeatured('ucl2627')">Сохранить выбор</button>
+                    <span id="featuredMsgUcl2627" style="font-size:.85rem;"></span>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-secondary" style="font-size:.85rem;">Нет предстоящих матчей.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div><!-- #admin-tab-ucl2627 -->
 {% endif %}
 
 <!-- ── PL Tab ── -->
@@ -508,7 +575,7 @@ const MATCH_DATA = {
     pl:  [{% for m in pl_scheduled  %}{"id":{{ m.id }},"kickoff":{{ (m.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff_time else '') | tojson }},"tour":{{ m.tour.name | tojson }},"home":{{ m.home_team.display_name | tojson }},"away":{{ m.away_team.display_name | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
     wc:  [{% for m in wc_scheduled  %}{"id":{{ m.id }},"kickoff":{{ (m.kickoff_time.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff_time else '') | tojson }},"tour":{{ m.tour.name | tojson }},"home":{{ m.home_team.display_name | tojson }},"away":{{ m.away_team.display_name | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
 };
-const NEXT_ROUND = {ucl: {{ next_round['UCL'] }}, pl: {{ next_round['PL'] }}, wc: {{ next_round['WC'] }}};
+const NEXT_ROUND = {ucl: {{ next_round['UCL'] }}, ucl2627: {{ next_round['UCL2627'] }}, pl: {{ next_round['PL'] }}, wc: {{ next_round['WC'] }}};
 
 const _qsMode = {ucl: 'tour', pl: 'tour', wc: 'tour'};
 const _qsSelected = {};
@@ -713,8 +780,8 @@ function toggleRoundInput(checkbox) {
 }
 
 async function saveFeatured(league) {
-    const formIds = {ucl: 'featuredFormUcl', pl: 'featuredFormPl', wc: 'featuredFormWc'};
-    const msgIds  = {ucl: 'featuredMsgUcl',  pl: 'featuredMsgPl',  wc: 'featuredMsgWc'};
+    const formIds = {ucl: 'featuredFormUcl', ucl2627: 'featuredFormUcl2627', pl: 'featuredFormPl', wc: 'featuredFormWc'};
+    const msgIds  = {ucl: 'featuredMsgUcl',  ucl2627: 'featuredMsgUcl2627', pl: 'featuredMsgPl',  wc: 'featuredMsgWc'};
     const formId = formIds[league];
     const msgId  = msgIds[league];
     const checkedEls = [...document.querySelectorAll(`#${formId} input[name="featured"]:checked`)];
@@ -756,6 +823,28 @@ async function loadUclMatches() {
         document.getElementById('uclMsg').innerHTML = `<span class="error-msg">Не удалось загрузить данные.</span>`;
     } finally {
         document.getElementById('uclSpinner').style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function loadUcl2627Matches() {
+    const btn = document.getElementById('fetchUcl2627Btn');
+    btn.disabled = true;
+    document.getElementById('ucl2627Spinner').style.display = 'block';
+    document.getElementById('ucl2627Msg').innerHTML = '';
+    try {
+        const resp = await fetch('/api/ucl2627-matches', {method: 'POST'});
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('ucl2627Msg').innerHTML = `<span class="error-msg">Ошибка: ${data.error}</span>`;
+        } else {
+            document.getElementById('ucl2627Msg').innerHTML = `<span class="success-msg">+${data.added} новых, ${data.updated} обновлено. Перезагрузка…</span>`;
+            setTimeout(() => location.reload(), 1200);
+        }
+    } catch {
+        document.getElementById('ucl2627Msg').innerHTML = `<span class="error-msg">Не удалось загрузить данные.</span>`;
+    } finally {
+        document.getElementById('ucl2627Spinner').style.display = 'none';
         btn.disabled = false;
     }
 }

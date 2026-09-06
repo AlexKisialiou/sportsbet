@@ -370,9 +370,10 @@
 <div class="page-content-pad" style="padding-top:8px;">
 
 {% set _lmeta = {
-    'UCL': {'tab_id': 'ucl', 'label': '🏆 Лига Чемпионов', 'data': ucl, 'first_match_iso': ucl_first_match_iso},
-    'PL':  {'tab_id': 'pl',  'label': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ',          'data': pl,  'first_match_iso': pl_first_match_iso},
-    'WC':  {'tab_id': 'wc',  'label': '🌍 ЧМ 2026',       'data': wc,  'first_match_iso': wc_first_match_iso}
+    'UCL':    {'tab_id': 'ucl',    'label': '🏆 Лига Чемпионов',    'data': ucl,    'first_match_iso': ucl_first_match_iso},
+    'UCL2627':{'tab_id': 'ucl2627','label': '🏆 ЛЧ 26/27',          'data': ucl2627,'first_match_iso': ucl2627_first_match_iso},
+    'PL':     {'tab_id': 'pl',     'label': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 АПЛ',          'data': pl,     'first_match_iso': pl_first_match_iso},
+    'WC':     {'tab_id': 'wc',     'label': '🌍 ЧМ 2026',           'data': wc,     'first_match_iso': wc_first_match_iso}
 } %}
 
 {% if day_winner_info and current_user %}
@@ -490,6 +491,18 @@
 </div>
 {% endif %}
 
+{% if ucl2627_standings and league_enabled['UCL2627'] %}
+<div id="bender-standings-ucl2627" class="bender-panel bender-panel-gold">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📊 Бендер об очках · ЛЧ 26/27</span>
+        <button class="bender-close-btn" onclick="benderToggle('standings-ucl2627')">×</button>
+    </div>
+    <div class="bender-panel-body" style="padding:14px 16px;">
+        <div style="font-size:.83rem;color:#b89840;line-height:1.7;">{{ ucl2627_standings.text }}</div>
+    </div>
+</div>
+{% endif %}
+
 {% if pl_standings and league_enabled['PL'] %}
 <div id="bender-standings-pl" class="bender-panel bender-panel-gold">
     <div class="bender-panel-hdr">
@@ -510,6 +523,23 @@
     </div>
     <div class="bender-panel-body">
         {% for c in ucl_commentaries %}
+        <div style="padding:12px 16px;border-bottom:{% if not loop.last %}1px solid #0d1a0d{% else %}none{% endif %};">
+            <div style="font-size:.68rem;color:#306030;font-weight:700;margin-bottom:5px;letter-spacing:.04em;">{{ c.match_label.split(':', 1)[1] if ':' in c.match_label else c.match_label }}</div>
+            <div style="font-size:.82rem;color:#90b890;line-height:1.6;">{{ c.text }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if ucl2627_commentaries and league_enabled['UCL2627'] %}
+<div id="bender-match-ucl2627" class="bender-panel bender-panel-green">
+    <div class="bender-panel-hdr">
+        <span class="bender-panel-hdr-title">📋 Прогноз · ЛЧ 26/27</span>
+        <button class="bender-close-btn" onclick="benderToggle('match-ucl2627')">×</button>
+    </div>
+    <div class="bender-panel-body">
+        {% for c in ucl2627_commentaries %}
         <div style="padding:12px 16px;border-bottom:{% if not loop.last %}1px solid #0d1a0d{% else %}none{% endif %};">
             <div style="font-size:.68rem;color:#306030;font-weight:700;margin-bottom:5px;letter-spacing:.04em;">{{ c.match_label.split(':', 1)[1] if ':' in c.match_label else c.match_label }}</div>
             <div style="font-size:.82rem;color:#90b890;line-height:1.6;">{{ c.text }}</div>
@@ -570,13 +600,16 @@
         {% if ucl_standings and league_enabled['UCL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-ucl')">📊 ЛЧ</button>
         {% endif %}
+        {% if ucl2627_standings and league_enabled['UCL2627'] %}
+        <button class="bender-chip chip-gold" onclick="benderToggle('standings-ucl2627')">📊 ЛЧ 26/27</button>
+        {% endif %}
         {% if pl_standings and league_enabled['PL'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-pl')">📊 АПЛ</button>
         {% endif %}
         {% if wc_standings and league_enabled['WC'] %}
         <button class="bender-chip chip-gold" onclick="benderToggle('standings-wc')">📊 ЧМ</button>
         {% endif %}
-        {% if (not ucl_standings or not league_enabled['UCL']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
+        {% if (not ucl_standings or not league_enabled['UCL']) and (not ucl2627_standings or not league_enabled['UCL2627']) and (not pl_standings or not league_enabled['PL']) and (not wc_standings or not league_enabled['WC']) %}
         <div class="bender-chip-spacer"></div>
         {% endif %}
     </div>
@@ -588,6 +621,9 @@
     <div style="display:flex;gap:8px;pointer-events:none;">
         {% if ucl_commentaries and league_enabled['UCL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-ucl')">📋 ЛЧ</button>
+        {% endif %}
+        {% if ucl2627_commentaries and league_enabled['UCL2627'] %}
+        <button class="bender-chip chip-green" onclick="benderToggle('match-ucl2627')">📋 ЛЧ 26/27</button>
         {% endif %}
         {% if pl_commentaries and league_enabled['PL'] %}
         <button class="bender-chip chip-green" onclick="benderToggle('match-pl')">📋 АПЛ</button>
@@ -602,9 +638,10 @@
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 {% endif %}
 <script>
-const UCL_FIRST_MATCH = {{ ucl_first_match_iso | tojson }};
-const PL_FIRST_MATCH  = {{ pl_first_match_iso  | tojson }};
-const WC_FIRST_MATCH  = {{ wc_first_match_iso  | tojson }};
+const UCL_FIRST_MATCH    = {{ ucl_first_match_iso    | tojson }};
+const UCL2627_FIRST_MATCH= {{ ucl2627_first_match_iso | tojson }};
+const PL_FIRST_MATCH     = {{ pl_first_match_iso     | tojson }};
+const WC_FIRST_MATCH     = {{ wc_first_match_iso     | tojson }};
 const TEAM_FORM_DATA  = {{ team_form_data | tojson }};
 {% if current_user and not current_user.is_bot %}
 const _ME = { name: {{ current_user.display_name | tojson }}, emoji: {{ (current_user.avatar_emoji or '') | tojson }}, color: {{ (current_user.avatar_color or '') | tojson }} };
@@ -1002,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const firstTab = document.querySelector('.tab-btn')?.dataset?.tab || 'ucl';
     switchTab(saved && document.getElementById('tab-' + saved) ? saved : firstTab);
     startCountdown('ucl', UCL_FIRST_MATCH);
+    startCountdown('ucl2627', UCL2627_FIRST_MATCH);
     startCountdown('pl', PL_FIRST_MATCH);
     startCountdown('wc', WC_FIRST_MATCH);
     initMatchTimers();
