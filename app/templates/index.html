@@ -997,7 +997,13 @@ function initAutoFetchTimer() {
     fetch('/api/scheduler/status')
         .then(r => r.json())
         .then(data => {
-            if (!data.enabled || !data.next_run_ts) { el.style.display = 'none'; return; }
+            if (!data.enabled) { el.style.display = 'none'; return; }
+            if (!data.next_run_ts) {
+                el.style.display = '';
+                el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
+                setTimeout(initAutoFetchTimer, 5000);
+                return;
+            }
             el.style.display = '';
             el.innerHTML = '<span class="afc-label">обновление матчей через</span> <span class="afc-time" id="afc-time">—</span>';
             const timeEl = el.querySelector('#afc-time');
