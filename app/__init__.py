@@ -166,6 +166,23 @@ def create_app():
             db.session.rollback()
             print(f"[migration] match_comments constraint skipped: {e}")
 
+        # Меняем глобальный unique(external_id) на составной unique(external_id, tour_id),
+        # чтобы UCL и UCL2627 могли хранить матчи с одинаковыми external_id в разных лигах
+        try:
+            if is_postgres:
+                db.session.execute(text(
+                    "ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_external_id_key"
+                ))
+                db.session.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_match_ext_tour "
+                    "ON matches (external_id, tour_id) WHERE external_id IS NOT NULL"
+                ))
+                db.session.commit()
+                print("[migration] matches: replaced external_id unique with (external_id, tour_id)")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[migration] matches constraint skipped: {e}")
+
         from .seed import run as seed, seed_prompt_hints
         seed()
         seed_prompt_hints()

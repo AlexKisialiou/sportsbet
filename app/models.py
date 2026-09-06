@@ -36,10 +36,11 @@ class Tour(db.Model):
 
 class Match(db.Model):
     __tablename__ = "matches"
+    __table_args__ = (db.UniqueConstraint("external_id", "tour_id", name="uq_match_ext_tour"),)
 
     id = db.Column(db.Integer, primary_key=True)
     tour_id = db.Column(db.Integer, db.ForeignKey("tours.id"), nullable=False)
-    external_id = db.Column(db.Integer, unique=True, nullable=True)
+    external_id = db.Column(db.Integer, nullable=True)
     home_team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False)
     away_team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False)
     kickoff_time = db.Column(db.DateTime, nullable=True)
