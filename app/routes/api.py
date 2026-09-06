@@ -184,11 +184,17 @@ def set_featured_matches():
     lock_row = Setting.query.get(f"featured_manual_lock_{league}") or Setting(key=f"featured_manual_lock_{league}", value="0")
     lock_row.value = "1"
     db.session.merge(lock_row)
-    # Clear Bender fingerprint so the next scheduler run will re-generate picks
+    # Обновляем fingerprint под новый набор, чтобы скедулер не дублировал запуск
+    ids_str = ",".join(str(i) for i in sorted(featured_ids))
     fp_row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
-    fp_row.value = ""
+    fp_row.value = ids_str
     db.session.merge(fp_row)
     db.session.commit()
+
+    # Запускаем Бендера сразу, не ждём скедулера
+    if featured_ids:
+        from ..services.auto_featured import run_bender_for_league
+        run_bender_for_league(current_app._get_current_object(), league)
 
     admin = get_current_user()
     log_action(admin.id if admin else None, "featured_set", f"Матчи для ставок: {len(featured_ids)} шт.")
