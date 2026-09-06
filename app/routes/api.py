@@ -1,8 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, current_app
-from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment, CommentRead
-from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
+from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment, CommentRead, HofEntry
+from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches, fetch_and_save_ucl2627_matches
 from ..services.points import update_points_for_match, calc_points
 from ..auth import get_current_user, login_required, admin_required, superuser_required
 from ..services.activity import log_action
@@ -22,6 +22,21 @@ def cl_matches():
         actor = get_current_user()
         log_action(actor.id if actor else None, "cl_matches_loaded",
                    f"ЛЧ матчи загружены: +{added} новых, {updated} обновлено")
+        return jsonify({"added": added, "updated": updated, "existing": existing})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/ucl2627-matches", methods=["POST"])
+@admin_required
+@limiter.limit("5 per minute")
+def ucl2627_matches():
+    try:
+        added, updated, existing = fetch_and_save_ucl2627_matches()
+        maybe_generate_standings("UCL2627", current_app._get_current_object())
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "ucl2627_matches_loaded",
+                   f"ЛЧ 26/27 матчи загружены: +{added} новых, {updated} обновлено")
         return jsonify({"added": added, "updated": updated, "existing": existing})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -213,13 +228,22 @@ def simulate_results():
     db.session.commit()
 
     # Generate Бендер standings comments per league
+    standings_s = Setting.query.get("bender_standings_enabled")
+    if standings_s is None or standings_s.value != "1":
+        actor = get_current_user()
+        log_action(actor.id if actor else None, "results_simulated", f"Симулировал {len(scheduled)} матчей")
+        return jsonify({"updated": len(scheduled)})
+
     try:
         from ..services.points import get_leaderboard
-        from ..services.groq_api import generate_bender_standings, STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
+        from ..services.groq_api import (generate_bender_standings,
+                                        STANDINGS_LABEL_UCL, STANDINGS_LABEL_UCL2627,
+                                        STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
 
         from ..seed import LEAGUE_TO_TOURNAMENT
         for league, label_key, league_name in [
             ("UCL", STANDINGS_LABEL_UCL, "ЛЧ"),
+            ("UCL2627", STANDINGS_LABEL_UCL2627, "ЛЧ 26/27"),
             ("PL", STANDINGS_LABEL_PL, "АПЛ"),
             ("WC", STANDINGS_LABEL_WC, "ЧМ"),
         ]:
@@ -317,7 +341,7 @@ def set_league_enabled():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
     enabled = data.get("enabled")
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "unknown league"}), 400
     if enabled is None:
         return jsonify({"error": "enabled required"}), 400
@@ -337,7 +361,7 @@ def set_pred_days():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
     days = data.get("days")
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "unknown league"}), 400
     if not isinstance(days, int) or not (1 <= days <= 20):
         return jsonify({"error": "days must be integer 1–20"}), 400
@@ -356,9 +380,9 @@ def set_pred_days():
 def set_league_order():
     data = request.get_json(silent=True) or {}
     order = data.get("order", [])
-    valid = [lg for lg in order if lg in ("UCL", "PL", "WC")]
-    if len(valid) != 3:
-        return jsonify({"error": "order must contain UCL, PL, WC"}), 400
+    valid = [lg for lg in order if lg in ("UCL", "UCL2627", "PL", "WC")]
+    if len(valid) < 1:
+        return jsonify({"error": "order must contain valid league codes"}), 400
     s = Setting.query.get("league_order") or Setting(key="league_order")
     s.value = ",".join(valid)
     db.session.add(s)
@@ -432,7 +456,7 @@ def apply_teams_ru():
 def fix_round0():
     data = request.get_json(silent=True) or {}
     league = data.get("league", "WC")
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "invalid league"}), 400
     matches = (
         Match.query.join(Tour)
@@ -906,7 +930,7 @@ def update_prompt_hint(hint_id):
 def trigger_bender_picks():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
-    leagues = [league] if league in ("UCL", "PL", "WC") else ["UCL", "PL", "WC"]
+    leagues = [league] if league in ("UCL", "UCL2627", "PL", "WC") else ["UCL", "UCL2627", "PL", "WC"]
 
     app = current_app._get_current_object()
     from ..services.auto_featured import run_bender_for_league
@@ -996,7 +1020,7 @@ def set_odds_fetch():
 def set_featured_auto_settings():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "invalid league"}), 400
     from ..services.auto_featured import save_auto_settings
     save_auto_settings(
@@ -1014,7 +1038,7 @@ def set_featured_auto_settings():
 def apply_featured_auto_now():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "invalid league"}), 400
     from ..services.auto_featured import _do_apply
     # Admin explicitly requests auto-apply — clear manual lock first
@@ -1031,7 +1055,7 @@ def apply_featured_auto_now():
 @login_required
 def team_recent_matches(team_id):
     league = (request.args.get("league") or "UCL").upper()
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "invalid league"}), 400
 
     team = Team.query.get(team_id)
@@ -1220,7 +1244,7 @@ def generate_random_predictions():
 
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
-    if league not in ("UCL", "PL", "WC"):
+    if league not in ("UCL", "UCL2627", "PL", "WC"):
         return jsonify({"error": "Неизвестная лига"}), 400
 
     users = User.query.filter_by(is_bot=False, is_superuser=False).all()
@@ -1313,11 +1337,11 @@ def copy_prod_to_sandbox():
         # 4. Determine which leagues are enabled in prod
         enabled_rows = db.session.execute(satext(
             "SELECT key, value FROM bet.settings WHERE key IN "
-            "('league_enabled_UCL', 'league_enabled_PL', 'league_enabled_WC')"
+            "('league_enabled_UCL', 'league_enabled_UCL2627', 'league_enabled_PL', 'league_enabled_WC')"
         )).fetchall()
         setting_map = {row.key: row.value for row in enabled_rows}
         enabled_leagues = [
-            league for league in ("UCL", "PL", "WC")
+            league for league in ("UCL", "UCL2627", "PL", "WC")
             if setting_map.get(f"league_enabled_{league}", "1") == "1"
         ]
         if not enabled_leagues:
@@ -1550,14 +1574,21 @@ def tg_remind():
     if not bot_token or not chat_id:
         return jsonify({"error": "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID не заданы"}), 500
 
-    featured = (
+    all_featured = (
         Match.query
         .filter(Match.featured == True, Match.status == "scheduled")
         .order_by(Match.kickoff_time)
         .all()
     )
-    if not featured:
+    if not all_featured:
         return jsonify({"error": "Нет активных матчей для ставок"}), 400
+
+    rounds_numbered = [m.featured_round for m in all_featured if m.featured_round is not None]
+    active_round = min(rounds_numbered) if rounds_numbered else None
+    if active_round is not None:
+        featured = [m for m in all_featured if m.featured_round == active_round]
+    else:
+        featured = [m for m in all_featured if m.featured_round is None]
 
     all_users = User.query.filter(User.is_bot == False).all()
     placed_ids_by_match = {}
@@ -1596,6 +1627,86 @@ def tg_remind():
     actor = get_current_user()
     log_action(actor.id if actor else None, "tg_remind", f"Отправлено TG напоминание: {len(featured)} матч(ей)")
     return jsonify({"ok": True, "sent": True, "message": "Сообщение отправлено в Telegram"})
+
+
+@api_bp.route("/settings/bender-commentary", methods=["POST"])
+@superuser_required
+def set_bender_commentary():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    s = Setting.query.get("bender_commentary_enabled") or Setting(key="bender_commentary_enabled")
+    s.value = "1" if enabled else "0"
+    db.session.merge(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "bender_commentary_toggle",
+               f"Комментарии Бендера: {'вкл' if enabled else 'выкл'}")
+    return jsonify({"ok": True, "enabled": enabled})
+
+
+@api_bp.route("/settings/bender-standings", methods=["POST"])
+@superuser_required
+def set_bender_standings():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    s = Setting.query.get("bender_standings_enabled") or Setting(key="bender_standings_enabled")
+    s.value = "1" if enabled else "0"
+    db.session.merge(s)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "bender_standings_toggle",
+               f"Итоги Бендера: {'вкл' if enabled else 'выкл'}")
+    return jsonify({"ok": True, "enabled": enabled})
+
+
+@api_bp.route("/admin/hof", methods=["POST"])
+@superuser_required
+def hof_create():
+    data = request.get_json() or {}
+    tournament = (data.get("tournament") or "").strip()
+    champion = (data.get("champion") or "").strip()
+    if not tournament or not champion:
+        return jsonify({"error": "Обязательные поля: tournament, champion"}), 400
+    from sqlalchemy import func as _func
+    max_order = db.session.query(_func.max(HofEntry.sort_order)).scalar()
+    entry = HofEntry(tournament=tournament, champion=champion, sort_order=(max_order or 0) + 1)
+    db.session.add(entry)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "hof_create", f"Зал Славы: добавлен {champion} ({tournament})")
+    return jsonify({"ok": True, "id": entry.id})
+
+
+@api_bp.route("/admin/hof/<int:entry_id>", methods=["POST"])
+@superuser_required
+def hof_update(entry_id):
+    entry = db.session.get(HofEntry, entry_id)
+    if not entry:
+        return jsonify({"error": "Не найдено"}), 404
+    data = request.get_json() or {}
+    if "tournament" in data:
+        entry.tournament = (data["tournament"] or "").strip()
+    if "champion" in data:
+        entry.champion = (data["champion"] or "").strip()
+    if not entry.tournament or not entry.champion:
+        db.session.rollback()
+        return jsonify({"error": "Поля не могут быть пустыми"}), 400
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.route("/admin/hof/<int:entry_id>/delete", methods=["POST"])
+@superuser_required
+def hof_delete(entry_id):
+    entry = db.session.get(HofEntry, entry_id)
+    if not entry:
+        return jsonify({"error": "Не найдено"}), 404
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "hof_delete",
+               f"Зал Славы: удалён {entry.champion} ({entry.tournament})")
+    db.session.delete(entry)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @api_bp.route("/scheduler/status", methods=["GET"])

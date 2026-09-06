@@ -12,7 +12,8 @@ def maybe_generate_standings(league, app):
             from ..models import Match, Tour, Setting, Commentary, db
             from .points import get_leaderboard
             from .groq_api import (generate_bender_standings,
-                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
+                                   STANDINGS_LABEL_UCL, STANDINGS_LABEL_UCL2627,
+                                   STANDINGS_LABEL_PL, STANDINGS_LABEL_WC)
             from ..seed import LEAGUE_TO_TOURNAMENT
 
             featured = (Match.query.join(Tour)
@@ -51,8 +52,9 @@ def maybe_generate_standings(league, app):
             db.session.add(s)
             db.session.commit()
 
-            league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ"}
-            label_keys = {"UCL": STANDINGS_LABEL_UCL, "PL": STANDINGS_LABEL_PL, "WC": STANDINGS_LABEL_WC}
+            league_names = {"UCL": "ЛЧ", "UCL2627": "ЛЧ 26/27", "PL": "АПЛ", "WC": "ЧМ"}
+            label_keys = {"UCL": STANDINGS_LABEL_UCL, "UCL2627": STANDINGS_LABEL_UCL2627,
+                          "PL": STANDINGS_LABEL_PL, "WC": STANDINGS_LABEL_WC}
             league_name = league_names.get(league, league)
             label_key = label_keys.get(league, f"__standings_{league.lower()}__")
 
@@ -72,6 +74,11 @@ def maybe_generate_standings(league, app):
                     lines.append(f"  {row['user'].display_name}: +{d['pts']}")
                 else:
                     lines.append(f"  {row['user'].display_name}: не ставил")
+
+            standings_s = Setting.query.get("bender_standings_enabled")
+            if standings_s is None or standings_s.value != "1":
+                print(f"[standings] bender standings disabled for {league}, skipping")
+                return
 
             try:
                 text = generate_bender_standings("\n".join(lines),

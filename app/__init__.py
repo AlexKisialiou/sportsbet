@@ -169,13 +169,26 @@ def create_app():
         from .seed import run as seed, seed_prompt_hints
         seed()
         seed_prompt_hints()
-        from .services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches
+        from .models import HofEntry as _HofEntry
+        if _HofEntry.query.count() == 0:
+            _initial_hof = [
+                {"tournament": "Лига чемпионов 2024", "champion": "Колобок"},
+                {"tournament": "Евро 2024",           "champion": "Богоедов"},
+                {"tournament": "Лига чемпионов 2025", "champion": "Чел"},
+                {"tournament": "Лига чемпионов 2026", "champion": "Колобок"},
+            ]
+            for i, e in enumerate(_initial_hof):
+                db.session.add(_HofEntry(tournament=e["tournament"], champion=e["champion"], sort_order=i))
+            db.session.commit()
+        from .services.football_api import (fetch_and_save_cl_matches, fetch_and_save_pl_matches,
+                                             fetch_and_save_wc_matches, fetch_and_save_ucl2627_matches)
         from .services.standings import maybe_generate_standings
         from .models import Setting as _Setting
         for _fn, _league, _label in [
-            (fetch_and_save_cl_matches, "UCL", "CL"),
-            (fetch_and_save_pl_matches, "PL",  "PL"),
-            (fetch_and_save_wc_matches, "WC",  "WC"),
+            (fetch_and_save_cl_matches,     "UCL",     "CL"),
+            (fetch_and_save_ucl2627_matches,"UCL2627", "CL-2627"),
+            (fetch_and_save_pl_matches,     "PL",      "PL"),
+            (fetch_and_save_wc_matches,     "WC",      "WC"),
         ]:
             _s = _Setting.query.get(f"league_enabled_{_league}")
             if _s is not None and _s.value == "0":

@@ -2,10 +2,10 @@ from collections import defaultdict
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
 from sqlalchemy import func, case as sa_case
-from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment, CommentRead
+from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment, CommentRead, HofEntry
 from ..services.points import get_leaderboard
 from ..services.activity import ACTION_LABELS
-from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
+from ..services.groq_api import STANDINGS_LABEL_UCL, STANDINGS_LABEL_UCL2627, STANDINGS_LABEL_PL, STANDINGS_LABEL_WC
 from ..auth import get_current_user, login_required, admin_required, superuser_required
 
 from flask import Blueprint
@@ -31,13 +31,13 @@ def _score_display(sc):
 
 def _get_league_config():
     order_s = Setting.query.get("league_order")
-    order = order_s.value.split(",") if order_s and order_s.value else ["UCL", "PL", "WC"]
-    order = [lg for lg in order if lg in ("UCL", "PL", "WC")]
-    for lg in ("UCL", "PL", "WC"):
+    order = order_s.value.split(",") if order_s and order_s.value else ["UCL", "UCL2627", "PL", "WC"]
+    order = [lg for lg in order if lg in ("UCL", "UCL2627", "PL", "WC")]
+    for lg in ("UCL", "UCL2627", "PL", "WC"):
         if lg not in order:
             order.append(lg)
     enabled = {}
-    for lg in ("UCL", "PL", "WC"):
+    for lg in ("UCL", "UCL2627", "PL", "WC"):
         s = Setting.query.get(f"league_enabled_{lg}")
         enabled[lg] = s is None or s.value != "0"
     return order, enabled
@@ -245,13 +245,6 @@ def _compute_all_team_stats(league):
     result.sort(key=lambda x: x["efficiency_index"], reverse=True)
     return result
 
-
-_HOF_HISTORY = [
-    {"tournament": "Лига чемпионов 2024", "champion": "Колобок"},
-    {"tournament": "Евро 2024",           "champion": "Богоедов"},
-    {"tournament": "Лига чемпионов 2025", "champion": "Чел"},
-    {"tournament": "Лига чемпионов 2026", "champion": "Колобок"},
-]
 
 
 def _compute_hall_of_fame(enabled_leagues, users, league_names):
@@ -675,6 +668,7 @@ def index():
     }
 
     ucl_data = _build("UCL")
+    ucl2627_data = _build("UCL2627")
     pl_data = _build("PL")
     wc_data = _build("WC")
 
@@ -709,7 +703,8 @@ def index():
         return notifs
 
     unread_notifications = []
-    for _lg, _tid, _d in (("UCL", "ucl", ucl_data), ("PL", "pl", pl_data), ("WC", "wc", wc_data)):
+    for _lg, _tid, _d in (("UCL", "ucl", ucl_data), ("UCL2627", "ucl2627", ucl2627_data),
+                          ("PL", "pl", pl_data), ("WC", "wc", wc_data)):
         if league_enabled.get(_lg):
             unread_notifications.extend(_collect_unread_notifications(_d, _tid))
 
@@ -726,11 +721,15 @@ def index():
         return t.strftime('%Y-%m-%dT%H:%M:%SZ') if t else None
 
     ucl_first_match_iso = _first_kickoff(ucl_data["scheduled_matches"]) if league_enabled["UCL"] else None
+    ucl2627_first_match_iso = _first_kickoff(ucl2627_data["scheduled_matches"]) if league_enabled["UCL2627"] else None
     pl_first_match_iso = _first_kickoff(pl_data["scheduled_matches"]) if league_enabled["PL"] else None
     wc_first_match_iso = _first_kickoff(wc_data["scheduled_matches"]) if league_enabled["WC"] else None
 
     ucl_commentaries = Commentary.query.filter(
         Commentary.match_label.like("UCL:%")
+    ).order_by(Commentary.created_at.asc()).all()
+    ucl2627_commentaries = Commentary.query.filter(
+        Commentary.match_label.like("UCL2627:%")
     ).order_by(Commentary.created_at.asc()).all()
     pl_commentaries = Commentary.query.filter(
         Commentary.match_label.like("PL:%")
@@ -739,6 +738,7 @@ def index():
         Commentary.match_label.like("WC:%")
     ).order_by(Commentary.created_at.asc()).all()
     ucl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_UCL).first()
+    ucl2627_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_UCL2627).first()
     pl_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_PL).first()
     wc_standings = Commentary.query.filter_by(match_label=STANDINGS_LABEL_WC).first()
 
@@ -748,7 +748,7 @@ def index():
     except (ValueError, TypeError):
         form_limit = 0
     team_form_data = {}
-    for _league, _data in (("UCL", ucl_data), ("PL", pl_data), ("WC", wc_data)):
+    for _league, _data in (("UCL", ucl_data), ("UCL2627", ucl2627_data), ("PL", pl_data), ("WC", wc_data)):
         if not league_enabled.get(_league):
             continue
         ids = set()
@@ -767,7 +767,7 @@ def index():
 
     user_is_day_winner = False
     day_winner_info = None
-    for _lg, _data in (("UCL", ucl_data), ("PL", pl_data), ("WC", wc_data)):
+    for _lg, _data in (("UCL", ucl_data), ("UCL2627", ucl2627_data), ("PL", pl_data), ("WC", wc_data)):
         if not league_enabled.get(_lg) or not _data["pred_rounds"]:
             continue
         _latest_rnd = _data["pred_rounds"][0]
@@ -793,19 +793,23 @@ def index():
 
     return render_template("index.html",
                            ucl=ucl_data,
+                           ucl2627=ucl2627_data,
                            pl=pl_data,
                            wc=wc_data,
                            all_users=all_users,
                            predictions=predictions,
                            ucl_commentaries=ucl_commentaries,
+                           ucl2627_commentaries=ucl2627_commentaries,
                            pl_commentaries=pl_commentaries,
                            wc_commentaries=wc_commentaries,
                            ucl_standings=ucl_standings,
+                           ucl2627_standings=ucl2627_standings,
                            pl_standings=pl_standings,
                            wc_standings=wc_standings,
                            betting_locked=betting_locked,
                            reveal_live=reveal_live,
                            ucl_first_match_iso=ucl_first_match_iso,
+                           ucl2627_first_match_iso=ucl2627_first_match_iso,
                            pl_first_match_iso=pl_first_match_iso,
                            wc_first_match_iso=wc_first_match_iso,
                            league_order=league_order,
@@ -827,6 +831,12 @@ def admin():
         .order_by(Match.kickoff_time.asc())
         .all()
     )
+    ucl2627_scheduled = (
+        Match.query.join(Tour)
+        .filter(Tour.league == "UCL2627", Match.status == "scheduled")
+        .order_by(Match.kickoff_time.asc())
+        .all()
+    )
     pl_scheduled = (
         Match.query.join(Tour)
         .filter(Tour.league == "PL", Match.status == "scheduled")
@@ -842,7 +852,7 @@ def admin():
     league_order, league_enabled = _get_league_config()
 
     next_round = {}
-    for lg in ("UCL", "PL", "WC"):
+    for lg in ("UCL", "UCL2627", "PL", "WC"):
         row = (
             db.session.query(func.max(Match.featured_round))
             .join(Tour)
@@ -852,9 +862,10 @@ def admin():
         next_round[lg] = (row + 1) if row else 1
 
     from ..services.auto_featured import get_auto_settings
-    auto_featured = {lg: get_auto_settings(lg) for lg in ("UCL", "PL", "WC")}
+    auto_featured = {lg: get_auto_settings(lg) for lg in ("UCL", "UCL2627", "PL", "WC")}
 
-    return render_template("admin.html", ucl_scheduled=ucl_scheduled, pl_scheduled=pl_scheduled,
+    return render_template("admin.html", ucl_scheduled=ucl_scheduled, ucl2627_scheduled=ucl2627_scheduled,
+                           pl_scheduled=pl_scheduled,
                            wc_scheduled=wc_scheduled, league_order=league_order,
                            league_enabled=league_enabled, next_round=next_round,
                            auto_featured=auto_featured)
@@ -870,7 +881,7 @@ def superadmin():
     all_scheduled = (
         Match.query
         .join(Tour)
-        .filter(Tour.league.in_(["UCL", "PL", "WC"]), Match.status == "scheduled")
+        .filter(Tour.league.in_(["UCL", "UCL2627", "PL", "WC"]), Match.status == "scheduled")
         .order_by(Match.kickoff_time.asc())
         .all()
     )
@@ -885,23 +896,23 @@ def superadmin():
         except (ValueError, TypeError):
             return 4
 
-    pred_days_limits = {lg: _pred_limit(lg) for lg in ("UCL", "PL", "WC")}
+    pred_days_limits = {lg: _pred_limit(lg) for lg in ("UCL", "UCL2627", "PL", "WC")}
 
     edit_matches = (
         Match.query
         .join(Tour)
-        .filter(Tour.league.in_(["UCL", "PL", "WC"]), Match.featured == True)
+        .filter(Tour.league.in_(["UCL", "UCL2627", "PL", "WC"]), Match.featured == True)
         .order_by(Match.kickoff_time.desc())
         .limit(80)
         .all()
     )
-    edit_matches_by_league = {"UCL": [], "PL": [], "WC": []}
+    edit_matches_by_league = {"UCL": [], "UCL2627": [], "PL": [], "WC": []}
     for m in edit_matches:
         edit_matches_by_league[m.tour.league].append(m)
 
     live_matches = (
         Match.query.join(Tour)
-        .filter(Tour.league.in_(["UCL", "PL", "WC"]), Match.status == "live", Match.featured == True)
+        .filter(Tour.league.in_(["UCL", "UCL2627", "PL", "WC"]), Match.status == "live", Match.featured == True)
         .order_by(Match.kickoff_time.asc())
         .all()
     )
@@ -968,6 +979,13 @@ def superadmin():
     tg_last_sent_s = Setting.query.get("tg_remind_last_sent")
     tg_last_sent = tg_last_sent_s.value if tg_last_sent_s else ""
 
+    hof_entries = HofEntry.query.order_by(HofEntry.sort_order).all()
+
+    bp_s = Setting.query.get("bender_commentary_enabled")
+    bender_picks_enabled = bp_s is not None and bp_s.value == "1"
+    bs_s = Setting.query.get("bender_standings_enabled")
+    bender_standings_enabled = bs_s is not None and bs_s.value == "1"
+
     return render_template("superadmin.html", current_theme=current_theme, users=users,
                            current_user=current, all_scheduled=all_scheduled,
                            betting_locked=betting_locked,
@@ -987,7 +1005,10 @@ def superadmin():
                            tg_before_min=tg_before_min,
                            tg_quiet_from=tg_quiet_from,
                            tg_quiet_to=tg_quiet_to,
-                           tg_last_sent=tg_last_sent)
+                           tg_last_sent=tg_last_sent,
+                           hof_entries=hof_entries,
+                           bender_picks_enabled=bender_picks_enabled,
+                           bender_standings_enabled=bender_standings_enabled)
 
 
 @main_bp.route("/activity-log")
@@ -1030,7 +1051,7 @@ def stats():
 
     league_order, league_enabled = _get_league_config()
     enabled_leagues = [lg for lg in league_order if league_enabled.get(lg)]
-    league_names = {"UCL": "ЛЧ", "PL": "АПЛ", "WC": "ЧМ 2026"}
+    league_names = {"UCL": "ЛЧ", "UCL2627": "ЛЧ 26/27", "PL": "АПЛ", "WC": "ЧМ 2026"}
 
     view = request.args.get("view", "players")
     if view not in ("players", "teams", "hall"):
@@ -1041,7 +1062,7 @@ def stats():
                   enabled_leagues=enabled_leagues, active_league=None,
                   league_names=league_names, rounds_table=[],
                   top_actual_scores=[], top_exact_scores=[], top_pred_scores=[],
-                  team_stats=[], hall_of_fame={}, hof_history=_HOF_HISTORY, view=view)
+                  team_stats=[], hall_of_fame={}, hof_history=HofEntry.query.order_by(HofEntry.sort_order).all(), view=view)
 
     if view == "hall":
         return render_template("stats.html", **_empty)
@@ -1389,5 +1410,5 @@ def stats():
                            rounds_table=rounds_table,
                            team_stats=[],
                            hall_of_fame={},
-                           hof_history=_HOF_HISTORY,
+                           hof_history=HofEntry.query.order_by(HofEntry.sort_order).all(),
                            view=view)

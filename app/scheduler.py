@@ -17,6 +17,7 @@ def _auto_fetch_job():
     with _app.app_context():
         from .services.football_api import (
             fetch_and_save_cl_matches,
+            fetch_and_save_ucl2627_matches,
             fetch_and_save_pl_matches,
             fetch_and_save_wc_matches,
         )
@@ -25,9 +26,10 @@ def _auto_fetch_job():
         from .models import Setting
 
         for fn, league in [
-            (fetch_and_save_cl_matches, "UCL"),
-            (fetch_and_save_pl_matches, "PL"),
-            (fetch_and_save_wc_matches, "WC"),
+            (fetch_and_save_cl_matches,      "UCL"),
+            (fetch_and_save_ucl2627_matches, "UCL2627"),
+            (fetch_and_save_pl_matches,      "PL"),
+            (fetch_and_save_wc_matches,      "WC"),
         ]:
             s = Setting.query.get(f"league_enabled_{league}")
             if s is not None and s.value == "0":
@@ -89,7 +91,7 @@ def _auto_odds_job():
             print(f"[odds-scheduler] {ts} — disabled in settings, skipped")
             return
 
-        for league in ("UCL", "PL", "WC"):
+        for league in ("UCL", "UCL2627", "PL", "WC"):
             s = Setting.query.get(f"league_enabled_{league}")
             if s is not None and s.value == "0":
                 continue
@@ -156,17 +158,26 @@ def _auto_tg_remind_job():
         if _is_quiet(now_minsk.hour, q_from, q_to):
             return
 
-        featured = (
+        all_featured = (
             Match.query
             .filter(Match.featured == True, Match.status == "scheduled")
             .order_by(Match.kickoff_time)
             .all()
         )
-        if not featured:
+        if not all_featured:
             return
 
-        # Find the first match of the nearest upcoming game day
-        first_match = featured[0]
+        # Only the active game day — lowest featured_round (same logic as _build)
+        rounds_with_none = [m.featured_round for m in all_featured if m.featured_round is None]
+        rounds_numbered = [m.featured_round for m in all_featured if m.featured_round is not None]
+        active_round = min(rounds_numbered) if rounds_numbered else None
+
+        if active_round is not None:
+            featured = [m for m in all_featured if m.featured_round == active_round]
+        else:
+            featured = [m for m in all_featured if m.featured_round is None]
+
+        first_match = min(featured, key=lambda m: m.kickoff_time)
         first_ko_utc = first_match.kickoff_time.replace(tzinfo=timezone.utc)
         first_ko_minsk = first_ko_utc.astimezone(MINSK)
         game_day = first_ko_minsk.date()

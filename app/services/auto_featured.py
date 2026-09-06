@@ -187,8 +187,19 @@ def _run_bender_and_odds(app, league, match_data):
 
         odds_s = Setting.query.get("odds_fetch_enabled")
         if odds_s is None or odds_s.value != "0":
-            odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
-            odds_map = fetch_odds_for_matches(odds_input, league)
+            match_ids = [mid for mid, *_ in match_data]
+            already_have_odds = all(
+                Match.query.get(mid).odds_home is not None for mid in match_ids
+            )
+            if already_have_odds:
+                print(f"[odds] {league}: all matches already have odds, skipping fetch")
+                odds_map = {mid: {"home": Match.query.get(mid).odds_home,
+                                  "draw": Match.query.get(mid).odds_draw,
+                                  "away": Match.query.get(mid).odds_away}
+                            for mid in match_ids}
+            else:
+                odds_input = [(mid, hen, aen) for mid, _h, _a, _lbl, hen, aen in match_data]
+                odds_map = fetch_odds_for_matches(odds_input, league)
         else:
             odds_map = {}
 
@@ -200,6 +211,9 @@ def _run_bender_and_odds(app, league, match_data):
                     m.odds_draw = odds.get("draw")
                     m.odds_away = odds.get("away")
             db.session.commit()
+
+        commentary_s = Setting.query.get("bender_commentary_enabled")
+        show_commentary = commentary_s is not None and commentary_s.value == "1"
 
         def call_groq(item):
             match_id, home, away, label, _hen, _aen = item
@@ -229,6 +243,7 @@ def _run_bender_and_odds(app, league, match_data):
                         user_id=bender_id, match_id=match_id,
                         home_score=hs, away_score=as_,
                     ))
-            db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
+            if show_commentary:
+                db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
 
         db.session.commit()
