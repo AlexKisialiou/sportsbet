@@ -67,7 +67,7 @@ def _auto_fetch_job():
                         db.session.merge(row)
                         db.session.commit()
                         from .services.auto_featured import run_bender_for_league
-                        run_bender_for_league(_app, league)
+                        run_bender_for_league(_app, league, active_only=True)
                         print(f"[scheduler] {ts} {league}: Bender triggered (new featured set)")
             except Exception as e:
                 print(f"[scheduler] {ts} {league} bender-check failed: {e}")
