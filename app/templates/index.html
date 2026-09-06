@@ -991,36 +991,40 @@ if (!card) return;
 }
 
 let _autoFetchTimerId = null;
+let _autoFetchRetryId = null;
 function initAutoFetchTimer() {
+    if (_autoFetchRetryId) { clearTimeout(_autoFetchRetryId); _autoFetchRetryId = null; }
     const el = document.getElementById('auto-fetch-chip');
     if (!el) return;
     fetch('/api/scheduler/status')
         .then(r => r.json())
         .then(data => {
             if (!data.enabled) { el.style.display = 'none'; return; }
-            if (!data.next_run_ts) {
+            const nowTs = Date.now() / 1000;
+            if (!data.next_run_ts || data.next_run_ts <= nowTs) {
                 el.style.display = '';
                 el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
-                setTimeout(initAutoFetchTimer, 5000);
+                _autoFetchRetryId = setTimeout(initAutoFetchTimer, 5000);
                 return;
             }
             el.style.display = '';
             el.innerHTML = '<span class="afc-label">обновление матчей через</span> <span class="afc-time" id="afc-time">—</span>';
             const timeEl = el.querySelector('#afc-time');
-            if (_autoFetchTimerId) clearInterval(_autoFetchTimerId);
+            if (_autoFetchTimerId) { clearInterval(_autoFetchTimerId); _autoFetchTimerId = null; }
             _autoFetchTimerId = setInterval(() => {
                 const diff = Math.floor(data.next_run_ts - Date.now() / 1000);
                 if (diff <= 0) {
                     clearInterval(_autoFetchTimerId);
+                    _autoFetchTimerId = null;
                     el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
-                    setTimeout(initAutoFetchTimer, 12000);
+                    _autoFetchRetryId = setTimeout(initAutoFetchTimer, 12000);
                 } else {
                     const m = Math.floor(diff / 60), s = diff % 60;
                     timeEl.textContent = m + ':' + String(s).padStart(2, '0');
                 }
             }, 1000);
         })
-        .catch(() => { const el2 = document.getElementById('auto-fetch-chip'); if (el2) el2.style.display = 'none'; });
+        .catch(() => { _autoFetchRetryId = setTimeout(initAutoFetchTimer, 10000); });
 }
 
 function updateFillDots(matchId) {
