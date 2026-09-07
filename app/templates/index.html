@@ -215,7 +215,8 @@
                 </div>
                 <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
                     {% for cmt in cmts %}
-                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
+                    {% set is_new = current_user and cmt.user_id != current_user.id and cmt.id > data.reads_map.get(match.id, 0) %}
+                    <div class="match-comment{% if is_new %} mc-new{% endif %}" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
                         {{ user_avatar(cmt.user) }}
                         <span class="mc-author">{{ cmt.user.display_name }}:</span>
                         <span class="mc-text">{{ cmt.text }}</span>
@@ -336,7 +337,8 @@
                 </div>
                 <div class="mc-scroll" id="mc-scroll-{{ match.id }}">
                     {% for cmt in cmts %}
-                    <div class="match-comment" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
+                    {% set is_new = current_user and cmt.user_id != current_user.id and cmt.id > data.reads_map.get(match.id, 0) %}
+                    <div class="match-comment{% if is_new %} mc-new{% endif %}" id="mc-{{ cmt.id }}"{% if cmt.user.avatar_color %} style="--mc-color:{{ cmt.user.avatar_color }};"{% endif %}>
                         {{ user_avatar(cmt.user) }}
                         <span class="mc-author">{{ cmt.user.display_name }}:</span>
                         <span class="mc-text">{{ cmt.text }}</span>
@@ -943,7 +945,10 @@ async function markAsRead(matchId) {
 
 function _clearUnreadBadge(matchId) {
     const section = document.querySelector(`.match-comments-section[data-match-id="${matchId}"]`);
-    if (section) delete section.dataset.hasUnread;
+    if (section) {
+        delete section.dataset.hasUnread;
+        section.querySelectorAll('.match-comment.mc-new').forEach(el => el.classList.remove('mc-new'));
+    }
     const badge = document.querySelector(`.mc-unread-badge[data-match="${matchId}"]`);
     if (badge) badge.remove();
     dismissNotif(matchId);
@@ -1017,7 +1022,7 @@ function initAutoFetchTimer() {
                     clearInterval(_autoFetchTimerId);
                     _autoFetchTimerId = null;
                     el.innerHTML = '<span class="afc-label">обновление матчей…</span>';
-                    _autoFetchRetryId = setTimeout(initAutoFetchTimer, 12000);
+                    _autoFetchRetryId = setTimeout(initAutoFetchTimer, 3000);
                 } else {
                     const m = Math.floor(diff / 60), s = diff % 60;
                     timeEl.textContent = m + ':' + String(s).padStart(2, '0');
