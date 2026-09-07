@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date as date_type, datetime, timedelta
 from flask import render_template, request
+from ..config import AUTO_FETCH_INTERVAL_MIN, AUTO_FETCH_INTERVAL_MAX, AUTO_FETCH_INTERVAL_DEFAULT
 from sqlalchemy import func, case as sa_case
 from ..models import db, Match, Tour, Prediction, PredictionPoints, User, Commentary, ActivityLog, Setting, ReleaseNote, Score, Team, MatchComment, CommentRead, HofEntry
 from ..services.points import get_leaderboard
@@ -946,9 +947,9 @@ def superadmin():
     odds_s = Setting.query.get("odds_fetch_enabled")
     odds_fetch_enabled = odds_s is None or odds_s.value != "0"
     try:
-        auto_fetch_interval = max(5, min(int(af_interval_s.value), 120)) if af_interval_s else 15
+        auto_fetch_interval = max(AUTO_FETCH_INTERVAL_MIN, min(int(af_interval_s.value), AUTO_FETCH_INTERVAL_MAX)) if af_interval_s else AUTO_FETCH_INTERVAL_DEFAULT
     except (ValueError, TypeError):
-        auto_fetch_interval = 15
+        auto_fetch_interval = AUTO_FETCH_INTERVAL_DEFAULT
 
     tfc_s = Setting.query.get("team_form_matches_count")
     try:
@@ -998,6 +999,8 @@ def superadmin():
                            release_notes=release_notes,
                            auto_fetch_enabled=auto_fetch_enabled,
                            auto_fetch_interval=auto_fetch_interval,
+                           auto_fetch_interval_min=AUTO_FETCH_INTERVAL_MIN,
+                           auto_fetch_interval_max=AUTO_FETCH_INTERVAL_MAX,
                            odds_fetch_enabled=odds_fetch_enabled,
                            team_form_count=team_form_count,
                            comment_max_length=sa_comment_max_length,

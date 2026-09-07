@@ -330,8 +330,8 @@
         </button>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
-        <label style="font-size:.85rem;color:#aaa;">Интервал (мин):</label>
-        <input type="number" id="autofetch-interval" value="{{ auto_fetch_interval }}" min="5" max="120"
+        <label style="font-size:.85rem;color:#aaa;">Интервал (сек):</label>
+        <input type="number" id="autofetch-interval" value="{{ auto_fetch_interval }}" min="{{ auto_fetch_interval_min }}" max="{{ auto_fetch_interval_max }}"
                style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid #2a3a4a;background:#0d1117;color:#ccc;font-size:.85rem;">
         <button onclick="saveAutoFetchInterval()"
                 style="font-size:.82rem;padding:5px 14px;border-radius:7px;cursor:pointer;
@@ -1431,8 +1431,8 @@ async function toggleAutoFetch(enable) {
 async function saveAutoFetchInterval() {
     const val = parseInt(document.getElementById('autofetch-interval').value);
     const msg = document.getElementById('autofetchMsg');
-    if (isNaN(val) || val < 5 || val > 120) {
-        msg.innerHTML = '<span class="error-msg">Интервал: 5–120 мин</span>';
+    if (isNaN(val) || val < {{ auto_fetch_interval_min }} || val > {{ auto_fetch_interval_max }}) {
+        msg.innerHTML = '<span class="error-msg">Интервал: {{ auto_fetch_interval_min }}–{{ auto_fetch_interval_max }} сек</span>';
         return;
     }
     try {

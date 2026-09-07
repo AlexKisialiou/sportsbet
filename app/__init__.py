@@ -289,7 +289,8 @@ def create_app():
         return render_template("429.html"), 429
 
     from .scheduler import init_scheduler
-    init_scheduler(app)
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("RENDER"):
+        init_scheduler(app)
 
     return app
 

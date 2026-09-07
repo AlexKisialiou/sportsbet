@@ -189,14 +189,34 @@ def _run_bender_and_odds(app, league, match_data):
         from .odds_api import fetch_odds_for_matches
         from ..seed import BENDER_USERNAME, LEAGUE_TO_TOURNAMENT
 
-        Commentary.query.filter(
-            Commentary.match_label.like(f"{league}:%")
-        ).delete(synchronize_session=False)
-        db.session.commit()
-
         bender    = User.query.filter_by(username=BENDER_USERNAME).first()
         bender_id = bender.id if bender else None
         tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
+
+        # Пропускаем матчи, у которых уже есть прогноз Бендера
+        if bender_id:
+            all_ids = [mid for mid, *_ in match_data]
+            existing_ids = {
+                p.match_id for p in Prediction.query.filter(
+                    Prediction.user_id == bender_id,
+                    Prediction.match_id.in_(all_ids),
+                ).all()
+            }
+        else:
+            existing_ids = set()
+
+        pending = [item for item in match_data if item[0] not in existing_ids]
+        if existing_ids:
+            print(f"[bender] {league}: {len(existing_ids)} уже имеют прогноз, пропускаем")
+        if not pending:
+            print(f"[bender] {league}: все матчи уже имеют прогноз — Groq не вызываем")
+            return
+
+        # Удаляем Commentary только для тех матчей, которые перегенерируем
+        pending_labels = {item[3] for item in pending}
+        for label in pending_labels:
+            Commentary.query.filter_by(match_label=label).delete(synchronize_session=False)
+        db.session.commit()
 
         odds_s = Setting.query.get("odds_fetch_enabled")
         if odds_s is None or odds_s.value != "0":
@@ -230,6 +250,8 @@ def _run_bender_and_odds(app, league, match_data):
         commentary_s = Setting.query.get("bender_commentary_enabled")
         show_commentary = commentary_s is not None and commentary_s.value == "1"
 
+        print(f"[bender] {league}: запрашиваем прогнозы для {len(pending)} матчей")
+
         def call_groq(item):
             match_id, home, away, label, _hen, _aen = item
             with app.app_context():
@@ -239,16 +261,19 @@ def _run_bender_and_odds(app, league, match_data):
                     )
                     return (match_id, label, result)
                 except Exception as e:
-                    print(f"[groq] auto-bender skipped for {label}: {e}")
+                    print(f"[bender] пропущен {label}: {e}")
                     return (match_id, label, None)
 
-        with ThreadPoolExecutor(max_workers=min(len(match_data), 5)) as executor:
-            results = list(executor.map(call_groq, match_data))
+        with ThreadPoolExecutor(max_workers=min(len(pending), 5)) as executor:
+            results = list(executor.map(call_groq, pending))
 
+        saved = 0
         for match_id, label, result in results:
             if not result:
                 continue
             hs, as_, text = result
+            print(f"[bender] {label}: ставит {hs}:{as_} — {text[:80]}")
+            saved += 1
             if bender_id:
                 pred = Prediction.query.filter_by(user_id=bender_id, match_id=match_id).first()
                 if pred:
@@ -262,3 +287,4 @@ def _run_bender_and_odds(app, league, match_data):
                 db.session.add(Commentary(match_label=label, text=f"{text} Ставлю {hs}:{as_}."))
 
         db.session.commit()
+        print(f"[bender] {league}: готово — {saved}/{len(match_data)} прогнозов сохранено")

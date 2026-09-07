@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from ..config import AUTO_FETCH_INTERVAL_MIN, AUTO_FETCH_INTERVAL_MAX, AUTO_FETCH_INTERVAL_DEFAULT
 from flask import Blueprint, jsonify, request, current_app
 from ..models import db, Prediction, PredictionPoints, Match, Score, Tour, Commentary, User, Setting, ReleaseNote, Team, MatchComment, CommentRead, HofEntry
 from ..services.football_api import fetch_and_save_cl_matches, fetch_and_save_pl_matches, fetch_and_save_wc_matches, fetch_and_save_ucl2627_matches
@@ -973,7 +974,7 @@ def set_auto_fetch():
         return jsonify({"error": "enabled or interval required"}), 400
 
     enabled_s = Setting.query.get("auto_fetch_enabled") or Setting(key="auto_fetch_enabled", value="0")
-    interval_s = Setting.query.get("auto_fetch_interval_min") or Setting(key="auto_fetch_interval_min", value="15")
+    interval_s = Setting.query.get("auto_fetch_interval_min") or Setting(key="auto_fetch_interval_min", value=str(AUTO_FETCH_INTERVAL_DEFAULT))
 
     if enabled is not None:
         enabled_s.value = "1" if enabled else "0"
@@ -981,9 +982,9 @@ def set_auto_fetch():
 
     if interval is not None:
         try:
-            interval = max(5, min(int(interval), 120))
+            interval = max(AUTO_FETCH_INTERVAL_MIN, min(int(interval), AUTO_FETCH_INTERVAL_MAX))
         except (ValueError, TypeError):
-            return jsonify({"error": "interval must be 5–120"}), 400
+            return jsonify({"error": f"interval must be {AUTO_FETCH_INTERVAL_MIN}–{AUTO_FETCH_INTERVAL_MAX}"}), 400
         interval_s.value = str(interval)
         db.session.add(interval_s)
 
@@ -992,14 +993,14 @@ def set_auto_fetch():
     from ..scheduler import update_auto_fetch
     final_enabled = enabled_s.value == "1"
     try:
-        final_interval = max(5, min(int(interval_s.value), 120))
+        final_interval = max(AUTO_FETCH_INTERVAL_MIN, min(int(interval_s.value), AUTO_FETCH_INTERVAL_MAX))
     except (ValueError, TypeError):
-        final_interval = 15
+        final_interval = AUTO_FETCH_INTERVAL_DEFAULT
     update_auto_fetch(final_enabled, final_interval)
 
     actor = get_current_user()
     log_action(actor.id if actor else None, "auto_fetch_changed",
-               f"Автообновление: {'вкл' if final_enabled else 'выкл'}, интервал {final_interval} мин")
+               f"Автообновление: {'вкл' if final_enabled else 'выкл'}, интервал {final_interval} с")
     return jsonify({"ok": True, "enabled": final_enabled, "interval": final_interval})
 
 
@@ -1724,12 +1725,12 @@ def scheduler_status():
     enabled = enabled_s is not None and enabled_s.value == "1"
     interval_s = Setting.query.get("auto_fetch_interval_min")
     try:
-        interval = max(5, min(int(interval_s.value), 120)) if interval_s else 15
+        interval = max(AUTO_FETCH_INTERVAL_MIN, min(int(interval_s.value), AUTO_FETCH_INTERVAL_MAX)) if interval_s else AUTO_FETCH_INTERVAL_DEFAULT
     except (ValueError, TypeError):
-        interval = 15
+        interval = AUTO_FETCH_INTERVAL_DEFAULT
     next_run_ts = None
     if enabled:
         job = _scheduler.get_job("auto_fetch")
         if job and job.next_run_time:
             next_run_ts = job.next_run_time.timestamp()
-    return jsonify({"enabled": enabled, "interval_min": interval, "next_run_ts": next_run_ts})
+    return jsonify({"enabled": enabled, "interval_sec": interval, "next_run_ts": next_run_ts})

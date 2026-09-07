@@ -1,5 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, timezone, date
+from .config import AUTO_FETCH_INTERVAL_MIN, AUTO_FETCH_INTERVAL_MAX, AUTO_FETCH_INTERVAL_DEFAULT
 
 _scheduler = BackgroundScheduler(daemon=True)
 _app = None
@@ -33,7 +34,6 @@ def _auto_fetch_job():
         ]:
             s = Setting.query.get(f"league_enabled_{league}")
             if s is not None and s.value == "0":
-                print(f"[scheduler] {ts} {league}: skipped (disabled)")
                 continue
             try:
                 added, updated, existing = fn()
@@ -52,25 +52,41 @@ def _auto_fetch_job():
 
             try:
                 with _app.app_context():
-                    from .models import Match, Tour, Setting, db
+                    from .models import Match, Tour, Setting, Prediction, User, db
+                    from .seed import BENDER_USERNAME
+                    import hashlib
                     featured = (
                         Match.query.join(Tour)
                         .filter(Tour.league == league, Match.featured == True, Match.status == "scheduled")
                         .all()
                     )
-                    import hashlib
                     ids_str = ",".join(str(m.id) for m in sorted(featured, key=lambda x: x.id))
                     ids_hash = hashlib.md5(ids_str.encode()).hexdigest()
                     fp_row = Setting.query.get(f"bender_fp_{league}")
                     saved_fp = fp_row.value if fp_row else ""
-                    if ids_str and ids_hash != saved_fp:
+                    hash_changed = ids_str and ids_hash != saved_fp
+
+                    # Проверяем, есть ли у Бендера прогнозы на все матчи
+                    missing_preds = False
+                    if ids_str and featured:
+                        bender = User.query.filter_by(username=BENDER_USERNAME).first()
+                        if bender:
+                            feat_ids = [m.id for m in featured]
+                            have = Prediction.query.filter(
+                                Prediction.user_id == bender.id,
+                                Prediction.match_id.in_(feat_ids),
+                            ).count()
+                            missing_preds = have < len(feat_ids)
+
+                    if hash_changed or missing_preds:
                         row = Setting.query.get(f"bender_fp_{league}") or Setting(key=f"bender_fp_{league}")
                         row.value = ids_hash
                         db.session.merge(row)
                         db.session.commit()
                         from .services.auto_featured import run_bender_for_league
                         run_bender_for_league(_app, league, active_only=True)
-                        print(f"[scheduler] {ts} {league}: Bender triggered (new featured set)")
+                        reason = "новый набор матчей" if hash_changed else "нет прогнозов"
+                        print(f"[scheduler] {ts} {league}: Bender triggered ({reason})")
             except Exception as e:
                 print(f"[scheduler] {ts} {league} bender-check failed: {e}")
     print(f"[scheduler] {ts} — auto-fetch done")
@@ -277,13 +293,13 @@ def init_scheduler(app):
         interval_s = Setting.query.get("auto_fetch_interval_min")
         enabled = enabled_s is not None and enabled_s.value == "1"
         try:
-            interval = max(5, min(int(interval_s.value), 120)) if interval_s else 15
+            interval = max(AUTO_FETCH_INTERVAL_MIN, min(int(interval_s.value), AUTO_FETCH_INTERVAL_MAX)) if interval_s else AUTO_FETCH_INTERVAL_DEFAULT
         except (ValueError, TypeError):
-            interval = 15
+            interval = AUTO_FETCH_INTERVAL_DEFAULT
 
     if enabled:
         _scheduler.add_job(
-            _auto_fetch_job, "interval", minutes=interval,
+            _auto_fetch_job, "interval", seconds=interval,
             id="auto_fetch", replace_existing=True,
         )
 
@@ -302,7 +318,7 @@ def init_scheduler(app):
         tg_s = Setting.query.get("tg_remind_enabled")
         tg_on = tg_s is not None and tg_s.value == "1"
 
-    print(f"[scheduler] started — auto_fetch={'on' if enabled else 'off'}, interval={interval}min, odds=every 3h (07-24 Minsk), tg_remind={'on' if tg_on else 'off'}")
+    print(f"[scheduler] started — auto_fetch={'on' if enabled else 'off'}, interval={interval}s, odds=every 3h (07-24 Minsk), tg_remind={'on' if tg_on else 'off'}")
 
 
 def update_tg_remind(enabled: bool):
@@ -312,11 +328,11 @@ def update_tg_remind(enabled: bool):
     print(f"[tg-remind] {ts} — setting updated: enabled={enabled}")
 
 
-def update_auto_fetch(enabled: bool, interval_min: int):
+def update_auto_fetch(enabled: bool, interval_sec: int):
     if _scheduler.get_job("auto_fetch"):
         _scheduler.remove_job("auto_fetch")
     if enabled:
         _scheduler.add_job(
-            _auto_fetch_job, "interval", minutes=interval_min,
+            _auto_fetch_job, "interval", seconds=interval_sec,
             id="auto_fetch", replace_existing=True,
         )
