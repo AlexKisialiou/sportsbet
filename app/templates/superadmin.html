@@ -554,6 +554,13 @@
                            background:#0a2a10;color:#5db85d;border:1px solid #1a5a2a;">
                 🤖 Запросить прогнозы
             </button>
+            <button onclick="triggerBenderPicksForce('{{ t.league }}')"
+                    id="bender-picks-force-btn-{{ t.league }}"
+                    title="Удалить существующие прогнозы Бендера и запросить заново"
+                    style="font-size:.82rem;padding:6px 18px;border-radius:6px;cursor:pointer;
+                           background:#1a1a0a;color:#c8a020;border:1px solid #4a3a0a;">
+                🔄 Перегенерировать
+            </button>
             <span id="bender-picks-msg-{{ t.league }}" style="font-size:.8rem;color:#7a9a8a;"></span>
         </div>
 
@@ -1784,6 +1791,36 @@ async function triggerBenderPicks(league) {
     }
     btn.disabled = false;
     btn.textContent = '🤖 Запросить прогнозы';
+}
+
+async function triggerBenderPicksForce(league) {
+    const btn = document.getElementById(`bender-picks-force-btn-${league}`);
+    const msg = document.getElementById(`bender-picks-msg-${league}`);
+    if (!confirm('Удалить существующие прогнозы Бендера и запросить заново?')) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Перегенерация...';
+    msg.style.color = '#7a9a8a';
+    msg.textContent = '';
+    try {
+        const resp = await fetch('/api/admin/bender-picks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league, force: true }),
+        });
+        const d = await resp.json();
+        if (d.ok) {
+            msg.style.color = '#c8a020';
+            msg.textContent = d.started > 0 ? `Перегенерация запущена для ${d.started} матчей` : 'Нет активных матчей';
+        } else {
+            msg.style.color = '#e06060';
+            msg.textContent = d.error || 'Ошибка';
+        }
+    } catch (e) {
+        msg.style.color = '#e06060';
+        msg.textContent = 'Ошибка сети';
+    }
+    btn.disabled = false;
+    btn.textContent = '🔄 Перегенерировать';
 }
 
 function switchPromptTab(tournament) {

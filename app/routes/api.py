@@ -938,6 +938,7 @@ def update_prompt_hint(hint_id):
 def trigger_bender_picks():
     data = request.get_json(silent=True) or {}
     league = (data.get("league") or "").upper()
+    force = bool(data.get("force", False))
     leagues = [league] if league in ("UCL", "UCL2627", "PL", "WC") else ["UCL", "UCL2627", "PL", "WC"]
 
     app = current_app._get_current_object()
@@ -945,7 +946,7 @@ def trigger_bender_picks():
 
     total = 0
     for lg in leagues:
-        n = run_bender_for_league(app, lg)
+        n = run_bender_for_league(app, lg, force=force)
         if n:
             featured = Match.query.join(Tour).filter(
                 Tour.league == lg, Match.featured == True, Match.status == "scheduled"
@@ -958,8 +959,9 @@ def trigger_bender_picks():
     db.session.commit()
 
     actor = get_current_user()
-    log_action(actor.id if actor else None, "bender_manual",
-               f"Ручной запрос прогнозов: {', '.join(leagues)}, {total} матчей")
+    action_label = "bender_force" if force else "bender_manual"
+    log_action(actor.id if actor else None, action_label,
+               f"{'Принудительная перегенерация' if force else 'Ручной запрос'} прогнозов: {', '.join(leagues)}, {total} матчей")
     return jsonify({"ok": True, "started": total})
 
 

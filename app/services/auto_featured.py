@@ -140,9 +140,10 @@ def apply_featured_auto(league, app):
         return _do_apply(league, app)
 
 
-def run_bender_for_league(app, league, active_only=False):
+def run_bender_for_league(app, league, active_only=False, force=False):
     """Запустить Бендера для лиги.
     active_only=True — только активный игровой день (минимальный featured_round).
+    force=True — перегенерировать даже для матчей с существующим прогнозом.
     """
     with app.app_context():
         from ..models import Match, Tour
@@ -177,12 +178,13 @@ def run_bender_for_league(app, league, active_only=False):
     threading.Thread(
         target=_run_bender_and_odds,
         args=(app, league, match_data),
+        kwargs={"force": force},
         daemon=True,
     ).start()
     return len(match_data)
 
 
-def _run_bender_and_odds(app, league, match_data):
+def _run_bender_and_odds(app, league, match_data, force=False):
     from concurrent.futures import ThreadPoolExecutor
     with app.app_context():
         from .groq_api import generate_bender_pick
@@ -193,24 +195,35 @@ def _run_bender_and_odds(app, league, match_data):
         bender_id = bender.id if bender else None
         tournament = LEAGUE_TO_TOURNAMENT.get(league, league)
 
-        # Пропускаем матчи, у которых уже есть прогноз Бендера
-        if bender_id:
-            all_ids = [mid for mid, *_ in match_data]
-            existing_ids = {
-                p.match_id for p in Prediction.query.filter(
-                    Prediction.user_id == bender_id,
-                    Prediction.match_id.in_(all_ids),
-                ).all()
-            }
-        else:
-            existing_ids = set()
+        all_ids = [mid for mid, *_ in match_data]
 
-        pending = [item for item in match_data if item[0] not in existing_ids]
-        if existing_ids:
-            print(f"[bender] {league}: {len(existing_ids)} уже имеют прогноз, пропускаем")
-        if not pending:
-            print(f"[bender] {league}: все матчи уже имеют прогноз — Groq не вызываем")
-            return
+        if force and bender_id:
+            # Удаляем существующие прогнозы Бендера — перегенерируем все
+            Prediction.query.filter(
+                Prediction.user_id == bender_id,
+                Prediction.match_id.in_(all_ids),
+            ).delete(synchronize_session=False)
+            db.session.commit()
+            print(f"[bender] {league}: force=True — сброшены старые прогнозы, перегенерируем {len(all_ids)} матчей")
+            pending = list(match_data)
+        else:
+            # Пропускаем матчи, у которых уже есть прогноз Бендера
+            if bender_id:
+                existing_ids = {
+                    p.match_id for p in Prediction.query.filter(
+                        Prediction.user_id == bender_id,
+                        Prediction.match_id.in_(all_ids),
+                    ).all()
+                }
+            else:
+                existing_ids = set()
+
+            pending = [item for item in match_data if item[0] not in existing_ids]
+            if existing_ids:
+                print(f"[bender] {league}: {len(existing_ids)} уже имеют прогноз, пропускаем")
+            if not pending:
+                print(f"[bender] {league}: все матчи уже имеют прогноз — Groq не вызываем")
+                return
 
         # Удаляем Commentary только для тех матчей, которые перегенерируем
         pending_labels = {item[3] for item in pending}
