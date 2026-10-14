@@ -951,9 +951,10 @@ def trigger_bender_picks():
             featured = Match.query.join(Tour).filter(
                 Tour.league == lg, Match.featured == True, Match.status == "scheduled"
             ).all()
+            import hashlib
             ids_str = ",".join(str(m.id) for m in sorted(featured, key=lambda x: x.id))
             fp_row = Setting.query.get(f"bender_fp_{lg}") or Setting(key=f"bender_fp_{lg}")
-            fp_row.value = ids_str
+            fp_row.value = hashlib.md5(ids_str.encode()).hexdigest()
             db.session.merge(fp_row)
             total += n
     db.session.commit()
