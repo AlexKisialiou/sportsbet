@@ -274,18 +274,30 @@ def _run_bender_and_odds(app, league, match_data, force=False):
         print(f"[bender] {league}: запрашиваем прогнозы для {len(pending)} матчей")
 
         def call_groq(item):
+            import re
+            import time
             match_id, home, away, label, _hen, _aen = item
             with app.app_context():
-                try:
-                    result = generate_bender_pick(
-                        home, away, tournament=tournament, odds=odds_map.get(match_id),
-                    )
-                    return (match_id, label, result)
-                except Exception as e:
-                    print(f"[bender] пропущен {label}: {e}")
-                    return (match_id, label, None)
+                for attempt in range(3):
+                    try:
+                        result = generate_bender_pick(
+                            home, away, tournament=tournament, odds=odds_map.get(match_id),
+                        )
+                        return (match_id, label, result)
+                    except Exception as e:
+                        msg = str(e)
+                        # Groq 429: parse "try again in Xs" and wait
+                        m = re.search(r'try again in (\d+(?:\.\d+)?)s', msg)
+                        wait = float(m.group(1)) + 1 if m else (15 * (attempt + 1))
+                        if attempt < 2 and ('429' in msg or 'rate_limit' in msg.lower()):
+                            print(f"[bender] 429 {label}, ждём {wait:.0f}с (попытка {attempt+1}/3)")
+                            time.sleep(wait)
+                        else:
+                            print(f"[bender] пропущен {label}: {e}")
+                            return (match_id, label, None)
+            return (match_id, label, None)
 
-        with ThreadPoolExecutor(max_workers=min(len(pending), 5)) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(call_groq, pending))
 
         saved = 0
