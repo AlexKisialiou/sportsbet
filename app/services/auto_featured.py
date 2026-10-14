@@ -165,6 +165,14 @@ def run_bender_for_league(app, league, active_only=False, force=False):
                 # Матчи без round — все показываем
                 matches = [m for m in matches if m.featured_round is None]
 
+        if force:
+            # Только сегодняшние матчи по минскому времени
+            today_minsk = (datetime.utcnow() + MINSK_OFFSET).date()
+            matches = [
+                m for m in matches
+                if m.kickoff_time and (m.kickoff_time + MINSK_OFFSET).date() == today_minsk
+            ]
+
         match_data = [
             (
                 m.id,
