@@ -1,15 +1,60 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import os
+from html import escape
 
 import requests
 
-from ..models import Prediction
+from ..models import Match, Prediction, Tour
 
 MINSK = timezone(timedelta(hours=3))
 
 
-def send_maintenance_notification(enabled):
+def build_day_results(league):
+    from .points import get_leaderboard
+
+    labels = {"UCL": "Лига чемпионов", "UCL2627": "ЛЧ 26/27", "PL": "АПЛ", "WC": "ЧМ 2026"}
+    matches = Match.query.join(Tour).filter(
+        Tour.league == league, Match.featured == True, Match.featured_round > 0,
+    ).all()
+    rounds = defaultdict(list)
+    for match in matches:
+        rounds[match.featured_round].append(match)
+    completed = [
+        rnd for rnd, group in rounds.items()
+        if all(match.status == "finished" and match.score is not None for match in group)
+    ]
+    if not completed:
+        return f"<b>🏆 {escape(labels[league])}</b>\nПока нет завершённых игровых дней."
+    day = max(completed)
+    leaderboard = get_leaderboard(last_rounds=[day], league=league)
+    previous = sorted(leaderboard, key=lambda row: -(row["total"] - row["days"][0]["pts"]))
+    previous_ranks = {row["user"].id: i for i, row in enumerate(previous, 1)}
+    table = [f"{'№':>2}   {'Участник':<11} {'Всего':>5} {'+День':>5}"]
+    for rank, row in enumerate(leaderboard, 1):
+        old_rank = previous_ranks[row["user"].id]
+        arrow = "↑" if rank < old_rank else ("↓" if rank > old_rank else "→")
+        name = row["user"].display_name.replace("\n", " ").replace("\r", " ")
+        if len(name) > 11:
+            name = name[:10] + "…"
+        table.append(f"{rank:>2} {arrow} {name:<11} {row['total']:>5} {row['days'][0]['pts']:>+5}")
+    best = max((row["days"][0]["pts"] for row in leaderboard), default=0)
+    winners = ", ".join(
+        row["user"].display_name for row in leaderboard if row["days"][0]["pts"] == best
+    )
+    winner_text = (
+        f"👑 Лидер игрового дня: {escape(winners)} — {best} оч."
+        if best > 0 else "За этот игровой день никто не набрал очков."
+    )
+    return (
+        f"<b>🏆 Итоги последнего игрового дня</b>\n{escape(labels[league])} · День {day}\n\n"
+        f"<pre>{escape(chr(10).join(table))}</pre>\n"
+        f"Всего — общие очки.\n+День — очки за последний завершённый игровой день ({day}).\n\n"
+        f"↑ поднялся · ↓ опустился · → без изменений\n\n{winner_text}"
+    )
+
+
+def send_maintenance_notification(enabled, *, league=None):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
@@ -23,14 +68,18 @@ def send_maintenance_notification(enabled):
         text = f"[SANDBOX] {text}"
     if os.environ.get("APP_URL"):
         text += f"\n\n👉 {os.environ['APP_URL']}"
-    response = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text},
-        timeout=10,
-    )
-    response.raise_for_status()
-    if not response.json().get("ok"):
-        raise RuntimeError("Telegram не подтвердил доставку сообщения")
+    messages = [escape(text)]
+    if enabled and league:
+        messages.append(build_day_results(league))
+    for message in messages:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        if not response.json().get("ok"):
+            raise RuntimeError("Telegram не подтвердил доставку сообщения")
 
 
 def _match_word(count: int) -> str:

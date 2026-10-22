@@ -162,7 +162,7 @@ def _auto_tg_remind_job():
         from .services.telegram import build_bet_reminder
 
         enabled_s = Setting.query.get("tg_remind_enabled")
-        if not (enabled_s and enabled_s.value == "1"):
+        if enabled_s is not None and enabled_s.value != "1":
             return
         maintenance = db.session.get(Setting, "maintenance_enabled")
         if maintenance and maintenance.value == "1":
@@ -291,7 +291,7 @@ def init_scheduler(app):
     with app.app_context():
         from .models import Setting
         tg_s = Setting.query.get("tg_remind_enabled")
-        tg_on = tg_s is not None and tg_s.value == "1"
+        tg_on = tg_s is None or tg_s.value == "1"
 
     print(f"[scheduler] started — auto_fetch={'on' if enabled else 'off'}, interval={interval}s, odds=every 3h (07-24 Minsk), tg_remind={'on' if tg_on else 'off'}")
 

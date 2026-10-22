@@ -1535,7 +1535,7 @@ def set_tg_remind_settings():
     db.session.commit()
 
     enabled_s = Setting.query.get("tg_remind_enabled")
-    update_tg_remind(enabled_s is not None and enabled_s.value == "1")
+    update_tg_remind(enabled_s is None or enabled_s.value == "1")
 
     actor = get_current_user()
     log_action(actor.id if actor else None, "tg_remind_settings",
@@ -1559,6 +1559,15 @@ def set_maintenance():
     if current_enabled == enabled:
         return jsonify({"ok": True, "enabled": enabled, "message": "Режим уже установлен"})
 
+    notification_options = {}
+    if enabled:
+        from .main import _get_league_config
+        league = data.get("league")
+        order, league_enabled = _get_league_config()
+        if not isinstance(league, str) or league not in order or not league_enabled.get(league):
+            return jsonify({"error": "Выберите включённую лигу для таблицы лидеров"}), 400
+        notification_options = {"league": league}
+
     row = row or Setting(key="maintenance_enabled")
     row.value = "1" if enabled else "0"
     db.session.add(row)
@@ -1566,7 +1575,7 @@ def set_maintenance():
     actor = get_current_user()
     log_action(actor.id, "maintenance_changed", "Включён" if enabled else "Выключен")
     try:
-        send_maintenance_notification(enabled)
+        send_maintenance_notification(enabled, **notification_options)
     except (requests.RequestException, RuntimeError, ValueError):
         current_app.logger.error("Maintenance changed, but Telegram notification failed")
         return jsonify({

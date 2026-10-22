@@ -265,3 +265,18 @@ def test_automatic_reminders_pause_during_maintenance(app, reminder_job):
     run(12)
     run(17)
     send.assert_not_called()
+
+
+def test_reminders_enabled_by_default(app, reminder_job):
+    from app.models import db, Setting
+
+    make_user(app, "player")
+    make_match(app, kickoff=datetime(2030, 1, 1, 15))
+    with app.app_context():
+        db.session.delete(db.session.get(Setting, "tg_remind_enabled"))
+        db.session.commit()
+    run, send = reminder_job
+
+    run(12)
+
+    send.assert_called_once()

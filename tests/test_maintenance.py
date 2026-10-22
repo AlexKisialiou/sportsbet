@@ -1,10 +1,18 @@
 from unittest.mock import patch
+from datetime import datetime
 
 import pytest
 import requests
 
 from .conftest import make_user
 from app.models import db, Setting
+
+def closing_payload(**overrides):
+    return {
+        "enabled": True,
+        "league": "PL",
+        **overrides,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -87,19 +95,24 @@ def test_toggle_persists_notifies_and_avoids_duplicate_notifications(app, client
     authenticate(client, make_user(app, "super", is_superuser=True))
     with patch("app.services.telegram.send_maintenance_notification") as notify:
         for enabled in (True, True, False):
-            response = client.post("/api/settings/maintenance", json={"enabled": enabled})
+            response = client.post(
+                "/api/settings/maintenance",
+                json=closing_payload() if enabled else {"enabled": False},
+            )
             assert response.status_code == 200
             assert response.json["enabled"] == enabled
             with app.app_context():
                 assert db.session.get(Setting, "maintenance_enabled").value == ("1" if enabled else "0")
 
     assert [call.args[0] for call in notify.call_args_list] == [True, False]
+    assert notify.call_args_list[0].kwargs == {"league": "PL"}
+    assert notify.call_args_list[1].kwargs == {}
 
 
 def test_failed_telegram_delivery_does_not_hide_mode_change(app, client):
     authenticate(client, make_user(app, "super", is_superuser=True))
     with patch("app.services.telegram.send_maintenance_notification", side_effect=requests.Timeout):
-        response = client.post("/api/settings/maintenance", json={"enabled": True})
+        response = client.post("/api/settings/maintenance", json=closing_payload())
 
     assert response.json["enabled"] is True
     assert "warning" in response.json
@@ -132,3 +145,72 @@ def test_maintenance_notification_text(monkeypatch, enabled, expected):
         send.return_value.json.return_value = {"ok": True}
         send_maintenance_notification(enabled)
     assert expected in send.call_args.kwargs["json"]["text"]
+
+
+def test_closing_notification_sends_leaderboard_text(app, monkeypatch):
+    from app.services.telegram import send_maintenance_notification
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "test-chat")
+    with app.app_context(), patch("app.services.telegram.requests.post") as send:
+        send.return_value.json.return_value = {"ok": True}
+        send_maintenance_notification(True, league="PL")
+    assert send.call_count == 2
+    assert send.call_args.args[0].endswith("/sendMessage")
+    assert "АПЛ" in send.call_args.kwargs["json"]["text"]
+
+
+@pytest.mark.parametrize("overrides", [
+    {"league": "unknown"},
+    {"league": None},
+    {"league": []},
+])
+def test_closing_rejects_invalid_league_without_changing_mode(app, client, overrides):
+    authenticate(client, make_user(app, "super", is_superuser=True))
+    response = client.post("/api/settings/maintenance", json=closing_payload(**overrides))
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.get(Setting, "maintenance_enabled") is None
+
+
+def test_closing_rejects_disabled_league(app, client):
+    authenticate(client, make_user(app, "super", is_superuser=True))
+    with app.app_context():
+        db.session.add(Setting(key="league_enabled_PL", value="0"))
+        db.session.commit()
+    assert client.post("/api/settings/maintenance", json=closing_payload()).status_code == 400
+
+
+def test_results_use_last_complete_day_and_correct_trends(app):
+    from .conftest import make_match
+    from app.models import Match, Prediction, PredictionPoints, Score, User
+    from app.services.telegram import build_day_results
+
+    first = make_user(app, "first")
+    second = make_user(app, "second")
+    old_match = make_match(app, league="PL", status="finished", kickoff=datetime(2030, 1, 1))
+    last_match = make_match(app, league="PL", status="finished", kickoff=datetime(2030, 1, 2))
+    next_match = make_match(app, league="PL", kickoff=datetime(2030, 1, 3))
+    with app.app_context():
+        db.session.get(User, first).nickname = "<Первый>"
+        for match_id, rnd in ((old_match, 1), (last_match, 2), (next_match, 3)):
+            db.session.get(Match, match_id).featured_round = rnd
+        for match_id in (old_match, last_match):
+            db.session.add(Score(match_id=match_id, home_score=1, away_score=0))
+        for uid, mid, pts in ((first, old_match, 1), (second, last_match, 3)):
+            prediction = Prediction(user_id=uid, match_id=mid, home_score=1, away_score=0)
+            db.session.add(prediction)
+            db.session.flush()
+            db.session.add(PredictionPoints(prediction_id=prediction.id, points=pts, reason="manual"))
+        db.session.commit()
+
+        result = build_day_results("PL")
+
+    assert "Итоги последнего игрового дня" in result
+    assert "АПЛ · День 2" in result
+    assert "1 ↑ second" in result
+    assert "2 ↓ &lt;Первый&gt;" in result
+    assert "Лидер игрового дня: second — 3 оч." in result
+    assert "+День" in result
+    assert "Точно" not in result
+    assert "Home FC" not in result

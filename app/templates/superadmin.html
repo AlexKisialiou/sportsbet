@@ -34,6 +34,8 @@
         Пользователи увидят заглушку, их API-запросы будут заблокированы.
         Доступ сохранится только у суперадмина. При переключении отправляется сообщение в Telegram.
         Сервер продолжает работать; режим сохраняется после деплоя.
+        При закрытии в Telegram отправятся итоги последнего игрового дня текущей лиги:
+        общие очки, очки за день, стрелки изменения мест и лидер дня.
     </p>
     <p id="maintenanceStatus">{{ 'Сайт закрыт для пользователей' if maintenance_enabled else 'Сайт доступен пользователям' }}</p>
     <button class="btn-action" id="maintenanceBtn"
@@ -51,10 +53,15 @@ async function toggleMaintenance() {
     btn.disabled = true;
     msg.textContent = '';
     try {
+        const leagues = {{ league_order | tojson }};
+        const available = {{ league_enabled | tojson }};
+        const saved = (sessionStorage.getItem('activeLeagueTab') || '').toUpperCase();
+        const league = available[saved] ? saved : leagues.find(item => available[item]);
+        if (enabled && !league) throw new Error('Нет включённой лиги для отправки итогов.');
         const response = await fetch('/api/settings/maintenance', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({enabled})
+            body: JSON.stringify({enabled, league})
         });
         const data = await response.json();
         if (!response.ok || !data.ok) {
@@ -68,8 +75,8 @@ async function toggleMaintenance() {
             ? 'Сайт закрыт для пользователей' : 'Сайт доступен пользователям';
         msg.textContent = data.warning || data.message;
         msg.className = data.warning ? 'error-msg' : 'success-msg';
-    } catch {
-        msg.textContent = 'Ошибка запроса. Обновите страницу, чтобы проверить состояние режима.';
+    } catch (error) {
+        msg.textContent = error.message || 'Ошибка запроса. Обновите страницу, чтобы проверить состояние режима.';
         msg.className = 'error-msg';
     } finally {
         btn.disabled = false;

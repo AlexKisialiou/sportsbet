@@ -964,7 +964,7 @@ def superadmin():
         sa_comment_max_length = 10
 
     tg_enabled_s = Setting.query.get("tg_remind_enabled")
-    tg_remind_enabled = tg_enabled_s is not None and tg_enabled_s.value == "1"
+    tg_remind_enabled = tg_enabled_s is None or tg_enabled_s.value == "1"
     tg_last_sent_s = Setting.query.get("tg_remind_last_sent")
     tg_last_sent = tg_last_sent_s.value if tg_last_sent_s else ""
 
