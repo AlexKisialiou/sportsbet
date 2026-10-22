@@ -251,15 +251,14 @@ Key constants exported from `seed.py`:
 
 ## Render Deployment
 
-### Tomorrow reminder and automatic opening (separate Cron Job)
-- **Temporary five-minute test:** schedule `*/5 * * * *`, command `python tg_notify/tomorrow.py --test`. Sends a test message on every run (no deduplication), with the next future active featured match's Minsk date/time regardless of whether it is tomorrow, or an explicit no-matches message. Requires only `DATABASE_URL`, `APP_ENV` if sandbox, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Does not resume the service or change any settings. Restore the production command/schedule after testing to avoid chat spam.
+### Automatic site opening and notification (separate Cron Job)
 - Script: `python tg_notify/tomorrow.py`; does not import/create Flask or run startup fetches.
-- Render Cron Job: same repository/branch, build `pip install -r tg_notify/requirements.txt`, command `python tg_notify/tomorrow.py`, schedule `0 15 * * *` (18:00 Minsk / UTC+3).
+- Render Cron Job: same repository/branch, build `pip install -r tg_notify/requirements.txt`, command `python tg_notify/tomorrow.py`, schedule `0 15 * * *` (daily at 18:00 Minsk / UTC+3). No `--test` mode remains.
 - Environment: `DATABASE_URL` (accessible Postgres), `APP_ENV` (same as the web service), `RENDER_API_KEY` (secret with service access), `RENDER_SERVICE_ID` (web service `srv-...`, not cron ID), `APP_URL` (HTTPS web-service URL), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
-- At 18:00 checks tomorrow's Minsk calendar date for scheduled featured matches in enabled leagues, limited to each league's currently active round (unnumbered matches included). No matches means no resume, no unlocking, no Telegram message.
-- If matches exist, inspects Render's suspension state, calls `/v1/services/{id}/resume` only if suspended, and polls `/health` up to 10 minutes. After readiness, sets `maintenance_enabled=0` and `betting_locked=0` directly in the same DB/schema, commits, and sends «Завтра будут матчи» with date/first kickoff and confirmation predictions are open.
-- Does not select matches, bypass kickoff restrictions, or suspend the web service automatically. DB must remain available even when the web service is suspended. The job overrides manual maintenance/betting locks on matching evenings; disable the Cron Job to keep an intentional closure.
-- Session advisory lock prevents overlapping cron executions; `settings.tg_tomorrow_sent` avoids repeat successful notifications for the same date. Failed readiness does not unlock; failed Telegram delivery leaves the site open and no sent marker, so a retry can deliver. A process crash immediately after Telegram delivery and before marker commit may duplicate a notification.
+- Every run inspects Render's suspension state, calls `/v1/services/{id}/resume` only if suspended, and polls `/health` up to 10 minutes. Then finds the nearest future scheduled featured match in enabled leagues, limited to each league's active round (unnumbered matches included), without checking whether it is tomorrow.
+- After readiness, always sets `maintenance_enabled=0` and `betting_locked=0`, commits, and sends a normal Russian site-open message with the next match's Minsk date/time, or an explicit no-matches note. No date marker or notification deduplication: one message per successful run, including runs without matches. Intended web service: `RENDER_SERVICE_ID=srv-d82tp757vvec738d9vlg`.
+- Does not select matches, bypass kickoff restrictions, or suspend the web service automatically. DB must remain available even when the web service is suspended. Each run overrides manual maintenance/betting locks; disable the Cron Job to keep an intentional closure.
+- Session advisory lock prevents overlapping cron executions. Failed readiness does not unlock or notify; failed Telegram delivery leaves the site open and reports failure.
 - Cron must be created/configured separately in Render (paid resource); adding this script alone does not enable it. Test logic with mocks; running the script with real credentials has live service and notification side effects.
 
 - **Build:** `pip install -r requirements.txt`

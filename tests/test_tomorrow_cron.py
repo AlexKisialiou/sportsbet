@@ -7,13 +7,6 @@ import requests
 from tg_notify import tomorrow as cron
 
 
-def test_tomorrow_window_uses_minsk_date():
-    day, start, end = cron.tomorrow_window(datetime(2030, 1, 1, 22, tzinfo=timezone.utc))
-    assert day.isoformat() == "2030-01-03"
-    assert start == datetime(2030, 1, 2, 21)
-    assert end == datetime(2030, 1, 3, 21)
-
-
 @pytest.mark.parametrize("suspended,post_count", [("suspended", 1), ("not_suspended", 0)])
 def test_resume_waits_for_health(suspended, post_count):
     status, health = MagicMock(), MagicMock()
@@ -61,17 +54,18 @@ def run_env(monkeypatch):
         yield conn, cursor, matches, resume, send
 
 
-def test_no_matches_does_not_resume_or_notify(run_env):
+def test_no_matches_still_opens_and_notifies(run_env):
     conn, _, matches, resume, send = run_env
     matches.return_value = []
     cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc))
-    resume.assert_not_called()
-    send.assert_not_called()
-    conn.commit.assert_not_called()
+    resume.assert_called_once()
+    send.assert_called_once()
+    assert send.call_args.args[2] is None
+    conn.commit.assert_called_once()
     conn.close.assert_called_once()
 
 
-def test_success_opens_before_notification_and_marks_date(run_env):
+def test_success_opens_before_notification(run_env):
     conn, cursor, _, resume, send = run_env
     send.side_effect = lambda *args: conn.commit.assert_called_once()
     cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc))
@@ -80,7 +74,7 @@ def test_success_opens_before_notification_and_marks_date(run_env):
     statements = [(str(call.args[0]), call.args[1:]) for call in cursor.execute.call_args_list]
     assert any(args == (("maintenance_enabled",),) for _, args in statements)
     assert any(args == (("betting_locked",),) for _, args in statements)
-    assert any("tg_tomorrow_sent" in query and args == (("2030-01-02",),) for query, args in statements)
+    assert not any("tg_tomorrow_sent" in query for query, _ in statements)
     conn.close.assert_called_once()
 
 
@@ -93,9 +87,9 @@ def test_health_failure_does_not_open_or_notify(run_env):
     send.assert_not_called()
 
 
-def test_duplicate_date_is_skipped(run_env):
+def test_overlapping_run_is_skipped(run_env):
     _, cursor, matches, resume, send = run_env
-    cursor.fetchone.side_effect = [(True,), ("2030-01-02",)]
+    cursor.fetchone.side_effect = [(False,)]
     cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc))
     matches.assert_not_called()
     resume.assert_not_called()
@@ -114,27 +108,30 @@ def test_delivery_failure_does_not_mark_success(run_env):
 
 
 @pytest.mark.parametrize("matches", [[], [datetime(2030, 2, 15, 15)]])
-def test_test_mode_always_notifies_without_opening(run_env, matches):
+def test_every_run_opens_and_notifies_for_any_match_date(run_env, matches):
     conn, cursor, get_matches, resume, send = run_env
     get_matches.return_value = matches
-    with patch.object(cron, "send_test_notice") as test_send:
-        for _ in range(2):
-            cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc), test_mode=True)
-    assert test_send.call_count == 2
-    assert test_send.call_args.args[2] == (matches[0] if matches else None)
+    cursor.fetchone.side_effect = [(True,), (True,)]
+    for _ in range(2):
+        cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc))
+    assert send.call_count == 2
+    assert send.call_args.args[2] == (matches[0] if matches else None)
     assert get_matches.call_args.args[2] == datetime.max
-    resume.assert_not_called()
-    send.assert_not_called()
-    conn.commit.assert_not_called()
-    assert not any("INSERT" in str(call.args[0]) for call in cursor.execute.call_args_list)
+    assert resume.call_count == 2
+    assert conn.commit.call_count == 2
+    assert get_matches.call_args.args[1] == datetime(2030, 1, 1, 15)
 
 
 @pytest.mark.parametrize("match,expected", [
     (datetime(2030, 2, 15, 15), "15.02.2030 в 18:00"),
     (None, "матчей для прогнозов пока нет"),
 ])
-def test_test_message_has_next_match_date_or_no_matches(match, expected):
+def test_normal_message_has_next_match_date_or_no_matches(match, expected):
     with patch.object(cron.requests, "post") as post:
         post.return_value.json.return_value = {"ok": True}
-        cron.send_test_notice("token", "chat", match)
+        cron.send_notice("token", "chat", match, "https://example.com")
     assert expected in post.call_args.kwargs["json"]["text"]
+    text = post.call_args.kwargs["json"]["text"]
+    assert "приём прогнозов открыт" in text
+    assert "Тест" not in text
+    assert "Завтра" not in text
