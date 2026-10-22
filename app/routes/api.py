@@ -1529,36 +1529,6 @@ def set_tg_remind_settings():
         db.session.add(row)
         keys_updated.append("enabled")
 
-    if "before_min" in data:
-        try:
-            v = max(1, min(int(data["before_min"]), 1440))
-        except (ValueError, TypeError):
-            return jsonify({"error": "before_min должен быть числом 1–1440"}), 400
-        row = Setting.query.get("tg_remind_before_min") or Setting(key="tg_remind_before_min")
-        row.value = str(v)
-        db.session.add(row)
-        keys_updated.append("before_min")
-
-    if "quiet_from" in data:
-        try:
-            v = max(0, min(int(data["quiet_from"]), 23))
-        except (ValueError, TypeError):
-            return jsonify({"error": "quiet_from должен быть 0–23"}), 400
-        row = Setting.query.get("tg_remind_quiet_from") or Setting(key="tg_remind_quiet_from")
-        row.value = str(v)
-        db.session.add(row)
-        keys_updated.append("quiet_from")
-
-    if "quiet_to" in data:
-        try:
-            v = max(0, min(int(data["quiet_to"]), 23))
-        except (ValueError, TypeError):
-            return jsonify({"error": "quiet_to должен быть 0–23"}), 400
-        row = Setting.query.get("tg_remind_quiet_to") or Setting(key="tg_remind_quiet_to")
-        row.value = str(v)
-        db.session.add(row)
-        keys_updated.append("quiet_to")
-
     if not keys_updated:
         return jsonify({"error": "Нечего сохранять"}), 400
 
@@ -1573,13 +1543,47 @@ def set_tg_remind_settings():
     return jsonify({"ok": True})
 
 
+@api_bp.route("/settings/maintenance", methods=["POST"])
+@superuser_required
+@limiter.limit("5 per minute")
+def set_maintenance():
+    import requests
+    from ..services.telegram import send_maintenance_notification
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or type(data.get("enabled")) is not bool:
+        return jsonify({"error": "enabled должен быть true или false"}), 400
+    enabled = data["enabled"]
+    row = db.session.get(Setting, "maintenance_enabled")
+    current_enabled = row is not None and row.value == "1"
+    if current_enabled == enabled:
+        return jsonify({"ok": True, "enabled": enabled, "message": "Режим уже установлен"})
+
+    row = row or Setting(key="maintenance_enabled")
+    row.value = "1" if enabled else "0"
+    db.session.add(row)
+    db.session.commit()
+    actor = get_current_user()
+    log_action(actor.id, "maintenance_changed", "Включён" if enabled else "Выключен")
+    try:
+        send_maintenance_notification(enabled)
+    except (requests.RequestException, RuntimeError, ValueError):
+        current_app.logger.error("Maintenance changed, but Telegram notification failed")
+        return jsonify({
+            "ok": True,
+            "enabled": enabled,
+            "warning": "Режим изменён, но сообщение в Telegram не отправлено. Проверьте настройки Telegram.",
+        })
+    return jsonify({"ok": True, "enabled": enabled, "message": "Режим изменён, сообщение отправлено в Telegram"})
+
+
 @api_bp.route("/admin/tg-remind", methods=["POST"])
 @superuser_required
 def tg_remind():
     import requests as req_lib
-    from ..models import Match, Tour, Team, User, Prediction
+    from ..models import Match, User
+    from ..services.telegram import build_bet_reminder
 
-    MINSK = timezone(timedelta(hours=3))
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not bot_token or not chat_id:
@@ -1602,33 +1606,14 @@ def tg_remind():
         featured = [m for m in all_featured if m.featured_round is None]
 
     all_users = User.query.filter(User.is_bot == False).all()
-    placed_ids_by_match = {}
-    for m in featured:
-        preds = Prediction.query.filter_by(match_id=m.id).all()
-        placed_ids_by_match[m.id] = {p.user_id for p in preds}
-
-    lines = ["🔔 Напоминание о ставках!\n"]
-    any_missing = False
-    for m in featured:
-        home = m.home_team.display_name if m.home_team else "?"
-        away = m.away_team.display_name if m.away_team else "?"
-        kt = m.kickoff_time.replace(tzinfo=timezone.utc).astimezone(MINSK).strftime("%H:%M") if m.kickoff_time else "?"
-        missing = [u.display_name for u in all_users if u.id not in placed_ids_by_match[m.id]]
-        lines.append(f"⚽ {kt} — {home} vs {away}")
-        if missing:
-            any_missing = True
-            lines.append(f"❌ Не поставили: {', '.join(missing)}")
-        else:
-            lines.append("✅ Все поставили")
-
-    if not any_missing:
+    text = build_bet_reminder(
+        featured,
+        all_users,
+        app_url=os.environ.get("APP_URL", ""),
+    )
+    if text is None:
         return jsonify({"ok": True, "sent": False, "message": "Все уже поставили — сообщение не отправлено"}), 200
 
-    app_url = os.environ.get("APP_URL", "")
-    if app_url:
-        lines.append(f"\n👉 {app_url}")
-
-    text = "\n".join(lines)
     resp = req_lib.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
         json={"chat_id": chat_id, "text": text},
@@ -1638,6 +1623,54 @@ def tg_remind():
     actor = get_current_user()
     log_action(actor.id if actor else None, "tg_remind", f"Отправлено TG напоминание: {len(featured)} матч(ей)")
     return jsonify({"ok": True, "sent": True, "message": "Сообщение отправлено в Telegram"})
+
+
+@api_bp.route("/admin/tg-remind-test", methods=["POST"])
+@superuser_required
+def tg_remind_test():
+    import requests as req_lib
+    from ..services.telegram import format_time_until
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not bot_token or not chat_id:
+        return jsonify({"error": "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID не заданы"}), 500
+
+    matches = (
+        Match.query
+        .filter(Match.featured == True, Match.status == "scheduled")
+        .order_by(Match.kickoff_time)
+        .all()
+    )
+    if not matches:
+        return jsonify({"error": "Нет активных матчей для тестового сообщения"}), 400
+
+    rounds_numbered = [match.featured_round for match in matches if match.featured_round is not None]
+    active_round = min(rounds_numbered) if rounds_numbered else None
+    featured = (
+        [match for match in matches if match.featured_round == active_round]
+        if active_round is not None
+        else [match for match in matches if match.featured_round is None]
+    )
+    first_match = min(featured, key=lambda match: match.kickoff_time)
+    text = "\n".join([
+        "🧪 ТЕСТОВОЕ СООБЩЕНИЕ",
+        "",
+        "🔔 На сегодняшние матчи не все успели сделать прогнозы:",
+        format_time_until(first_match.kickoff_time),
+        "",
+        "Артем — не хватает прогнозов на 3 матча",
+        "Алексей — не хватает прогнозов на 2 матча",
+    ])
+    resp = req_lib.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    actor = get_current_user()
+    log_action(actor.id if actor else None, "tg_remind", "Отправлено тестовое TG-напоминание")
+    return jsonify({"ok": True, "sent": True, "message": "Тестовое сообщение отправлено в Telegram"})
 
 
 @api_bp.route("/settings/bender-commentary", methods=["POST"])

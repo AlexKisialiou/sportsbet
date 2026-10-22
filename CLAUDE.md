@@ -90,7 +90,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `MatchComment` | `match_id`, `user_id`, `text` (max configurable), `created_at`, `updated_at`; **no unique constraint** — multiple messages per user per match allowed |
 | `CommentRead` | `user_id`, `match_id`, `last_read_comment_id`; unique on `(user_id, match_id)`; tracks read position per user per match for unread badge logic |
 | `ReleaseNote` | for future changelog display |
-| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `odds_fetch_enabled` (`"0"`/`"1"`, default `"1"`), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500), `tg_remind_enabled` (`"0"`/`"1"`), `tg_remind_before_min` (minutes before first match to send reminder, default 60), `tg_remind_quiet_from`/`tg_remind_quiet_to` (hour 0–23, don't send during quiet window) |
+| `Setting` (new keys) | `auto_fetch_enabled` (`"0"`/`"1"`), `auto_fetch_interval_min` (5–120), `odds_fetch_enabled` (`"0"`/`"1"`, default `"1"`), `team_form_matches_count` (0=unlimited), `comment_max_length` (1–500), `tg_remind_enabled` (`"0"`/`"1"`), `tg_remind_noon_day`/`tg_remind_hour_day` (last successfully sent date for each automatic reminder slot), `tg_remind_last_sent` (last successful automatic reminder date). Legacy `tg_remind_before_min`/`tg_remind_quiet_from`/`tg_remind_quiet_to` are ignored; schedule is fixed. |
 
 ### Routes
 | Blueprint | Route | Description |
@@ -133,7 +133,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 | `api` | `POST /api/settings/comment-max-length` | Set max comment length 1–500; body `{"length":280}` (superuser) |
 | `api` | `POST /api/settings/odds-fetch` | Enable/disable The Odds API requests; body `{"enabled":true/false}` (superuser) |
 | `api` | `POST /api/admin/fix-round0` | Set `featured=True, featured_round=0` for all finished matches of a league with `featured_round IS NULL`; body `{"league":"WC"}` (superuser) |
-| `api` | `POST /api/settings/tg-remind` | Save Telegram reminder settings; body `{"enabled":bool,"before_min":N,"quiet_from":H,"quiet_to":H}` (superuser) |
+| `api` | `POST /api/settings/tg-remind` | Toggle fixed Telegram reminder schedule; body `{"enabled":bool}` (superuser) |
 | `api` | `POST /api/admin/tg-remind` | Manually trigger Telegram reminder for upcoming featured matches (superuser) |
 | `api` | `GET /api/team/<id>/recent-matches?league=UCL` | Get recent finished matches for a team (login required); respects `team_form_matches_count` setting |
 | `api` | `POST /api/match/<id>/comment` | Post new comment on a finished match (login required); body `{"text":"..."}`; returns `{ok, id, created_at, author, avatar_emoji, avatar_color, is_bot}`; also updates `CommentRead` for the author |
@@ -155,7 +155,7 @@ Central constants: `APP_NAME`, `APP_VERSION`, `POINTS_EXACT/WINNER/NONE`, `AVATA
 - **📊 Форма команд** — input for how many recent matches to show in tooltip (0 = all); calls `POST /api/settings/team-form-count`
 - **💬 Комментарии** — max comment length input (1–500); calls `POST /api/settings/comment-max-length`
 - **📡 Запросы к API ставок** — toggle to enable/disable The Odds API requests (saves quota); calls `POST /api/settings/odds-fetch`; both scheduler job and featured-matches endpoint respect this flag
-- **✈️ Telegram-напоминание** — enable/disable auto-reminder, set minutes before first match, quiet hours (from/to), «Отправить сейчас» manual trigger; calls `POST /api/settings/tg-remind` and `POST /api/admin/tg-remind`; reads `TG_BOT_TOKEN` + `TG_CHAT_ID` env vars
+- **✈️ Telegram-напоминание** — enable/disable the fixed automatic schedule: noon and one hour before today's first active game-day match, Minsk time, only between 08:00 (inclusive) and 22:00 (exclusive), before kickoff. Coincident slots send one message. «Отправить напоминание» and «Отправить тестовое сообщение» remain explicit manual actions outside the automatic schedule. The Russian reminder only sends when someone has missing predictions, summarizes each user's missing match count without listing matches, and includes time until the first match; calls `POST /api/settings/tg-remind`, `POST /api/admin/tg-remind`, and `POST /api/admin/tg-remind-test`; reads `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` env vars
 - **→ день 0** (per-league button in 🏆 Управление лигами row) — moves all finished matches without a `featured_round` to `featured_round=0` (archive); calls `POST /api/admin/fix-round0`
 - **📋 Лог активности** — link to activity log page
 
@@ -214,10 +214,10 @@ Bender panel colors (gold/green) are hardcoded — not theme-dependent.
 `BackgroundScheduler` (APScheduler, daemon=True) for periodic jobs.
 - `init_scheduler(app)` — called at startup; starts scheduler, reads `auto_fetch_enabled` / `auto_fetch_interval_min` from DB, schedules `_auto_fetch_job` if enabled; always schedules `_auto_odds_job` and `_auto_tg_remind_job`
 - `update_auto_fetch(enabled, interval)` — called live from `POST /api/settings/auto-fetch`; adds/removes the APScheduler job without restart
-- `update_tg_remind(enabled)` — called live from `POST /api/settings/tg-remind`; adds/removes the tg-remind job without restart
+- `update_tg_remind(enabled)` — called live from `POST /api/settings/tg-remind`; logs the toggle change, which the job reads at runtime
 - `_auto_fetch_job()` — runs all three fetch functions, skips disabled leagues, logs to stdout
 - `_auto_odds_job()` — runs every 3 hours; **only between 07:00–24:00 Minsk time** (UTC+3); for each enabled league fetches bookmaker odds if there are featured scheduled matches, updates `Match.odds_*`; skips leagues with no featured matches to conserve API quota (500 req/month free tier); checks `odds_fetch_enabled` setting at runtime, skips entirely if `"0"`
-- `_auto_tg_remind_job()` — runs every 15 min; checks `tg_remind_enabled`; if enabled and current time is **before** the first upcoming featured match by `tg_remind_before_min` minutes (±15 min window), sends a Telegram message listing users without predictions; respects quiet hours (`tg_remind_quiet_from`/`tg_remind_quiet_to`); reads `TG_BOT_TOKEN` + `TG_CHAT_ID` from env; `_is_quiet(hour, q_from, q_to)` handles midnight-spanning ranges
+- `_auto_tg_remind_job()` — checks every minute using a Minsk-time cron job. Fixed slots: 12:00 and one hour before today's first match of the active featured round. Only today's matches are counted; no automatic sending before 08:00, at/after 22:00, or at/after the first kickoff (including finished/live matches). Each slot has a five-minute delivery/retry window and its own persistent date marker; overlapping slots are combined. Markers are saved only after successful delivery, allowing the second reminder even if noon was skipped because everyone had predictions. Sends the Russian missing-prediction summary and countdown; reads `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` from env.
 
 ### Team Form Tooltip
 `_build_team_form_data(league, team_ids, limit)` in `main.py` — precomputes last N finished matches per team for all teams on the page; result injected as `TEAM_FORM_DATA` JSON into `index.html`. On desktop: tooltip appears on `mouseover` after 180ms delay. On mobile: tap shows tooltip, second tap or tap elsewhere hides it (`touchstart` handler with `e.preventDefault()`).
@@ -251,7 +251,8 @@ Key constants exported from `seed.py`:
 
 ## Render Deployment
 - **Build:** `pip install -r requirements.txt`
-- **Start:** `bash start.sh` → `gunicorn wsgi:app`
+- **Start:** `bash start.sh` → `exec gunicorn --config gunicorn.conf.py wsgi:app`
+- **Maintenance mode:** the superadmin toggles `POST /api/settings/maintenance` with `{"enabled": bool}`. `Setting.maintenance_enabled` persists across deploys. A global request guard returns a standalone Russian maintenance page (HTTP 503, no-store) or a JSON 503 for API requests to everyone except superusers; static files, login/logout, and `/health` are exempt. Regular users cannot log in while maintenance is enabled; superusers can log in and reopen the site. `/health` stays HTTP 200 for Render health checks. Each actual toggle sends a Russian Telegram availability notification through `app/services/telegram.py`; delivery failures are logged and explicitly shown as warnings without rolling back the mode change. Automatic prediction reminders pause during maintenance. There are no Gunicorn lifecycle notifications, so deploys do not send availability messages. The server must stay running to display the maintenance page; use `/health` as the Render health-check path.
 - Set `DATABASE_URL`, `FOOTBALL_API_KEY`, `GROQ_API_KEY`, `ODDS_API_KEY`, `SECRET_KEY`, `ADMIN_PASSWORD`, user credentials in Render env vars
 - Render provides `postgres://` URL — auto-fixed to `postgresql://` in `create_app()`
 - `RENDER` env var is set automatically by Render — enables secure cookies, HSTS, ProxyFix

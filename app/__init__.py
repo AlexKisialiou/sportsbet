@@ -236,6 +236,26 @@ def create_app():
     from .auth import get_current_user
     from . import config as app_config
 
+    @app.route("/health")
+    def health():
+        return jsonify({"ok": True})
+
+    @app.before_request
+    def restrict_maintenance_access():
+        from .models import Setting
+        maintenance = db.session.get(Setting, "maintenance_enabled")
+        if not maintenance or maintenance.value != "1":
+            return
+        if flask_request.endpoint in {"static", "auth.login", "auth.logout", "health"}:
+            return
+        user = get_current_user()
+        if user and user.is_superuser:
+            return
+        headers = {"Cache-Control": "no-store", "Retry-After": "300"}
+        if flask_request.path.startswith("/api/"):
+            return jsonify({"error": "Сайт временно недоступен. Идут технические работы."}), 503, headers
+        return render_template("maintenance.html"), 503, headers
+
     @app.context_processor
     def inject_globals():
         theme = "navy"

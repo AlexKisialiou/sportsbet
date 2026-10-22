@@ -152,72 +152,69 @@ def _auto_odds_job():
     print(f"[odds-scheduler] {ts} — odds refresh done")
 
 
-def _is_quiet(hour: int, q_from: int, q_to: int) -> bool:
-    if q_from > q_to:  # spans midnight, e.g. 23-07
-        return hour >= q_from or hour < q_to
-    return q_from <= hour < q_to
-
-
 def _auto_tg_remind_job():
-    """Send Telegram bet reminder before the first match of the nearest game day."""
+    """Remind at noon and one hour before today's first match, in Minsk time."""
     import os
     now_minsk = datetime.now(MINSK)
 
     with _app.app_context():
-        from .models import Setting, Match, User, Prediction, db
+        from .models import Setting, Match, User, db
+        from .services.telegram import build_bet_reminder
 
         enabled_s = Setting.query.get("tg_remind_enabled")
         if not (enabled_s and enabled_s.value == "1"):
             return
+        maintenance = db.session.get(Setting, "maintenance_enabled")
+        if maintenance and maintenance.value == "1":
+            return
 
-        def _sv(key, default):
-            s = Setting.query.get(key)
-            try:
-                return int(s.value) if s else default
-            except (ValueError, TypeError):
-                return default
-
-        before_min = max(1, _sv("tg_remind_before_min", 60))
-        q_from = max(0, min(_sv("tg_remind_quiet_from", 23), 23))
-        q_to = max(0, min(_sv("tg_remind_quiet_to", 7), 23))
-
-        if _is_quiet(now_minsk.hour, q_from, q_to):
+        if not 8 <= now_minsk.hour < 22:
             return
 
         all_featured = (
             Match.query
-            .filter(Match.featured == True, Match.status == "scheduled")
+            .filter(Match.featured == True, Match.kickoff_time.isnot(None))
             .order_by(Match.kickoff_time)
             .all()
         )
-        if not all_featured:
+        scheduled = [m for m in all_featured if m.status == "scheduled"]
+        if not scheduled:
             return
 
         # Only the active game day — lowest featured_round (same logic as _build)
-        rounds_with_none = [m.featured_round for m in all_featured if m.featured_round is None]
-        rounds_numbered = [m.featured_round for m in all_featured if m.featured_round is not None]
+        rounds_numbered = [m.featured_round for m in scheduled if m.featured_round is not None]
         active_round = min(rounds_numbered) if rounds_numbered else None
 
-        if active_round is not None:
-            featured = [m for m in all_featured if m.featured_round == active_round]
-        else:
-            featured = [m for m in all_featured if m.featured_round is None]
+        featured = [
+            m for m in all_featured
+            if m.featured_round == active_round
+            and m.kickoff_time.replace(tzinfo=timezone.utc).astimezone(MINSK).date()
+            == now_minsk.date()
+        ]
+        if not featured:
+            return
 
         first_match = min(featured, key=lambda m: m.kickoff_time)
         first_ko_utc = first_match.kickoff_time.replace(tzinfo=timezone.utc)
         first_ko_minsk = first_ko_utc.astimezone(MINSK)
         game_day = first_ko_minsk.date()
 
-        send_at = first_ko_minsk - timedelta(minutes=before_min)
-
-        if now_minsk < send_at:
-            return
         if now_minsk >= first_ko_minsk:
             return
 
-        last_sent_s = Setting.query.get("tg_remind_last_sent")
-        last_sent = last_sent_s.value if last_sent_s else ""
-        if last_sent == game_day.isoformat():
+        slots = [
+            ("tg_remind_noon_day", now_minsk.replace(hour=12, minute=0, second=0, microsecond=0)),
+            ("tg_remind_hour_day", first_ko_minsk - timedelta(hours=1)),
+        ]
+        due_keys = [
+            key for key, send_at in slots
+            if timedelta(0) <= now_minsk - send_at < timedelta(minutes=5)
+            and (
+                db.session.get(Setting, key) is None
+                or db.session.get(Setting, key).value != game_day.isoformat()
+            )
+        ]
+        if not due_keys:
             return
 
         # Build and send message
@@ -228,38 +225,15 @@ def _auto_tg_remind_job():
             return
 
         all_users = User.query.filter(User.is_bot == False).all()
-        placed_ids = {p.user_id for p in Prediction.query.filter(
-            Prediction.match_id.in_([m.id for m in featured])
-        ).all()}
-
-        lines = ["🔔 Напоминание о ставках!\n"]
-        any_missing = False
-        for m in featured:
-            ko_minsk = m.kickoff_time.replace(tzinfo=timezone.utc).astimezone(MINSK)
-            home = m.home_team.display_name if m.home_team else "?"
-            away = m.away_team.display_name if m.away_team else "?"
-            match_placed = {p.user_id for p in Prediction.query.filter_by(match_id=m.id).all()}
-            missing = [u.display_name for u in all_users if u.id not in match_placed]
-            lines.append(f"⚽ {ko_minsk.strftime('%H:%M')} — {home} vs {away}")
-            if missing:
-                any_missing = True
-                lines.append(f"❌ Не поставили: {', '.join(missing)}")
-            else:
-                lines.append("✅ Все поставили")
-
-        if not any_missing:
-            # Still record as sent to avoid rechecking
-            row = Setting.query.get("tg_remind_last_sent") or Setting(key="tg_remind_last_sent")
-            row.value = game_day.isoformat()
-            db.session.add(row)
-            db.session.commit()
+        text = build_bet_reminder(
+            featured,
+            all_users,
+            app_url=os.environ.get("APP_URL", ""),
+            now=now_minsk,
+        )
+        if text is None:
             return
 
-        app_url = os.environ.get("APP_URL", "")
-        if app_url:
-            lines.append(f"\n👉 {app_url}")
-
-        text = "\n".join(lines)
         try:
             import requests as req_lib
             resp = req_lib.post(
@@ -274,9 +248,10 @@ def _auto_tg_remind_job():
             print(f"[tg-remind] send failed: {e}")
             return
 
-        row = Setting.query.get("tg_remind_last_sent") or Setting(key="tg_remind_last_sent")
-        row.value = game_day.isoformat()
-        db.session.merge(row)
+        for key in due_keys + ["tg_remind_last_sent"]:
+            row = db.session.get(Setting, key) or Setting(key=key)
+            row.value = game_day.isoformat()
+            db.session.add(row)
         db.session.commit()
 
 
@@ -309,7 +284,7 @@ def init_scheduler(app):
     )
 
     _scheduler.add_job(
-        _auto_tg_remind_job, "interval", minutes=5,
+        _auto_tg_remind_job, "cron", minute="*", timezone=MINSK,
         id="auto_tg_remind", replace_existing=True,
     )
 
@@ -323,7 +298,7 @@ def init_scheduler(app):
 
 def update_tg_remind(enabled: bool):
     """Called live when tg_remind settings change."""
-    # The job always runs every 5 min and reads settings itself; no add/remove needed.
+    # The job checks the fixed schedule every minute and reads the toggle itself.
     ts = datetime.now(MINSK).strftime("%Y-%m-%d %H:%M")
     print(f"[tg-remind] {ts} — setting updated: enabled={enabled}")
 

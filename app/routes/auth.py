@@ -2,7 +2,7 @@ import os
 import hmac
 from flask import Blueprint, request, session, redirect, url_for, render_template
 from werkzeug.security import check_password_hash, generate_password_hash
-from ..models import db, User
+from ..models import db, User, Setting
 from ..auth import login_required
 from ..services.activity import log_action
 from ..limiter import limiter
@@ -28,6 +28,9 @@ def login():
         password = request.form.get("password", "")
         user = User.query.filter_by(username=username).first()
         if user and not user.is_bot and _check_password(user, password):
+            maintenance = db.session.get(Setting, "maintenance_enabled")
+            if maintenance and maintenance.value == "1" and not user.is_superuser:
+                return render_template("maintenance.html"), 503, {"Cache-Control": "no-store"}
             session["user_id"] = user.id
             log_action(user.id, "login", "Вошёл в систему")
             return redirect(url_for("main.index"))

@@ -29,6 +29,55 @@
 </div>
 
 <div class="admin-card">
+    <h6>🔧 Режим обслуживания</h6>
+    <p class="text-secondary">
+        Пользователи увидят заглушку, их API-запросы будут заблокированы.
+        Доступ сохранится только у суперадмина. При переключении отправляется сообщение в Telegram.
+        Сервер продолжает работать; режим сохраняется после деплоя.
+    </p>
+    <p id="maintenanceStatus">{{ 'Сайт закрыт для пользователей' if maintenance_enabled else 'Сайт доступен пользователям' }}</p>
+    <button class="btn-action" id="maintenanceBtn"
+            data-enabled="{{ 'true' if maintenance_enabled else 'false' }}" onclick="toggleMaintenance()">
+        {{ 'Открыть сайт' if maintenance_enabled else 'Закрыть сайт на обслуживание' }}
+    </button>
+    <p id="maintenanceMsg" role="status"></p>
+</div>
+<script>
+async function toggleMaintenance() {
+    const btn = document.getElementById('maintenanceBtn');
+    const msg = document.getElementById('maintenanceMsg');
+    const enabled = btn.dataset.enabled !== 'true';
+    if (!confirm(enabled ? 'Закрыть сайт для пользователей и уведомить Telegram?' : 'Открыть сайт и уведомить Telegram?')) return;
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+        const response = await fetch('/api/settings/maintenance', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled})
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+            msg.textContent = data.error || 'Не удалось изменить режим';
+            msg.className = 'error-msg';
+            return;
+        }
+        btn.dataset.enabled = String(data.enabled);
+        btn.textContent = data.enabled ? 'Открыть сайт' : 'Закрыть сайт на обслуживание';
+        document.getElementById('maintenanceStatus').textContent = data.enabled
+            ? 'Сайт закрыт для пользователей' : 'Сайт доступен пользователям';
+        msg.textContent = data.warning || data.message;
+        msg.className = data.warning ? 'error-msg' : 'success-msg';
+    } catch {
+        msg.textContent = 'Ошибка запроса. Обновите страницу, чтобы проверить состояние режима.';
+        msg.className = 'error-msg';
+    } finally {
+        btn.disabled = false;
+    }
+}
+</script>
+
+<div class="admin-card">
     <h6>Права администратора</h6>
     <p class="text-secondary mb-3" style="font-size:.85rem;">Назначай или снимай права админа для пользователей.</p>
     <div id="users-list">
@@ -704,30 +753,11 @@
             </button>
         </div>
 
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-            <label style="font-size:.83rem;color:#9ab5c8;white-space:nowrap;">За сколько минут до первого матча:</label>
-            <input type="number" id="tgBeforeMinInput" min="1" max="1440" value="{{ tg_before_min }}"
-                   style="width:72px;padding:4px 8px;border-radius:6px;background:#0d1b28;
-                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
-            <button onclick="saveTgScheduleSettings()"
-                    style="font-size:.82rem;padding:5px 16px;border-radius:7px;cursor:pointer;
-                           background:#0a1a2a;color:#7a9ab5;border:1px solid #1a3a5a;">
-                Сохранить
-            </button>
-            <span id="tgScheduleMsg" style="font-size:.82rem;display:none;"></span>
-        </div>
-
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <label style="font-size:.83rem;color:#9ab5c8;white-space:nowrap;">Тихие часы (МСК+0): с</label>
-            <input type="number" id="tgQuietFromInput" min="0" max="23" value="{{ tg_quiet_from }}"
-                   style="width:58px;padding:4px 8px;border-radius:6px;background:#0d1b28;
-                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
-            <label style="font-size:.83rem;color:#9ab5c8;">до</label>
-            <input type="number" id="tgQuietToInput" min="0" max="23" value="{{ tg_quiet_to }}"
-                   style="width:58px;padding:4px 8px;border-radius:6px;background:#0d1b28;
-                          border:1px solid #2a3a5a;color:#c0c8d0;font-size:.9rem;outline:none;">
-            <span style="font-size:.78rem;color:#5a7a8a;">(не слать с {{ tg_quiet_from }}:00 до {{ tg_quiet_to }}:00)</span>
-        </div>
+        <p class="text-secondary mb-2" style="font-size:.83rem;">
+            В день игр: в 12:00 и за 1 час до первого матча, только если не все сделали прогнозы.
+            Время минское. Автоотправка только с 08:00 до 22:00 и до начала первого матча.
+            Если оба напоминания совпадают по времени, придёт одно сообщение.
+        </p>
 
         {% if tg_last_sent %}
         <div style="margin-top:8px;font-size:.78rem;color:#4a6a7a;">
@@ -746,6 +776,11 @@
                     style="font-size:.88rem;padding:8px 22px;border-radius:8px;cursor:pointer;
                            background:#0a2a3a;color:#5ab5d5;border:1px solid #1a5a7a;">
                 Отправить напоминание
+            </button>
+            <button onclick="sendTgRemindTest()" id="tgRemindTestBtn"
+                    style="font-size:.88rem;padding:8px 22px;border-radius:8px;cursor:pointer;
+                           background:#2a2410;color:#d5bd65;border:1px solid #6a5a1a;">
+                Отправить тестовое сообщение
             </button>
             <div class="spinner" id="tgRemindSpinner"></div>
             <span id="tgRemindMsg" style="font-size:.83rem;"></span>
@@ -1545,39 +1580,6 @@ async function toggleTgAuto(enable) {
     }
 }
 
-async function saveTgScheduleSettings() {
-    const beforeMin = parseInt(document.getElementById('tgBeforeMinInput').value);
-    const quietFrom = parseInt(document.getElementById('tgQuietFromInput').value);
-    const quietTo = parseInt(document.getElementById('tgQuietToInput').value);
-    const msg = document.getElementById('tgScheduleMsg');
-    if (isNaN(beforeMin) || beforeMin < 1 || beforeMin > 1440) {
-        msg.innerHTML = '<span class="error-msg">Введи 1–1440 минут</span>';
-        msg.style.display = '';
-        return;
-    }
-    if (isNaN(quietFrom) || quietFrom < 0 || quietFrom > 23 || isNaN(quietTo) || quietTo < 0 || quietTo > 23) {
-        msg.innerHTML = '<span class="error-msg">Часы: 0–23</span>';
-        msg.style.display = '';
-        return;
-    }
-    try {
-        const resp = await fetch('/api/settings/tg-remind', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ before_min: beforeMin, quiet_from: quietFrom, quiet_to: quietTo })
-        });
-        const data = await resp.json();
-        msg.innerHTML = data.ok
-            ? '<span class="success-msg">✓ Сохранено</span>'
-            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
-        msg.style.display = '';
-        setTimeout(() => { msg.style.display = 'none'; }, 2000);
-    } catch {
-        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
-        msg.style.display = '';
-    }
-}
-
 async function sendTgRemind() {
     const btn = document.getElementById('tgRemindBtn');
     const spinner = document.getElementById('tgRemindSpinner');
@@ -1598,6 +1600,24 @@ async function sendTgRemind() {
     } finally {
         btn.disabled = false;
         spinner.style.display = 'none';
+    }
+}
+
+async function sendTgRemindTest() {
+    const btn = document.getElementById('tgRemindTestBtn');
+    const msg = document.getElementById('tgRemindMsg');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+        const resp = await fetch('/api/admin/tg-remind-test', { method: 'POST' });
+        const data = await resp.json();
+        msg.innerHTML = data.ok
+            ? `<span class="success-msg">✓ ${data.message}</span>`
+            : `<span class="error-msg">${data.error || 'Ошибка'}</span>`;
+    } catch {
+        msg.innerHTML = '<span class="error-msg">Ошибка запроса</span>';
+    } finally {
+        btn.disabled = false;
     }
 }
 

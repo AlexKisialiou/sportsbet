@@ -44,6 +44,7 @@ ACTION_LABELS = {
     'copy_prod_to_sandbox':      'Копирование прод → сэндбокс',
     'tg_remind':                 'TG-напоминание о ставках',
     'tg_remind_settings':        'Настройки TG-напоминания',
+    'maintenance_changed':      'Режим обслуживания',
     'bender_manual':             'Ручной запрос прогнозов Бендера',
     'bender_force':              'Принудительная перегенерация прогнозов Бендера',
 }

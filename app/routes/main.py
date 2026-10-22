@@ -965,18 +965,6 @@ def superadmin():
 
     tg_enabled_s = Setting.query.get("tg_remind_enabled")
     tg_remind_enabled = tg_enabled_s is not None and tg_enabled_s.value == "1"
-    try:
-        tg_before_min = max(1, int(Setting.query.get("tg_remind_before_min").value)) if Setting.query.get("tg_remind_before_min") else 60
-    except (ValueError, TypeError, AttributeError):
-        tg_before_min = 60
-    try:
-        tg_quiet_from = max(0, min(int(Setting.query.get("tg_remind_quiet_from").value), 23)) if Setting.query.get("tg_remind_quiet_from") else 23
-    except (ValueError, TypeError, AttributeError):
-        tg_quiet_from = 23
-    try:
-        tg_quiet_to = max(0, min(int(Setting.query.get("tg_remind_quiet_to").value), 23)) if Setting.query.get("tg_remind_quiet_to") else 7
-    except (ValueError, TypeError, AttributeError):
-        tg_quiet_to = 7
     tg_last_sent_s = Setting.query.get("tg_remind_last_sent")
     tg_last_sent = tg_last_sent_s.value if tg_last_sent_s else ""
 
@@ -1005,9 +993,10 @@ def superadmin():
                            team_form_count=team_form_count,
                            comment_max_length=sa_comment_max_length,
                            tg_remind_enabled=tg_remind_enabled,
-                           tg_before_min=tg_before_min,
-                           tg_quiet_from=tg_quiet_from,
-                           tg_quiet_to=tg_quiet_to,
+                           maintenance_enabled=(
+                               db.session.get(Setting, "maintenance_enabled") is not None
+                               and db.session.get(Setting, "maintenance_enabled").value == "1"
+                           ),
                            tg_last_sent=tg_last_sent,
                            hof_entries=hof_entries,
                            bender_picks_enabled=bender_picks_enabled,
