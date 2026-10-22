@@ -252,6 +252,7 @@ Key constants exported from `seed.py`:
 ## Render Deployment
 
 ### Tomorrow reminder and automatic opening (separate Cron Job)
+- **Temporary five-minute test:** schedule `*/5 * * * *`, command `python tg_notify/tomorrow.py --test`. Sends a test message on every run (no deduplication), with the next future active featured match's Minsk date/time regardless of whether it is tomorrow, or an explicit no-matches message. Requires only `DATABASE_URL`, `APP_ENV` if sandbox, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Does not resume the service or change any settings. Restore the production command/schedule after testing to avoid chat spam.
 - Script: `python tg_notify/tomorrow.py`; does not import/create Flask or run startup fetches.
 - Render Cron Job: same repository/branch, build `pip install -r tg_notify/requirements.txt`, command `python tg_notify/tomorrow.py`, schedule `0 15 * * *` (18:00 Minsk / UTC+3).
 - Environment: `DATABASE_URL` (accessible Postgres), `APP_ENV` (same as the web service), `RENDER_API_KEY` (secret with service access), `RENDER_SERVICE_ID` (web service `srv-...`, not cron ID), `APP_URL` (HTTPS web-service URL), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.

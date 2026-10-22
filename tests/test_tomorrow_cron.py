@@ -111,3 +111,30 @@ def test_delivery_failure_does_not_mark_success(run_env):
         "INSERT INTO settings (key, value) VALUES ('tg_tomorrow_sent'" in str(call.args[0])
         for call in cursor.execute.call_args_list
     )
+
+
+@pytest.mark.parametrize("matches", [[], [datetime(2030, 2, 15, 15)]])
+def test_test_mode_always_notifies_without_opening(run_env, matches):
+    conn, cursor, get_matches, resume, send = run_env
+    get_matches.return_value = matches
+    with patch.object(cron, "send_test_notice") as test_send:
+        for _ in range(2):
+            cron.run(datetime(2030, 1, 1, 15, tzinfo=timezone.utc), test_mode=True)
+    assert test_send.call_count == 2
+    assert test_send.call_args.args[2] == (matches[0] if matches else None)
+    assert get_matches.call_args.args[2] == datetime.max
+    resume.assert_not_called()
+    send.assert_not_called()
+    conn.commit.assert_not_called()
+    assert not any("INSERT" in str(call.args[0]) for call in cursor.execute.call_args_list)
+
+
+@pytest.mark.parametrize("match,expected", [
+    (datetime(2030, 2, 15, 15), "15.02.2030 в 18:00"),
+    (None, "матчей для прогнозов пока нет"),
+])
+def test_test_message_has_next_match_date_or_no_matches(match, expected):
+    with patch.object(cron.requests, "post") as post:
+        post.return_value.json.return_value = {"ok": True}
+        cron.send_test_notice("token", "chat", match)
+    assert expected in post.call_args.kwargs["json"]["text"]

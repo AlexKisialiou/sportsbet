@@ -1,5 +1,6 @@
-"""Render cron: 0 15 * * * (18:00 Minsk). Does not import the Flask app."""
+"""Production: 0 15 * * *. Test: */5 * * * * with --test."""
 
+import argparse
 import logging
 import os
 import time
@@ -96,18 +97,51 @@ def send_notice(token, chat_id, tomorrow, first_match, app_url):
         raise RuntimeError("Telegram did not confirm delivery")
 
 
-def run(now=None):
+def send_test_notice(token, chat_id, first_match):
+    if first_match is None:
+        text = "🧪 Тест Cron: проверка выполнена.\nБлижайших выбранных матчей для прогнозов пока нет."
+    else:
+        kickoff = first_match.replace(tzinfo=timezone.utc).astimezone(MINSK)
+        text = (
+            "🧪 Тест Cron: проверка выполнена.\n"
+            f"⚽ Ближайший выбранный матч — {kickoff:%d.%m.%Y} в {kickoff:%H:%M} по Минску.\n\n"
+            "Сервер и настройки прогнозов не изменялись."
+        )
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=15,
+    )
+    response.raise_for_status()
+    if response.json().get("ok") is not True:
+        raise RuntimeError("Telegram did not confirm delivery")
+
+
+def run(now=None, *, test_mode=False):
     load_dotenv()
-    required = ("DATABASE_URL", "RENDER_API_KEY", "RENDER_SERVICE_ID", "APP_URL",
-                "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+    required = ("DATABASE_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+    if not test_mode:
+        required += ("RENDER_API_KEY", "RENDER_SERVICE_ID", "APP_URL")
     missing = [key for key in required if not os.environ.get(key)]
     if missing:
         raise ValueError("Missing environment variables: " + ", ".join(missing))
-    tomorrow, start, end = tomorrow_window(now or datetime.now(MINSK))
+    now = now or datetime.now(MINSK)
+    tomorrow, start, end = tomorrow_window(now)
     schema = "bet_develop" if os.environ.get("APP_ENV") == "sandbox" else "bet"
     with closing(psycopg2.connect(os.environ["DATABASE_URL"])) as conn, conn:
         with conn.cursor() as cur:
             cur.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        if test_mode:
+            matches = get_matches(
+                conn, now.astimezone(timezone.utc).replace(tzinfo=None), datetime.max,
+            )
+            send_test_notice(
+                os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"],
+                matches[0] if matches else None,
+            )
+            LOG.info("Test check delivered; no service or prediction settings changed")
+            return
+        with conn.cursor() as cur:
             # Serialize manual retries/overlapping cron runs for this schema.
             cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (f"{schema}:tomorrow-cron",))
             if not cur.fetchone()[0]:
@@ -144,8 +178,11 @@ def run(now=None):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--test", action="store_true", help="Notify every run about the next match; do not open the site")
+    args = parser.parse_args()
     try:
-        run()
+        run(test_mode=args.test)
     except (requests.RequestException, psycopg2.Error, RuntimeError, ValueError) as error:
         # HTTP/DB exception strings can contain tokens or connection credentials.
         LOG.error("Tomorrow cron failed (%s). Check configuration and service availability.", type(error).__name__)
